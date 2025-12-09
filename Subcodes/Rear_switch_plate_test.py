@@ -36,24 +36,30 @@ def cycle_rgb():
     ]
     
 
-while True:
-    
-    #Switch off - power button LED off, status LED cycles RGB  
-    colours = [0, 0, 0]
-    n = 0
-    if GPIO.input(SWITCH_PIN) == GPIO.low:
-        GPIO.output(LED_SWITCH_PIN, GPIO.low)
-        for colour in colours:
-            set_rgb_colour(colours[n])
-            time.sleep(1)
-            n = n + 1 
-        n = 0  
+try:
+    while True:
         
-        #Switch on - power button LED on, status LED blinks RED
-    elif GPIO.input(SWITCH_PIN) == GPIO.high:
-         GPIO.output(LED_SWITCH_PIN, GPIO.high)
-         while GPIO.input(SWITCH_PIN) == GPIO.high:
-            set_rgb_colour(0, 0, 0 )
-            time.sleep(0.5)
-            set_rgb_colour(colours[0])
-            time.sleep(0.5) 
+        #Switch off - power button LED off, status LED cycles RGB  
+        colours = [0, 0, 0]
+        n = 0
+        if GPIO.input(SWITCH_PIN) == GPIO.low:
+            GPIO.output(LED_SWITCH_PIN, GPIO.low)
+            for colour in colours:
+                set_rgb_colour(colours[n])
+                time.sleep(1)
+                n = n + 1 
+            n = 0  
+            
+            #Switch on - power button LED on, status LED blinks RED
+        elif GPIO.input(SWITCH_PIN) == GPIO.high:
+             GPIO.output(LED_SWITCH_PIN, GPIO.high)
+             while GPIO.input(SWITCH_PIN) == GPIO.high:
+                set_rgb_colour(0, 0, 0 )
+                time.sleep(0.5)
+                set_rgb_colour(colours[0])
+                time.sleep(0.5) 
+
+finally:
+    # Clean up GPIO settings
+    GPIO.cleanup()
+    print("GPIO cleanup complete.")
