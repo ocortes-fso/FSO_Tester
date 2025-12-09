@@ -6,7 +6,8 @@ RED_PIN = 0
 GREEN_PIN = 1
 BLUE_PIN = 7
 
-# Initialize GPIO
+
+# Initialize and setup GPIO
 GPIO.setmode(GPIO.BCM)
 GPIO.setup([RED_PIN, GREEN_PIN, BLUE_PIN], GPIO.OUT)
 
@@ -39,3 +40,8 @@ finally:
     green_pwm.stop()
     blue_pwm.stop()
     GPIO.cleanup()
+
+
+#Switch 
+
+
