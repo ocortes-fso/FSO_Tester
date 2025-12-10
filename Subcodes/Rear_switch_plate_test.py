@@ -59,7 +59,7 @@ try:
                 set_rgb_colour(colours[0])
                 time.sleep(0.5) 
 
+except KeyboardInterrupt:
+    pass
 finally:
-    # Clean up GPIO settings
     GPIO.cleanup()
-    print("GPIO cleanup complete.")
