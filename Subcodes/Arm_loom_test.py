@@ -1,5 +1,6 @@
 import time
 import RPi.GPIO as GPIO
+import numpy as np
 
 # GPIO pin setup
 PIN_1 = 7
@@ -24,22 +25,30 @@ GPIO.setup([PIN_1,PIN_2, PIN_3, PIN_4, PIN_5, PIN_6], GPIO.IN, pull_up_down=GPIO
 #Output pins
 GPIO.setup([PIN_7, PIN_8, PIN_9, PIN_10, PIN_11, PIN_12], GPIO.OUT)
 
+#Create output matrix -> 6x6 matrix all zeros
+output_matrix = np.zeros((6, 6), dtype=int)
+pass_matrix = np.array(
+
+[[1 0 0 0 0 0]
+ [0 1 0 1 0 0]
+ [0 0 1 0 0 0]
+ [0 1 0 1 0 0]
+ [0 0 0 0 1 0]
+ [0 0 0 0 0 1]])
+
 #Main Logic
-try:
-    while True:
-        # Set output pins high
-        GPIO.output([PIN_7, PIN_8, PIN_9, PIN_10, PIN_11, PIN_12], GPIO.HIGH)
-        time.sleep(1)  
+for i, pin_in in enumerate([PIN_7, PIN_8, PIN_9, PIN_10, PIN_11, PIN_12]):
+    GPIO.output(pin_in, GPIO.HIGH)  # Activate output pin HIGH
+    time.sleep(0.1)  # Short delay to allow state to stabilize
 
-        # Read input pins and check continuity outputs 'High or Low in 1x6 matrix' state high (1) means short is detected
-        input_states = [GPIO.input(pin) for pin in [PIN_1, PIN_2, PIN_3, PIN_4, PIN_5, PIN_6]]
-        print("Input States (High/Low):", input_states)
+    for j, pin_out in enumerate([PIN_1, PIN_2, PIN_3, PIN_4, PIN_5, PIN_6]):
+        output_matrix[i,j] = GPIO.input(pin_out)  # Read input pin state, and store in matrix against output states
 
-        # Set output pins low
-        GPIO.output([PIN_7, PIN_8, PIN_9, PIN_10, PIN_11, PIN_12], GPIO.LOW)
-        time.sleep(1)  # Wait for 1 second
+GPIO.output(pin_in, GPIO.LOW)  # Reset output [in to low after reading all inputs
 
-except KeyboardInterrupt:
-    pass
-finally:
-    GPIO.cleanup()
+print(output_matrix)
+
+if np.array_equal(output_matrix, pass_matrix):
+    print("Pass")   
+else:
+    print("Short Detected!")
