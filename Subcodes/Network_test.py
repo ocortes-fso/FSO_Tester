@@ -24,12 +24,12 @@ time.sleep(2)  #wait for settings to take effect
     
 #Ping test to verify network connection
 
-IP = "192.168.144.100" #H16Pro air unit IP on the network
+H16P_IP = "192.168.144.100" #H16Pro air unit IP on the network
 Num_pings = "10" 
 
-result  = subprocess.run(['ping', '-c', Num_pings, IP], stdout=subprocess.PIPE)
+result  = subprocess.run(['ping', '-c', Num_pings, H16P_IP], stdout=subprocess.PIPE)
 
-if result.returncode == 0:  #deffualt linux ping return code for success - atleast one code recieved
+if result.returncode == 0:  #default linux ping return code for success - atleast one ping recieved
     print("PASS! Network Test Passed: H16Pro receiver is reachable.")
 else:
     print("Network Test Failed: H16Pro reciever is not reachable.")
