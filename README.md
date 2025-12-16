@@ -8,3 +8,4 @@ Repository of all the codes used for the testing boxes.
 2. RPI.GPIO
 3. NumPy
 4. Pyroute2
+5. Pyserial
