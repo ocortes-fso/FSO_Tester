@@ -1,6 +1,6 @@
 import serial  #need pyserial module 
 
-#config uart for SBUS
+#config uart for SBUS and open serial port 
 
 SBUS = serial.Serial(
     port="/dev/ttyAMA10",       #debug pi5 serial port - used for SBUS
