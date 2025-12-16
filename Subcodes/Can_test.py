@@ -9,7 +9,7 @@ import os
 os.system("sudo ip link set can0 down")
 os.system("sudo ip link set can0 up type can bitrate 500000 loopback on")  #is this bitratte fine? does this need to match the aircraft can rate... #loopback on for testing own node
 
-time.sleep(1)
+time.sleep(0.5)
 
 #main logic
 
