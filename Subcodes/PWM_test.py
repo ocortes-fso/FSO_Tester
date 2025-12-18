@@ -45,7 +45,7 @@ High = 1900
 Low = 1100
 Tolerance = 200
 Channels = [9,10,11,12,13] #actual RC servo channels 
-Pass_status = [1,1,1,1,1] #create pass status list array
+Pass_status = [1,1,1,1,1] #create pass status list array - numpy might be better to use here 
 output_matrix = [0,0,0,0,0]
 
 
