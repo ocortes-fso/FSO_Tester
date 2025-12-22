@@ -27,14 +27,13 @@ GPIO.setup([PIN_7, PIN_8, PIN_9, PIN_10, PIN_11, PIN_12], GPIO.OUT)
 
 #Create output matrix -> 6x6 matrix all zeros
 output_matrix = np.zeros((6, 6), dtype=int)
-pass_matrix = np.array(
-
-[[1 0 0 0 0 0]
- [0 1 0 1 0 0]
- [0 0 1 0 0 0]                  ##Check this is correct for pass condition
- [0 1 0 1 0 0]
- [0 0 0 0 1 0]
- [0 0 0 0 0 1]])
+pass_matrix = np.array([
+    [1, 0, 0, 0, 0, 0],
+    [0, 1, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0],                  ##Check this is correct for pass condition
+    [0, 1, 0, 1, 0, 0],
+    [0, 0, 0, 0, 1, 0],
+    [0, 0, 0, 0, 0, 1]])
 
 #Main Logic
 for i, pin_in in enumerate([PIN_7, PIN_8, PIN_9, PIN_10, PIN_11, PIN_12]):
@@ -54,3 +53,5 @@ else:
     print("Short Detected!")
 
     GPIO.cleanup()
+
+##added elsif statements eg short on pin 2 ect
