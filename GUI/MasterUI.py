@@ -1,16 +1,29 @@
 import ttkbootstrap as ttk 
 from ttkbootstrap.constants import *
 
+root = ttk.Window(themename="litera", size=[1920,1080], title="FSO Tester")  #make this full screen when its all working and add FSO logo
+style = ttk.Style()
+style.configure('primary.TButton', font=(None, 32, 'bold'))
+style.configure('outline.TButton', font=(None, 20, 'bold'))
+
+
+#button logics/functions
+
+
+def home ():
+   lidar.pack_forget()
+   main.pack(fill=BOTH, expand=TRUE)
+    
+def lidar ():
+   main.pack_forget()
+   lidar.pack(fill=BOTH, expand=TRUE)
+    
 
 #main window/home page
 
-main = ttk.Window(themename="litera", size=[1920,1080], title="FSO Tester")  #make this full screen when its all working and add FSO logo
-style = ttk.Style()
-style.configure('primary.TButton', font=(None, 32, 'bold'))
+main = ttk.Frame(root) 
 
-#buttons for home page
-
-b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=25,)
+b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=25, command=lidar)
 b1.pack(expand=TRUE, pady=(100,0))
 b2 = ttk.Button(main, text="Magnetometer Test", bootstyle=PRIMARY, width=25,) 
 b2.pack(expand=TRUE)
@@ -23,9 +36,13 @@ b5.pack(expand=TRUE)
 b6 = ttk.Button(main, text="Callisto Voltage Test", bootstyle=PRIMARY, width=25,)
 b6.pack(expand=TRUE, pady=(0,100)) 
 
+
 #Lidar test page
+lidar = ttk.Frame(root) 
+back_b = ttk.Button(lidar, text="Back", bootstyle=(PRIMARY,OUTLINE), command=home, width=15)
+back_b.pack(side=BOTTOM, anchor=W, padx=25, pady=25 )
 
 
 #intilise main loop for UI
-               
+main.pack(fill=BOTH, expand=True)             
 main.mainloop()    
