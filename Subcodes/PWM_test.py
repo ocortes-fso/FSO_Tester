@@ -134,3 +134,6 @@ else:
     
 GPIO.cleanup()     
 
+
+
+#set back to default params can be done in main UI script for full body test.. 
