@@ -52,6 +52,8 @@ master.mav.command_long_send(
     0  
 )
 
+time.sleep(10)
+
 #request battery status..
 
 master.mav.command_long_send(
@@ -78,7 +80,7 @@ while True:
         # Check the 'id' field to find Battery 8 and 9 and print result for each
         
         if msg.id == 7:   #index starts at zero (n-1)
-            voltag8 = msg.voltages[0]/1000 #convert from Mv to Volts
+            voltage8 = msg.voltages[0]/1000 #convert from Mv to Volts
             print(f"BATT8 Status: {voltage8}")
             received_batt8 = True
         
