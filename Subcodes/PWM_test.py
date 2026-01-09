@@ -31,6 +31,24 @@ for name, value in Param_set.items():
         
     )
 
+
+#send reboot command
+
+master.mav.command_long_send(
+    master.target_system,
+    master.target_component,
+    mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+    0, # Confirmation
+    1, # param1: 1 = Reboot
+    0, 
+    0, 
+    0, 
+    0, 
+    0  
+)
+
+time.sleep(5) #may need longer here...
+
 #GPIO pin setup
 
 PWM_1 = 17
