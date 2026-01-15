@@ -1,5 +1,5 @@
 import time
-from gpiozero import DigitalInputDevice, DigitalOutputDevice
+from gpiozero import DigitalInputDevice, DigitalOutputDevice #this should work with pi5
 import numpy as np
 
 # GPIO pin setup
