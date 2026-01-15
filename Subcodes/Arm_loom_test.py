@@ -21,12 +21,12 @@ PIN_12 = 21
 #Input pins
 # pull_up=True mimics GPIO.PUD_UP. 
 # In gpiozero, .value will return 0 when the button is pulled HIGH and 1 when pulled LOW.
-pin_1 = DigitalInputDevice(PIN_1, pull_up=True)
-pin_2 = DigitalInputDevice(PIN_2, pull_up=True)
-pin_3 = DigitalInputDevice(PIN_3, pull_up=True)
-pin_4 = DigitalInputDevice(PIN_4, pull_up=True)
-pin_5 = DigitalInputDevice(PIN_5, pull_up=True)
-pin_6 = DigitalInputDevice(PIN_6, pull_up=True)
+pin_1 = DigitalInputDevice(PIN_1, pull_up=False)
+pin_2 = DigitalInputDevice(PIN_2, pull_up=False)
+pin_3 = DigitalInputDevice(PIN_3, pull_up=False)
+pin_4 = DigitalInputDevice(PIN_4, pull_up=False)
+pin_5 = DigitalInputDevice(PIN_5, pull_up=False)
+pin_6 = DigitalInputDevice(PIN_6, pull_up=False)
 
 #Output pins
 pin_7 = DigitalOutputDevice(PIN_7)
