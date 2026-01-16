@@ -5,19 +5,19 @@ from smbus2 import SMBus
 BUS = 1
 ADDR = 0x1E
 
-def read_u8(bus, reg):
+def read_u8(bus, reg):                     # Read one byte
     return bus.read_byte_data(ADDR, reg)
 
-def read_s16_be(bus, reg):
+def read_s16_be(bus, reg):                 # Read big-endian 16-bit
     hi = read_u8(bus, reg)
     lo = read_u8(bus, reg + 1)
     v = (hi << 8) | lo
     return v - 65536 if v >= 32768 else v
 
-def init_hmc5883l(bus):
-    bus.write_byte_data(ADDR, 0x00, 0x70)  # Config A
-    bus.write_byte_data(ADDR, 0x01, 0x20)  # Config B
-    bus.write_byte_data(ADDR, 0x02, 0x00)  # continuous mode
+def init_hmc5883l(bus):                    # Initialize Magnetometer
+    bus.write_byte_data(ADDR, 0x00, 0x70)  # Config A to 8 samples 15Hz
+    bus.write_byte_data(ADDR, 0x01, 0x20)  # Config B (default)
+    bus.write_byte_data(ADDR, 0x02, 0x00)  # Continuous measurement mode
     time.sleep(0.1)
 
 def read_mag_xyz(bus):
@@ -26,12 +26,9 @@ def read_mag_xyz(bus):
     y = read_s16_be(bus, 0x07)
     return x, y, z
 
-def clear():
-    print("\033[2J\033[H", end="")  # clear screen + home cursor
-
 def main():
     with SMBus(BUS) as bus:
-        # ID check
+        # ID check and sensor responding
         try:
             ida = read_u8(bus, 0x0A)
             idb = read_u8(bus, 0x0B)
@@ -56,8 +53,9 @@ def main():
 
         last = None
 
-        clear()
-        print("Magnetometer Test (HMC5883L / GY-271)")
+        # Show data
+        print("\033[2J\033[H", end="")
+        print("Magnetometer Test (HMC5883L)")
         print("Press Ctrl+C to exit.\n")
         print(f"I2C addr: {hex(ADDR)}")
         print(f"ID: {ident} (expected H43)\n")
@@ -74,8 +72,8 @@ def main():
 
             moving = abs(b - base) > thresh
 
-            clear()
-            print("Magnetometer Test (HMC5883L / GY-271)")
+            print("\033[2J\033[H", end="")
+            print("Magnetometer Test (HMC5883L)")
             print("Ctrl+C to return.\n")
             print(f"ID: {ident} (expected H43)")
             print(f"Baseline |B|: {base:.1f}  Threshold: {thresh:.1f}\n")
