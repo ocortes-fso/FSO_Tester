@@ -9,7 +9,7 @@ from smbus2 import SMBus  # Change this line to "import smbus" if in Linux based
 import time
 
 ### Params ###
-Lidar_ADDR = 0x66         # 0x66 (Hex) / 102 (Dec) 
+ADDR = 0x66         # 0x66 (Hex) / 102 (Dec) 
 I2C_BUS = 1               # Bus
 DIST_REG = 0x00           # Need to confirm this, 00, 10, and 20 are common
 
@@ -22,7 +22,8 @@ with SMBus(I2C_BUS) as bus:
 
             # Big-endian (most common)
             dist = (data[0] << 8) | data[1]
-
+            
+            print("\033[2J\033[H", end="")
             print(f"Distance: {dist}mm")
             time.sleep(0.1)
 
