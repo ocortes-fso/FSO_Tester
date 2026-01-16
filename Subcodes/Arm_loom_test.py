@@ -57,8 +57,9 @@ try:
 
         for j, pin_out_physical in enumerate(input_pins_list):
             output_matrix[i,j] = lgpio.gpio_read(h, pin_out_physical)  # Read input pin state, and store in matrix against output states
-
-        lgpio.gpio_write(h, pin_in_physical, 0)  # Reset output pin to low after reading all inputs
+        
+        for y, pin_in_physical in enumerate(output_pins_list):
+            lgpio.gpio_write(h, pin_in_physical, 0)  # Reset output pin to low after reading all inputs
 
     print(output_matrix)
 
