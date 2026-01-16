@@ -6,8 +6,8 @@ All the subcodes that form the main code.
 
 - Rear plate LED + switch test
 - Arm loom continuity test
-- Lidar test
-- Magnetometer test
+- (Works) Lidar test 
+- (Works) Magnetometer test
 - Ethernet network port test 
 - Body - Serial test
 - Body - CAN test
