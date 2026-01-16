@@ -18,6 +18,9 @@ style = ttk.Style()
 style.configure('primary.TButton', font=(None, 32, 'bold'))
 style.configure('Outline.TButton', font=(None, 16, 'bold'))
 style.configure('secondary.TButton', font=(None, 32, 'bold'))
+style.configure('secondary.TLabel', font=(None, 28, 'bold'))
+style.configure('Header.TLabel', font=(None, 32, 'bold'))
+style.configure('Sub.TLabel', font=(None, 28))
 
 # Main window/home page
 main = ttk.Frame(root) 
@@ -49,6 +52,54 @@ l2.pack(fill=BOTH, expand=TRUE)
 # labels ethernet
 l3 = ttk.Label(vid_f, text="Waitng for camera...", bootstyle=PRIMARY, font=(None, 48), justify=CENTER, anchor=CENTER) # centred to the video frame not parent window
 l3.pack(fill=BOTH, expand=TRUE)
+
+body_left_container = ttk.Frame(body_f)
+body_left_container.pack(side=LEFT, fill=BOTH, expand=TRUE)
+
+# labels body test (Stacked vertically inside the container above)
+l4 = ttk.Label(body_left_container, text="SERIAL", bootstyle=SECONDARY)
+l4.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+
+l5 = ttk.Label(body_left_container, text="ANALOG PORT", bootstyle=SECONDARY)
+l5.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+
+l6 = ttk.Label(body_left_container, text="CAN", bootstyle=SECONDARY)
+l6.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+
+l7 = ttk.Label(body_left_container, text="PWM", bootstyle=SECONDARY)
+l7.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+
+# labels voltage test
+volt_container = ttk.Frame(volt_f)
+volt_container.pack(expand=TRUE)
+
+l8 = ttk.Label(volt_container, text="3. SERIAL", bootstyle=SECONDARY, style='Header.TLabel')
+l8.pack(pady=(20, 5))
+l9 = ttk.Label(volt_container, text="A1:", bootstyle=SECONDARY, style='Sub.TLabel')
+l9.pack()
+l10 = ttk.Label(volt_container, text="A2:", bootstyle=SECONDARY, style='Sub.TLabel')
+l10.pack()
+l11 = ttk.Label(volt_container, text="A3:", bootstyle=SECONDARY, style='Sub.TLabel')
+l11.pack()
+l12 = ttk.Label(volt_container, text="A4:", bootstyle=SECONDARY, style='Sub.TLabel')
+l12.pack()
+l13 = ttk.Label(volt_container, text="4. CAN/SBUS", bootstyle=SECONDARY, style='Header.TLabel')
+l13.pack(pady=(20, 5))
+l14 = ttk.Label(volt_container, text="A5:", bootstyle=SECONDARY, style='Sub.TLabel')
+l14.pack()
+l15 = ttk.Label(volt_container, text="A6:", bootstyle=SECONDARY, style='Sub.TLabel')
+l15.pack()
+l16 = ttk.Label(volt_container, text="5. RC-OUT", bootstyle=SECONDARY, style='Header.TLabel')
+l16.pack(pady=(20, 5))
+l17 = ttk.Label(volt_container, text="A7:", bootstyle=SECONDARY, style='Sub.TLabel')
+l17.pack()
+l18 = ttk.Label(volt_container, text="A8:", bootstyle=SECONDARY, style='Sub.TLabel')
+l18.pack()
+l19 = ttk.Label(volt_container, text="6. PAYLOAD", bootstyle=SECONDARY, style='Header.TLabel')
+l19.pack(pady=(20, 5))
+l20 = ttk.Label(volt_container, text="A9:", bootstyle=SECONDARY, style='Sub.TLabel')
+l20.pack()
+
 
 # main UI functions
 def home():
@@ -182,7 +233,7 @@ def create_sliders(SBUS_f_INF):
 
 # Main window buttons
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
-b1.pack(expand=TRUE, pady=(50,0))
+b1.pack(expand=TRUE, pady=(75,0))
 b2 = ttk.Button(main, text="Magnetometer Test", bootstyle=PRIMARY, width=30, command=mag) 
 b2.pack(expand=TRUE)
 b3 = ttk.Button(main, text="Rear Switch Plate Test", bootstyle=PRIMARY, width=30, command=switch_plate)
@@ -201,11 +252,11 @@ home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
 
 # Body buttons
 eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
-eth1.pack(expand=TRUE, anchor=E, padx=75)
+eth1.pack(expand=TRUE, anchor=E, padx=75, pady=125)
 SB1 = ttk.Button(body_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=20, command=SBUS_INF)
 SB1.pack(expand=TRUE, anchor=E, padx=75)
 SB2 = ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20)
-SB2.pack(expand=TRUE, anchor=E, padx=75)
+SB2.pack(expand=TRUE, anchor=E, padx=75, pady=125)
 
 # Initialize main loop for UI
 main.pack(fill=BOTH, expand=True)             
