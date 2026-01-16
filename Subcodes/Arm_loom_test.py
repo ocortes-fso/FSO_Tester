@@ -4,7 +4,7 @@ import numpy as np
 
 # GPIO pin setup
 PIN_1 = 7
-PIN_2 = 2
+PIN_2 = 0
 PIN_3 = 5
 PIN_4 = 12
 PIN_5 = 6
