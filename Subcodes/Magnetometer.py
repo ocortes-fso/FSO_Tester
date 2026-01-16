@@ -3,7 +3,7 @@ import math
 from smbus2 import SMBus
 
 BUS = 1
-ADDR = 0x1E
+ADDR = 0x0D
 
 def read_u8(bus, reg):                     # Read one byte
     return bus.read_byte_data(ADDR, reg)
