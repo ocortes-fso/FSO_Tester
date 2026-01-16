@@ -92,7 +92,7 @@ while True:
         break
     
 
-if (1 <= voltag8 <= 1.5) and (2.25<= voltage9 <= 2.75):
+if (1 <= voltage8 <= 1.5) and (2.25<= voltage9 <= 2.75):
     print("Analog Voltage Pass!")
 else:
     print("Analog Voltage Fail!")

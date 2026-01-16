@@ -47,7 +47,7 @@ pass_matrix = np.array([
 #Main Logic
 try:
     for i, pin_in_physical in enumerate(output_pins_list):
-        if i == 1 or 3:
+        if i == 1 or i == 3:
             lgpio.gpio_write(h, 1, 1)  # Activate output pin HIGH
             lgpio.gpio_write(h, 3, 1)  # Activate output pin HIGH
             time.sleep(0.1)  # Short delay to allow state to stabilize

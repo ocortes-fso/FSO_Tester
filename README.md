@@ -9,3 +9,5 @@ Repository of all the codes used for the testing boxes.
 3. NumPy
 4. Pyroute2
 5. Pyserial
+6. SMBUS
+7. ttkbootstrap
