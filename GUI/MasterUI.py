@@ -1,15 +1,17 @@
 from tkinter import BOTH, TRUE
+import cv2
 import ttkbootstrap as ttk 
 from ttkbootstrap.constants import *
 import sys
 import os
+from PIL import Image, ImageTk
+import threading
 
-#must have this since not in same directory as subcodes
+# must have this since not in same directory as subcodes
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-#import of codes used in GUI
-from Subcodes import Magnetometer
-from Subcodes import Lidar
+# import of codes used in GUI
+from Subcodes import Magnetometer, Lidar, Network_test
 
 root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester") 
 style = ttk.Style()
@@ -29,15 +31,26 @@ body_f = ttk.Frame(root)
 volt_f = ttk.Frame(root)
 SBUS_f = ttk.Frame(root)
 SBUS_f_INF = ttk.Frame(root)
+Eth_f = ttk.Frame(root)
 
-# labels
+# video frame
+vid_f = ttk.Frame(Eth_f, width=640, height=480) # small video can change if needed but should be fine
+vid_f.pack(anchor=E, expand=TRUE, padx=50, pady=50)
+vid_f.pack_propagate(False)  # prevent frame from resizing to video size
+
+# labels mag
 l1 = ttk.Label(mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, font=(None, 48), justify=CENTER, anchor=CENTER)
 l1.pack(fill=BOTH, expand=TRUE)
+
+# labels lidar
 l2 = ttk.Label(lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, font=(None, 48), justify=CENTER, anchor=CENTER)
 l2.pack(fill=BOTH, expand=TRUE)
 
+# labels ethernet
+l3 = ttk.Label(vid_f, text="Waitng for camera...", bootstyle=PRIMARY, font=(None, 48), justify=CENTER, anchor=CENTER) # centred to the video frame not parent window
+l3.pack(fill=BOTH, expand=TRUE)
 
-# Navigation functions
+# main UI functions
 def home():
     lidar_f.pack_forget()
     mag_f.pack_forget()
@@ -47,8 +60,40 @@ def home():
     volt_f.pack_forget()
     SBUS_f.pack_forget()
     SBUS_f_INF.pack_forget()
+    Eth_f.pack_forget()
+    vid_f.pack_forget()
     main.pack(fill=BOTH, expand=TRUE)
     
+def Eth():
+    body_f.pack_forget()
+    Eth_f.pack(fill=BOTH, expand=TRUE)
+    vid_f.pack(anchor=E, expand=TRUE, padx=50, pady=50) # Ensure vid_f is visible
+
+    def update_vid():
+        # Inner function to run in a separate thread
+        def fetch_frame():
+            frame = Network_test.cam()
+            # Use root.after to update the UI from the main thread
+            root.after(0, lambda: process_frame(frame))
+
+        def process_frame(frame):
+            if frame:
+                frame = frame.resize((640, 480))  
+                imgtk = ImageTk.PhotoImage(frame)
+                l3.imgtk = imgtk  
+                l3.config(image=imgtk, text="")  
+            else:
+                l3.config(image="", text="Waiting for camera...")
+
+            # Schedule next update only if Eth frame is still visible
+            if Eth_f.winfo_viewable():
+                root.after(40, update_vid) # Shorter delay for smoother video may need to adjust if laggy
+
+        # Start the network-heavy task in the background in separate thread
+        threading.Thread(target=fetch_frame, daemon=True).start()
+
+    update_vid()
+
 def lidar():
     main.pack_forget()
     lidar_f.pack(fill=BOTH, expand=TRUE)
@@ -87,28 +132,28 @@ def SBUS():
 # Magnetometer update function
 def update_mag():
     if not mag_f.winfo_viewable():
-        return  # stop updating if frame is hidden
+        return
 
-    val = Magnetometer.main()  # read sensor
+    val = Magnetometer.main()
     if val:
         l1.config(text=f"X: {val[0]} \nY: {val[1]} \nZ: {val[2]} \n|B|: {val[3]:.1f}")
     else:
-        l1.config(text="Waiting for Magnetometer...")  # show this if sensor not ready
+        l1.config(text="Waiting for Magnetometer...")
 
-    root.after(100, update_mag)  # schedule next update
+    root.after(100, update_mag)
 
-#lidar update function
+# Lidar update function
 def update_lidar():
     if not lidar_f.winfo_viewable():
-        return  # stop updating if frame is hidden
+        return
 
-    distance = Lidar.read_lidar_distance()  # read sensor
+    distance = Lidar.read_lidar_distance()
     if distance is not None:
         l2.config(text=f"Lidar Distance: {distance} m")
     else:
-        l2.config(text="Waiting for Lidar")  # show this if sensor not ready
+        l2.config(text="Waiting for Lidar")
 
-    root.after(100, update_lidar)  # schedule next update of lidar value
+    root.after(100, update_lidar)
 
 # SBUS slider function
 def create_sliders(SBUS_f_INF):
@@ -133,7 +178,9 @@ def create_sliders(SBUS_f_INF):
     
     return sliders
 
-# Main window buttons linked to each switch frame command
+
+
+# Main window buttons
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
 b1.pack(expand=TRUE, pady=(20,0))
 b2 = ttk.Button(main, text="Magnetometer Test", bootstyle=PRIMARY, width=30, command=mag) 
@@ -150,13 +197,17 @@ b7 = ttk.Button(main, text="SBUS Test", bootstyle=PRIMARY, width=30, command=SBU
 b7.pack(expand=TRUE)
 
 home_b = ttk.Button(root, text="Home", bootstyle=(OUTLINE), command=home, width=10)
-home_b.pack(side=BOTTOM, anchor=SW, padx =20, pady=20)
+home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
 
 # SBUS buttons
 SB1 = ttk.Button(SBUS_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=30, command=SBUS_INF)
 SB1.pack(expand=TRUE)
 SB2 = ttk.Button(SBUS_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=30)
 SB2.pack(expand=TRUE)
+
+# Body buttons
+eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=10, command=Eth)
+eth1.pack(expand=TRUE, anchor=SE, padx=50)
 
 # Initialize main loop for UI
 main.pack(fill=BOTH, expand=True)             
