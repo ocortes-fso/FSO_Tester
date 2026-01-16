@@ -49,24 +49,27 @@ def main():
         last = None
 
         # Show data
-        print("\033[2J\033[H", end="")
-        print("Magnetometer Test (QMC5883L)")
-        print("Press Ctrl+C to exit.\n")
-        print(f"I2C addr: {hex(ADDR)}")
-        print("Live data:\n")
+        #print("\033[2J\033[H", end="")
+        #print("Magnetometer Test (QMC5883L)")
+        #print("Press Ctrl+C to exit.\n")
+        #print(f"I2C addr: {hex(ADDR)}")
+        #print("Live data:\n")
 
-        print("t(s)     X      Y      Z     |B|")
+        #print("t(s)     X      Y      Z     |B|")
         t_start = time.time()
 
         while True:
             x, y, z = read_mag_xyz(bus)
             b = math.sqrt(x*x + y*y + z*z)
             t = time.time() - t_start
-            print(f"{t:6.1f}  {x:6d} {y:6d} {z:6d}  {b:7.1f}")
+            #print(f"{t:6.1f}  {x:6d} {y:6d} {z:6d}  {b:7.1f}")
             time.sleep(0.2)
 
-if __name__ == "__main__":
+    return [x, y, z, b]
+
+""" if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
         pass
+ """
