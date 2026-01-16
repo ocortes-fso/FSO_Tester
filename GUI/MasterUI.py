@@ -1,11 +1,15 @@
+from tkinter import BOTH, TRUE
 import ttkbootstrap as ttk 
 from ttkbootstrap.constants import *
 import sys
 import os
 
+#must have this since not in same directory as subcodes
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+#import of codes used in GUI
 from Subcodes import Magnetometer
+from Subcodes import Lidar
 
 root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester") 
 style = ttk.Style()
@@ -29,6 +33,9 @@ SBUS_f_INF = ttk.Frame(root)
 # labels
 l1 = ttk.Label(mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, font=(None, 48), justify=CENTER, anchor=CENTER)
 l1.pack(fill=BOTH, expand=TRUE)
+l2 = ttk.Label(lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, font=(None, 48), justify=CENTER, anchor=CENTER)
+l2.pack(fill=BOTH, expand=TRUE)
+
 
 # Navigation functions
 def home():
@@ -45,6 +52,7 @@ def home():
 def lidar():
     main.pack_forget()
     lidar_f.pack(fill=BOTH, expand=TRUE)
+    update_lidar()
    
 def mag():
     main.pack_forget()
@@ -89,6 +97,19 @@ def update_mag():
 
     root.after(100, update_mag)  # schedule next update
 
+#lidar update function
+def update_lidar():
+    if not lidar_f.winfo_viewable():
+        return  # stop updating if frame is hidden
+
+    distance = Lidar.read_lidar_distance()  # read sensor
+    if distance is not None:
+        l2.config(text=f"Lidar Distance: {distance} m")
+    else:
+        l2.config(text="Waiting for Lidar")  # show this if sensor not ready
+
+    root.after(100, update_lidar)  # schedule next update of lidar value
+
 # SBUS slider function
 def create_sliders(SBUS_f_INF):
     for widget in SBUS_f_INF.winfo_children():
@@ -112,7 +133,7 @@ def create_sliders(SBUS_f_INF):
     
     return sliders
 
-# Main window buttons
+# Main window buttons linked to each switch frame command
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
 b1.pack(expand=TRUE, pady=(20,0))
 b2 = ttk.Button(main, text="Magnetometer Test", bootstyle=PRIMARY, width=30, command=mag) 
