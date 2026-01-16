@@ -39,7 +39,7 @@ output_matrix = np.zeros((6, 6), dtype=int)
 pass_matrix = np.array([
     [1, 0, 0, 0, 0, 0],
     [0, 1, 0, 1, 0, 0],
-    [0, 0, 1, 0, 0, 0],                 ##Check this is correct for pass condition
+    [0, 0, 1, 0, 0, 0],            
     [0, 1, 0, 1, 0, 0],
     [0, 0, 0, 0, 1, 0],
     [0, 0, 0, 0, 0, 1]])
