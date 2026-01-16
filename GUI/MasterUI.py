@@ -121,12 +121,12 @@ def volt():
     volt_f.pack(fill=BOTH, expand=TRUE)
 
 def SBUS_INF():
-    SBUS_f.pack_forget()
+    body_f.pack_forget()
     create_sliders(SBUS_f_INF)
     SBUS_f_INF.pack(fill=BOTH, expand=TRUE)
    
 def SBUS():
-    main.pack_forget()
+    body_f.pack_forget()
     SBUS_f.pack(fill=BOTH, expand=TRUE)
 
 # Magnetometer update function
@@ -182,7 +182,7 @@ def create_sliders(SBUS_f_INF):
 
 # Main window buttons
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
-b1.pack(expand=TRUE, pady=(20,0))
+b1.pack(expand=TRUE, pady=(50,0))
 b2 = ttk.Button(main, text="Magnetometer Test", bootstyle=PRIMARY, width=30, command=mag) 
 b2.pack(expand=TRUE)
 b3 = ttk.Button(main, text="Rear Switch Plate Test", bootstyle=PRIMARY, width=30, command=switch_plate)
@@ -193,21 +193,19 @@ b5 = ttk.Button(main, text="Body Test", bootstyle=PRIMARY, width=30, command=bod
 b5.pack(expand=TRUE) 
 b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=volt)
 b6.pack(expand=TRUE) 
-b7 = ttk.Button(main, text="SBUS Test", bootstyle=PRIMARY, width=30, command=SBUS)
-b7.pack(expand=TRUE)
+
 
 home_b = ttk.Button(root, text="Home", bootstyle=(OUTLINE), command=home, width=10)
 home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
 
-# SBUS buttons
-SB1 = ttk.Button(SBUS_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=30, command=SBUS_INF)
-SB1.pack(expand=TRUE)
-SB2 = ttk.Button(SBUS_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=30)
-SB2.pack(expand=TRUE)
 
 # Body buttons
-eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=10, command=Eth)
-eth1.pack(expand=TRUE, anchor=SE, padx=50)
+eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
+eth1.pack(expand=TRUE, anchor=E, padx=75)
+SB1 = ttk.Button(body_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=20, command=SBUS_INF)
+SB1.pack(expand=TRUE, anchor=E, padx=75)
+SB2 = ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20)
+SB2.pack(expand=TRUE, anchor=E, padx=75)
 
 # Initialize main loop for UI
 main.pack(fill=BOTH, expand=True)             
