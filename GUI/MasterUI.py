@@ -1,7 +1,11 @@
 import ttkbootstrap as ttk 
 from ttkbootstrap.constants import *
-from Subcodes import Magnetometer
+import sys
+import os
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from Subcodes import Magnetometer
 
 root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester")  #make this full screen when its all working and add FSO logo
 style = ttk.Style()
