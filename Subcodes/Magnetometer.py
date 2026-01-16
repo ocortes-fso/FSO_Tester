@@ -55,30 +55,15 @@ def main():
         print(f"I2C addr: {hex(ADDR)}")
         print("Live data:\n")
 
+        print("t(s)     X      Y      Z     |B|")
+        t_start = time.time()
+
         while True:
             x, y, z = read_mag_xyz(bus)
             b = math.sqrt(x*x + y*y + z*z)
-
-            dx = dy = dz = 0
-            if last is not None:
-                dx, dy, dz = x-last[0], y-last[1], z-last[2]
-            last = (x, y, z)
-
-            moving = abs(b - base) > thresh
-
-            print("\033[2J\033[H", end="")
-            print("Magnetometer Test (QMC5883L)")
-            print("Ctrl+C to return.\n")
-            print(f"Baseline |B|: {base:.1f}  Threshold: {thresh:.1f}\n")
-
-            print(f"X: {x:7d}   Δ{dx:+6d}")
-            print(f"Y: {y:7d}   Δ{dy:+6d}")
-            print(f"Z: {z:7d}   Δ{dz:+6d}")
-            print(f"|B|: {b:7.1f}")
-            print(f"Movement: {'DETECTED' if moving else 'still'}\n")
-
-            print("Tip: rotate the sensor; X/Y/Z should change.")
-            time.sleep(0.1)
+            t = time.time() - t_start
+            print(f"{t:6.1f}  {x:6d} {y:6d} {z:6d}  {b:7.1f}")
+            time.sleep(0.2)
 
 if __name__ == "__main__":
     try:
