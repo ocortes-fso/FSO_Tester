@@ -1,5 +1,6 @@
 import ttkbootstrap as ttk 
 from ttkbootstrap.constants import *
+from Subcodes import Magnetometer
 
 
 root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester")  #make this full screen when its all working and add FSO logo
@@ -33,6 +34,7 @@ def lidar ():
 def mag ():
    main.pack_forget()
    mag_f.pack(fill=BOTH, expand=TRUE) 
+   update_mag()
    
 def switch_plate ():
    main.pack_forget()
@@ -90,6 +92,18 @@ lidar_f = ttk.Frame(root)
 
 #mag test page
 mag_f = ttk.Frame(root)
+l1 =ttk.Label(mag_f, text="0", bootstyle=PRIMARY)
+l1.pack(fill=BOTH, expand=TRUE)
+
+def update_mag():
+  try:
+   val=Magnetometer.main()
+   l1.config(text=f"X: {val[0]} \nY: {val[1]} \nZ: {val[2]} \n|B|: {val[3]:.1f}")
+   root.after(500, update_mag)
+  except Exception as e:
+   l1.config(text=f"Mag Error: {e}")
+   root.after(500, update_mag)
+   
 
 #switch plate test page
 switch_plate_f = ttk.Frame(root)
