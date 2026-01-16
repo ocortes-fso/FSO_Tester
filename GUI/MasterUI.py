@@ -7,20 +7,19 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from Subcodes import Magnetometer
 
-root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester")  #make this full screen when its all working and add FSO logo
+root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester") 
 style = ttk.Style()
+root.state('zoomed')
 style.configure('primary.TButton', font=(None, 32, 'bold'))
 style.configure('Outline.TButton', font=(None, 16, 'bold'))
 style.configure('secondary.TButton', font=(None, 32, 'bold'))
 
+# Global flag to track the magnetometer loop state
+mag_running = False
 
-#button logics/functions
-#once each code works, add what each function does show data or run script ect...
-
-mag_running = False # Prevents multiple loops from starting and crashing
-
-#single function to define to home button, forgets all packs and fills with main frame (home window)
 def home ():
+   global mag_running
+   mag_running = False # Reset flag when going home
    lidar_f.pack_forget()
    mag_f.pack_forget()
    switch_plate_f.pack_forget()
@@ -36,12 +35,12 @@ def lidar ():
    lidar_f.pack(fill=BOTH, expand=TRUE)
    
 def mag ():
+   global mag_running
    main.pack_forget()
    mag_f.pack(fill=BOTH, expand=TRUE) 
-   global mag_running
-   if not mag_running: # Only start the update loop if it isn't already running
+   if not mag_running:
        mag_running = True
-       update_mag()
+       update_mag() # Start the real-time update loop
    
 def switch_plate ():
    main.pack_forget()
@@ -68,10 +67,7 @@ def SBUS ():
    main.pack_forget()
    SBUS_f.pack(fill=BOTH, expand=TRUE)
 
-
-   
-#main window/home page
-
+# Main window/home page
 main = ttk.Frame(root) 
 
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
@@ -92,51 +88,51 @@ b7.pack(expand=TRUE)
 home_b = ttk.Button(root, text="Home", bootstyle=(OUTLINE), command=home, width=10)
 home_b.pack(side=BOTTOM, anchor=SW, padx =20, pady=20)
 
-
-
-#Lidar test page
+# Lidar test page
 lidar_f = ttk.Frame(root) 
 
-#mag test page
+# Mag test page
 mag_f = ttk.Frame(root)
-l1 =ttk.Label(mag_f, text="0", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER, font=(None, 40))
+# Increased font size for better visibility on 1080p screen
+l1 = ttk.Label(mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, font=(None, 48), justify=CENTER, anchor=CENTER)
 l1.pack(fill=BOTH, expand=TRUE)
 
 def update_mag():
-  if not mag_f.winfo_viewable(): # Stop the loop if we leave the Mag page
-      global mag_running
-      mag_running = False
-      return
+   global mag_running
+   if not mag_running or not mag_f.winfo_viewable():
+       mag_running = False
+       return
 
-  try:
-    val=Magnetometer.main()
-    l1.config(text=f"X: {val[0]} \nY: {val[1]} \nZ: {val[2]} \n|B|: {val[3]:.1f}")
-  except Exception as e:
-    l1.config(text=f"Mag Error: {e}")
-  
-  root.after(500, update_mag)
+   try:
+       val = Magnetometer.main()
+       # Display X, Y, Z, and Magnitude (B)
+       l1.config(text=f"X: {val[0]} \nY: {val[1]} \nZ: {val[2]} \n|B|: {val[3]:.1f}")
+   except Exception as e:
+       l1.config(text=f"Mag Error: {e}", bootstyle="danger")
    
+   # Schedule the next check in 100ms for smoother real-time response
+   root.after(100, update_mag)
 
-#switch plate test page
+# Switch plate test page
 switch_plate_f = ttk.Frame(root)
 
-#arm test 
+# Arm test 
 arm_f = ttk.Frame(root)
 
-#body test
+# Body test
 body_f = ttk.Frame(root)
 
-#voltage test
+# Voltage test
 volt_f = ttk.Frame(root)
 
-#SBUS
+# SBUS
 SBUS_f = ttk.Frame(root)
 SB1 = ttk.Button(SBUS_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=30, command=SBUS_INF)
 SB1.pack(expand=TRUE)
 SB2 = ttk.Button(SBUS_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=30)
 SB2.pack(expand=TRUE)
 
-#Invravision SBUS
+# Invravision SBUS
 SBUS_f_INF = ttk.Frame(root)
 
 def create_sliders(SBUS_f_INF):
@@ -149,20 +145,18 @@ def create_sliders(SBUS_f_INF):
     sliders = []
     for i in range(8):
         SBUS_f_INF.rowconfigure(i, weight=1)
-        
         row_pad = (100, 0) if i == 0 else 0
 
         lbl = ttk.Label(SBUS_f_INF, text=f"C{i+1}", bootstyle=PRIMARY)
         lbl.grid(row=i, column=1, padx=(20, 10), pady=row_pad, sticky="e")
 
-        c = ttk.Scale(SBUS_f_INF, from_=1000, to=2000, bootstyle=PRIMARY, length=800,)
+        c = ttk.Scale(SBUS_f_INF, from_=1000, to=2000, bootstyle=PRIMARY, length=800)
         c.set(1500)
         c.grid(row=i, column=2, padx=10, pady=row_pad, sticky="w")
-
         sliders.append(c)
     
     return sliders
 
-#intilise main loop for UI
+# Initialize main loop for UI
 main.pack(fill=BOTH, expand=True)             
 root.mainloop()
