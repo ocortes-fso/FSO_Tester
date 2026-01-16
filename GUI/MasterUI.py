@@ -9,7 +9,6 @@ from Subcodes import Magnetometer
 
 root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester")  #make this full screen when its all working and add FSO logo
 style = ttk.Style()
-root.state('zoomed')
 style.configure('primary.TButton', font=(None, 32, 'bold'))
 style.configure('Outline.TButton', font=(None, 16, 'bold'))
 style.configure('secondary.TButton', font=(None, 32, 'bold'))
@@ -18,6 +17,7 @@ style.configure('secondary.TButton', font=(None, 32, 'bold'))
 #button logics/functions
 #once each code works, add what each function does show data or run script ect...
 
+mag_running = False # Prevents multiple loops from starting and crashing
 
 #single function to define to home button, forgets all packs and fills with main frame (home window)
 def home ():
@@ -38,7 +38,10 @@ def lidar ():
 def mag ():
    main.pack_forget()
    mag_f.pack(fill=BOTH, expand=TRUE) 
-   update_mag()
+   global mag_running
+   if not mag_running: # Only start the update loop if it isn't already running
+       mag_running = True
+       update_mag()
    
 def switch_plate ():
    main.pack_forget()
@@ -72,7 +75,7 @@ def SBUS ():
 main = ttk.Frame(root) 
 
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
-b1.pack(expand=TRUE, pady=(100,0))
+b1.pack(expand=TRUE, pady=(20,0))
 b2 = ttk.Button(main, text="Magnetometer Test", bootstyle=PRIMARY, width=30, command=mag) 
 b2.pack(expand=TRUE)
 b3 = ttk.Button(main, text="Rear Switch Plate Test", bootstyle=PRIMARY, width=30, command=switch_plate)
@@ -87,7 +90,7 @@ b7 = ttk.Button(main, text="SBUS Test", bootstyle=PRIMARY, width=30, command=SBU
 b7.pack(expand=TRUE)
 
 home_b = ttk.Button(root, text="Home", bootstyle=(OUTLINE), command=home, width=10)
-home_b.pack(side=BOTTOM, anchor=SW, padx =50, pady=50)
+home_b.pack(side=BOTTOM, anchor=SW, padx =20, pady=20)
 
 
 
@@ -96,17 +99,22 @@ lidar_f = ttk.Frame(root)
 
 #mag test page
 mag_f = ttk.Frame(root)
-l1 =ttk.Label(mag_f, text="0", bootstyle=PRIMARY)
+l1 =ttk.Label(mag_f, text="0", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER, font=(None, 40))
 l1.pack(fill=BOTH, expand=TRUE)
 
 def update_mag():
+  if not mag_f.winfo_viewable(): # Stop the loop if we leave the Mag page
+      global mag_running
+      mag_running = False
+      return
+
   try:
-   val=Magnetometer.main()
-   l1.config(text=f"X: {val[0]} \nY: {val[1]} \nZ: {val[2]} \n|B|: {val[3]:.1f}")
-   root.after(500, update_mag)
+    val=Magnetometer.main()
+    l1.config(text=f"X: {val[0]} \nY: {val[1]} \nZ: {val[2]} \n|B|: {val[3]:.1f}")
   except Exception as e:
-   l1.config(text=f"Mag Error: {e}")
-   root.after(500, update_mag)
+    l1.config(text=f"Mag Error: {e}")
+  
+  root.after(500, update_mag)
    
 
 #switch plate test page
@@ -157,6 +165,4 @@ def create_sliders(SBUS_f_INF):
 
 #intilise main loop for UI
 main.pack(fill=BOTH, expand=True)             
-root.mainloop()    
-
-    
+root.mainloop()
