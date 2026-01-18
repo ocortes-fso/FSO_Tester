@@ -11,7 +11,7 @@ import threading
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Rear_switch_plate_test
+from Subcodes import Magnetometer, Lidar, Network_test
 
 root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester") 
 style = ttk.Style()
@@ -256,11 +256,13 @@ home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
 
 # Body buttons
 eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
-eth1.pack(expand=TRUE, anchor=E, padx=75, pady=125)
+eth1.pack(expand=TRUE, anchor=E, padx=75, pady=75)
 SB1 = ttk.Button(body_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=20, command=SBUS_INF)
 SB1.pack(expand=TRUE, anchor=E, padx=75)
 SB2 = ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20)
-SB2.pack(expand=TRUE, anchor=E, padx=75, pady=125)
+SB2.pack(expand=TRUE, anchor=E, padx=75)
+Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20)
+Debug.pack(expand=TRUE, anchor=E, padx=75, pady=75)
 
 # Initialize main loop for UI
 main.pack(fill=BOTH, expand=True)             
