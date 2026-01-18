@@ -1,65 +1,45 @@
 import time
-import RPi.GPIO as GPIO
+import lgpio
 
-# GPIO pin setup
 RED_PIN = 0
 GREEN_PIN = 1
 BLUE_PIN = 7
 SWITCH_PIN = 25
 LED_SWITCH_PIN = 42
 
+h = lgpio.gpiochip_open(4)
 
-# Initialize and setup GPIO
-GPIO.setmode(GPIO.BCM)
+for pin in [RED_PIN, GREEN_PIN, BLUE_PIN, LED_SWITCH_PIN]:
+    lgpio.gpio_claim_output(h, pin)
 
-#RGB LED pins
-GPIO.setup([RED_PIN, GREEN_PIN, BLUE_PIN], GPIO.OUT)
-
-
-#Switch pins
-GPIO.setup([SWITCH_PIN, LED_SWITCH_PIN], GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.setup(LED_SWITCH_PIN, GPIO.OUT)
-
-
-#Main Logic
+lgpio.gpio_claim_input(h, SWITCH_PIN, lgpio.SET_PULL_UP)
 
 def set_rgb_colour(r, g, b):
-    GPIO.output(RED_PIN, r)
-    GPIO.output(GREEN_PIN, g)
-    GPIO.output(BLUE_PIN, b)
+    lgpio.gpio_write(h, RED_PIN, r)
+    lgpio.gpio_write(h, GREEN_PIN, g)
+    lgpio.gpio_write(h, BLUE_PIN, b)
 
-def cycle_rgb():
-    colours = [
-        (1,0,0),  # Red
-        (0,1,0),  # Green   
-        (0,0,1),  # Blue
-    ]
-    
+rgb_values = [(1,0,0), (0,1,0), (0,0,1)] #high on 1 others low for r, g, b
 
 try:
     while True:
-        
-        #Switch off - power button LED off, status LED cycles RGB  
-        colours = [0, 0, 0]
-        n = 0
-        if GPIO.input(SWITCH_PIN) == GPIO.low:
-            GPIO.output(LED_SWITCH_PIN, GPIO.low)
-            for colour in colours:
-                set_rgb_colour(colours[n])
+        #Switch off - power button LED off, expected behaviour tatus LED cycles RGB and no switch red light
+        if lgpio.gpio_read(h, SWITCH_PIN) == 0:
+            lgpio.gpio_write(h, LED_SWITCH_PIN, 0)
+            for colour in rgb_values:
+                set_rgb_colour(*colour)
                 time.sleep(1)
-                n = n + 1 
-            n = 0  
             
-            #Switch on - power button LED on, status LED blinks RED
-        elif GPIO.input(SWITCH_PIN) == GPIO.high:
-             GPIO.output(LED_SWITCH_PIN, GPIO.high)
-             while GPIO.input(SWITCH_PIN) == GPIO.high:
-                set_rgb_colour(0, 0, 0 )
+        #Switch on - power button LED on, status LED blinks RED fast
+        elif lgpio.gpio_read(h, SWITCH_PIN) == 1:
+             lgpio.gpio_write(h, LED_SWITCH_PIN, 1)
+             while lgpio.gpio_read(h, SWITCH_PIN) == 1:
+                set_rgb_colour(0, 0, 0)
                 time.sleep(0.5)
-                set_rgb_colour(colours[0])
+                set_rgb_colour(1, 0, 0)
                 time.sleep(0.5) 
 
 except KeyboardInterrupt:
     pass
 finally:
-    GPIO.cleanup()
+    lgpio.gpiochip_close(h)

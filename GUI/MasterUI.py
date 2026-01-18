@@ -11,7 +11,7 @@ import threading
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test
+from Subcodes import Magnetometer, Lidar, Network_test, Rear_switch_plate_test
 
 root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester") 
 style = ttk.Style()
@@ -99,6 +99,10 @@ l19 = ttk.Label(volt_container, text="6. PAYLOAD", bootstyle=SECONDARY, style='H
 l19.pack(pady=(20, 5))
 l20 = ttk.Label(volt_container, text="A9:", bootstyle=SECONDARY, style='Sub.TLabel')
 l20.pack()
+
+#labels switch plate
+l21 = ttk.Label(switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, font=(None, 48), justify=CENTER, anchor=CENTER)
+l21.pack(fill=BOTH, expand=TRUE)    
 
 
 # main UI functions
