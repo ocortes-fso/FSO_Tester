@@ -1,4 +1,4 @@
-# Test network connection of H16P via simple ping
+# Test network connection of H16P via simple ping, and also fetch single video frame from MIPI cam
 import time
 import os
 import subprocess
@@ -34,6 +34,6 @@ def cam():
         if ret and frame is not None:
             return Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     else:
-        # If open fails, reset to try again later
+        # If open fails return none, rety is handled through the GUI
         fpv = None
     return None

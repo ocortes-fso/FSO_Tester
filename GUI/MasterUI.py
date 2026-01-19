@@ -17,6 +17,7 @@ root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester")
 style = ttk.Style()
 style.configure('primary.TButton', font=(None, 32, 'bold'))
 style.configure('Outline.TButton', font=(None, 16, 'bold'))
+style.configure('primary.TLabel', font=(None, 52, 'bold'))
 style.configure('secondary.TButton', font=(None, 32, 'bold'))
 style.configure('secondary.TLabel', font=(None, 28, 'bold'))
 style.configure('Header.TLabel', font=(None, 32, 'bold'))
@@ -42,15 +43,15 @@ vid_f.pack(anchor=E, expand=TRUE, padx=50, pady=50)
 vid_f.pack_propagate(False)  # prevent frame from resizing to video size
 
 # labels mag
-l1 = ttk.Label(mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, font=(None, 48), justify=CENTER, anchor=CENTER)
+l1 = ttk.Label(mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l1.pack(fill=BOTH, expand=TRUE)
 
 # labels lidar
-l2 = ttk.Label(lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, font=(None, 48), justify=CENTER, anchor=CENTER)
+l2 = ttk.Label(lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l2.pack(fill=BOTH, expand=TRUE)
 
 # labels ethernet
-l3 = ttk.Label(vid_f, text="Waitng for camera...", bootstyle=PRIMARY, font=(None, 48), justify=CENTER, anchor=CENTER) # centred to the video frame not parent window
+l3 = ttk.Label(vid_f, text="Waitng for camera...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER) # centred to the video frame not parent window
 l3.pack(fill=BOTH, expand=TRUE)
 
 body_left_container = ttk.Frame(body_f)
@@ -101,7 +102,7 @@ l20 = ttk.Label(volt_container, text="A9:", bootstyle=SECONDARY, style='Sub.TLab
 l20.pack()
 
 #labels switch plate
-l21 = ttk.Label(switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, font=(None, 48), justify=CENTER, anchor=CENTER)
+l21 = ttk.Label(switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l21.pack(fill=BOTH, expand=TRUE)    
 
 
@@ -250,19 +251,25 @@ b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=
 b6.pack(expand=TRUE) 
 
 
-home_b = ttk.Button(root, text="Home", bootstyle=(OUTLINE), command=home, width=10)
+home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
 home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
 
 
 # Body buttons
 eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
-eth1.pack(expand=TRUE, anchor=E, padx=75, pady=75)
+eth1.pack(expand=TRUE, anchor=E, padx=75)
 SB1 = ttk.Button(body_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=20, command=SBUS_INF)
 SB1.pack(expand=TRUE, anchor=E, padx=75)
 SB2 = ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20)
 SB2.pack(expand=TRUE, anchor=E, padx=75)
 Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20)
-Debug.pack(expand=TRUE, anchor=E, padx=75, pady=75)
+Debug.pack(expand=TRUE, anchor=E, padx=75)
+
+# Arm test buttons -
+test_b = ttk.Button(arm_f, text="Test", bootstyle=SECONDARY, width=10)
+test_b.pack(expand=TRUE, anchor=SE, padx=50, pady=75)
+
+
 
 # Initialize main loop for UI
 main.pack(fill=BOTH, expand=True)             
