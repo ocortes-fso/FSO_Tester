@@ -118,20 +118,20 @@ if (11.5 <= voltage <= 12.5) and (4.5 <= voltage2 <= 5.5):
 else:
     print("voltage DSUB1 Fail")
 
-voltage3, voltage4 = DSUB2()
+voltage3, voltage4 = DSUB2() #can/SBUS
 if (11.5 <= voltage3 <= 12.5) and (4.5 <= voltage4 <= 5.5):
     print("voltage DSUB2 Pass")
 else:
     print("voltage DSUB2 Fail")
 
 
-voltage5, voltage6 = DSUB3A()
+voltage5, voltage6 = DSUB3A() #serial 
 if (11.5 <= voltage5 <= 12.5) and (4.5 <= voltage6 <= 5.5):
     print("voltage DSUB3A Pass")
 else:
     print("voltage DSUB3A Fail")
 
-voltage7, voltage8 = DSUB3B()  #IFV only
+voltage7, voltage8 = DSUB3B()  #IFV only serial
 if (11.5 <= voltage7 <= 12.5) and (4.5 <= voltage8 <= 5.5):
     print("voltage DSUB3B Pass")
 else:

@@ -1,39 +1,39 @@
-#Test network connection of H16P via simple ping
-
+# Test network connection of H16P via simple ping
 import time
 import os
 import subprocess
-from pyroute2 import IPDB
-from pyroute2 import IPRoute
+import cv2
+from PIL import Image
 
-
-#Set static IP to be on 144 network class
-
-interface = 'eth0' #need to check this but this should be the ethernet of the pi5
-static_ip = '192.168.144.200/24' #static IP of the ethernet adaptor for the pi5 -- must be on 144 network class
-gateway_ip = '192.168.144.1' #gateway address
-
-with IPDB() as ipdb:
-    iface = ipdb.interfaces[interface]
-    iface.add_ip(static_ip)
-    iface.up().commit()
-    ipdb.routes.add({'dst': 'default', 'gateway': gateway_ip}).commit()
-    
-    
-time.sleep(2)  #wait for settings to take effect
-    
-#Ping test to verify network connection
-
-H16P_IP = "192.168.144.100" #H16Pro air unit IP on the network
+H16P_IP = "192.168.144.100" 
 Num_pings = "10" 
+RTSP = "rtsp://192.168.43.1:8554/fpv_stream"
 
-result  = subprocess.run(['ping', '-c', Num_pings, H16P_IP], stdout=subprocess.PIPE)
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "timeout;5000000"
 
-if result.returncode == 0:  #default linux ping return code for success - atleast one ping recieved
-    print("PASS! Network Test Passed: H16Pro receiver is reachable.")
-else:
-    print("Network Test Failed: H16Pro reciever is not reachable.")
+# Global capture object to keep stream open
+fpv = None
+
+def ping():
+    result  = subprocess.run(['ping', '-c', Num_pings, H16P_IP], stdout=subprocess.PIPE)
+    if result.returncode == 0:
+        print("PASS! Network Test Passed: H16Pro receiver is reachable.")
+        return True
+    else:
+        print("Network Test Failed: H16Pro reciever is not reachable.")
+        return False
+
+def cam():
+    global fpv
+    # Initialize if not already open
+    if fpv is None or not fpv.isOpened():
+        fpv = cv2.VideoCapture(RTSP)
     
-    
-    
-##do we want to actually display the ping outputs or just a pass/fail message?
+    if fpv.isOpened():
+        ret, frame = fpv.read()
+        if ret and frame is not None:
+            return Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    else:
+        # If open fails, reset to try again later
+        fpv = None
+    return None

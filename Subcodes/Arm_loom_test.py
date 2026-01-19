@@ -27,14 +27,14 @@ output_pins_list = [PIN_7, PIN_8, PIN_9, PIN_10, PIN_11, PIN_12]
 
 # Setup pins
 for pin in input_pins_list:
-    # lgpio.SET_PULL_DOWN mimics GPIO.PUD_DOWN
+    # lgpio.SET_PULL_DOWN mimics GPIO.PUD_DOWN from RPI.GPIO library 
     # This ensures the pin is 0 until your output drives it HIGH
     lgpio.gpio_claim_input(h, pin, lgpio.SET_PULL_DOWN)
 
 for pin in output_pins_list:
-    lgpio.gpio_claim_output(h, pin)
+    lgpio.gpio_claim_output(h, pin, 0)
 
-#Create output matrix -> 6x6 matrix all zeros
+#Create output matrix -> 6x6 matrix all zeros instially
 output_matrix = np.zeros((6, 6), dtype=int)
 pass_matrix = np.array([
     [1, 0, 0, 0, 0, 0],
@@ -47,29 +47,23 @@ pass_matrix = np.array([
 #Main Logic
 try:
     for i, pin_in_physical in enumerate(output_pins_list):
-        if i == 1 or 3:
-            lgpio.gpio_write(h, 1, 1)  # Activate output pin HIGH
-            lgpio.gpio_write(h, 3, 1)  # Activate output pin HIGH
-            time.sleep(0.1)  # Short delay to allow state to stabilize
-        else:
-            lgpio.gpio_write(h, pin_in_physical, 1)  # Activate output pin HIGH
-            time.sleep(0.1)  # Short delay to allow state to stabilize
+
+        lgpio.gpio_write(h, pin_in_physical, 1)  # Activate output pin HIGH
+        time.sleep(0.1)  # Short delay to allow state to stabilize
 
         for j, pin_out_physical in enumerate(input_pins_list):
-            output_matrix[i,j] = lgpio.gpio_read(h, pin_out_physical)  # Read input pin state, and store in matrix against output states
+            output_matrix[i, j] = lgpio.gpio_read(h, pin_out_physical)  # Read input pin state, and store in matrix against output states
         
-        for y, pin_in_physical in enumerate(output_pins_list):
-            lgpio.gpio_write(h, pin_in_physical, 0)  # Reset output pin to low after reading all inputs
+        lgpio.gpio_write(h, pin_in_physical, 0)  # Reset output pin to low after reading all inputs
 
     print(output_matrix)
 
     if np.array_equal(output_matrix, pass_matrix):
         print("Pass")   
     else:
-        print("Short Detected!")
+        print("Fail!")
 
 finally:
-    # Release the chip and pins
+    # Release the chip and pins not sure if this is needed
     lgpio.gpiochip_close(h)
-
-##added elsif statements eg short on pin 2 ect
+    
