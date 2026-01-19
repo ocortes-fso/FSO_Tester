@@ -9,7 +9,7 @@ from smbus2 import SMBus  # Change this line to "import smbus" if in Linux based
 import time
 
 ### Params ###
-ADDR = 0x66         # 0x66 (Hex) / 102 (Dec) 
+ADDR = 0x66               # 0x66 (Hex) / 102 (Dec) 
 I2C_BUS = 1               # Bus
 DIST_REG = 0x00           # Need to confirm this, 00, 10, and 20 are common
 
