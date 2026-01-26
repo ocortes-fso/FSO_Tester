@@ -12,7 +12,7 @@ h = lgpio.gpiochip_open(4)
 for pin in [RED_PIN, GREEN_PIN, BLUE_PIN, LED_SWITCH_PIN]:
     lgpio.gpio_claim_output(h, pin)
 
-lgpio.gpio_claim_input(h, SWITCH_PIN, lgpio.SET_PULL_UP)
+lgpio.gpio_claim_input(h, SWITCH_PIN, lgpio.SET_PULL_NONE)
 
 def set_rgb_colour(r, g, b):
     lgpio.gpio_write(h, RED_PIN, r)
