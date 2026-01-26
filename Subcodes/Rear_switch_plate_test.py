@@ -28,38 +28,18 @@ try:
             lgpio.gpio_write(h, LED_SWITCH_PIN, 0)
             for colour in rgb_values:
                 set_rgb_colour(*colour)
-                time.sleep(0.4)
+                time.sleep(0.2)
             
         #Switch on - power button LED on, status LED blinks RED fast
         elif lgpio.gpio_read(h, SWITCH_PIN) == 1:
              lgpio.gpio_write(h, LED_SWITCH_PIN, 1)
              while lgpio.gpio_read(h, SWITCH_PIN) == 1:
                 set_rgb_colour(0, 0, 0)
-                time.sleep(1)
+                time.sleep(0.5)
                 set_rgb_colour(1, 0, 0)
-                time.sleep(1) 
+                time.sleep(0.5) 
 
 except KeyboardInterrupt:
     pass
-finally:
-    lgpio.gpiochip_close(h)
-
-
-
-import time, lgpio
-
-SWITCH_PIN = 25
-
-h = lgpio.gpiochip_open(4)
-lgpio.gpio_claim_input(h, SWITCH_PIN, lgpio.SET_PULL_UP)
-
-try:
-    last = None
-    while True:
-        v = lgpio.gpio_read(h, SWITCH_PIN)
-        if v != last:
-            print("GPIO25 =", v)   # expect: 1 released, 0 pressed
-            last = v
-        time.sleep(0.01)
 finally:
     lgpio.gpiochip_close(h)
