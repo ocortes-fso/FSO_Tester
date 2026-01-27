@@ -12,6 +12,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
 from Subcodes import Magnetometer, Lidar, Network_test
+mag_after_id = None
+lidar_after_id = None
 
 root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester") 
 style = ttk.Style()
@@ -108,6 +110,19 @@ l21.pack(fill=BOTH, expand=TRUE)
 
 # main UI functions
 def home():
+    global mag_after_id, lidar_after_id
+
+    if mag_after_id is not None:            # kill the update loop
+        root.after_cancel(mag_after_id)
+        mag_after_id = None
+
+    if lidar_after_id is not None:          # kill the update loop
+        root.after_cancel(lidar_after_id)
+        lidar_after_id = None
+    
+    Magnetometer.close()
+    Lidar.close()
+
     lidar_f.pack_forget()
     mag_f.pack_forget()
     switch_plate_f.pack_forget()
@@ -151,16 +166,20 @@ def Eth():
     update_vid()
 
 def lidar():
+    global lidar_after_id
     main.pack_forget()
     lidar_f.pack(fill=BOTH, expand=TRUE)
     root.update()
-    update_lidar()
+    if lidar_after_id is None:              # Start the loop if it is not duplicated
+        update_lidar()
    
 def mag():
+    global mag_after_id
     main.pack_forget()
     mag_f.pack(fill=BOTH, expand=TRUE)
-    root.update() 
-    update_mag()  # Start the magnetometer update loop
+    root.update()
+    if mag_after_id is None:
+        update_mag()         # Start the magnetometer update loop if the loop is not duplicated
    
 def switch_plate():
     main.pack_forget()
@@ -189,20 +208,25 @@ def SBUS():
 
 # Magnetometer update function
 def update_mag():
+    global mag_after_id
     if not mag_f.winfo_viewable():
+        mag_after_id = None
         return
 
-    val = Magnetometer.main()
+    val = Magnetometer.read_once()
     if val:
         l1.config(text=f"X: {val[0]} \nY: {val[1]} \nZ: {val[2]} \n|B|: {val[3]:.1f}")
     else:
         l1.config(text="Waiting for Magnetometer...")
 
-    root.after(100, update_mag)
+    delay = 100 if val is not None else 500
+    mag_after_id = root.after(delay, update_mag)
 
 # Lidar update function
 def update_lidar():
+    global lidar_after_id
     if not lidar_f.winfo_viewable():
+        lidar_after_id = None
         return
 
     distance = Lidar.read_lidar_distance()
@@ -211,7 +235,8 @@ def update_lidar():
     else:
         l2.config(text="Waiting for Lidar")
 
-    root.after(100, update_lidar)
+    delay = 100 if distance is not None else 500
+    lidar_after_id = root.after(delay, update_lidar)
 
 # SBUS slider function
 def create_sliders(SBUS_f_INF):
