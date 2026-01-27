@@ -1,15 +1,13 @@
 # Test network connection of H16P via simple ping, and also fetch single video frame from MIPI cam
 import time
-import os
 import subprocess
 import cv2
 from PIL import Image
 
-H16P_IP = "192.168.144.100" 
+H16P_IP = "192.168.144.10" 
 Num_pings = "10" 
 RTSP = "rtsp://192.168.43.1:8554/fpv_stream"
 
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "timeout;5000000"
 
 # Global capture object to keep stream open
 fpv = None
