@@ -325,7 +325,7 @@ Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20)
 Debug.pack(expand=TRUE, anchor=E, padx=75)
 
 # Arm test buttons + labels
-test_b = ttk.Button(arm_f, text="Test", bootstyle=SECONDARY, width=10, COMMAND=arm_test)
+test_b = ttk.Button(arm_f, text="Test", bootstyle=SECONDARY, width=10, command=arm_test)
 test_b.pack(expand=TRUE, anchor=SE, padx=50, pady=75)
 l20 = ttk.Label(arm_f, text="Ready to test", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l20.pack(fill=BOTH, expand=TRUE)
