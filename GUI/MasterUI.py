@@ -11,7 +11,7 @@ import threading
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test
+from Subcodes import Magnetometer, Lidar, Network_test, Rear_switch_plate_test
 mag_after_id = None
 lidar_after_id = None
 
