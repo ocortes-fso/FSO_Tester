@@ -169,6 +169,7 @@ def lidar():
     global lidar_after_id
     main.pack_forget()
     lidar_f.pack(fill=BOTH, expand=TRUE)
+
     if lidar_after_id is None:              # Start the loop if it is not duplicated
         update_lidar()
    
@@ -176,6 +177,7 @@ def mag():
     global mag_after_id
     main.pack_forget()
     mag_f.pack(fill=BOTH, expand=TRUE)
+
     if mag_after_id is None:
         update_mag()         # Start the magnetometer update loop if the loop is not duplicated
    
@@ -217,7 +219,8 @@ def update_mag():
     else:
         l1.config(text="Waiting for Magnetometer...")
 
-    mag_after_id = root.after(100, update_mag)
+    delay = 100 if val is not None else 500
+    mag_after_id = root.after(delay, update_mag)
 
 # Lidar update function
 def update_lidar():
@@ -232,7 +235,8 @@ def update_lidar():
     else:
         l2.config(text="Waiting for Lidar")
 
-    lidar_after_id = root.after(100, update_lidar)
+    delay = 100 if distance is not None else 500
+    lidar_after_id = root.after(delay, update_lidar)
 
 # SBUS slider function
 def create_sliders(SBUS_f_INF):

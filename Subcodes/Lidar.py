@@ -21,18 +21,22 @@ def _get_bus():
             _bus.close()
         finally:
             _bus = None
-            
+
 def read_lidar_distance():
-    with SMBus(I2C_BUS) as bus:
-        try:
-            data = bus.read_i2c_block_data(ADDR, DIST_REG, 2)
+    try:
+        bus = _get_bus()
+        data = bus.read_i2c_block_data(ADDR, DIST_REG, 2)
 
-            # Big-endian (most common)
-            dist_mm = (data[0] << 8) | data[1] # mm output 
-            return dist_mm / 1000.0
+        # Big-endian (most common)
+        dist_mm = (data[0] << 8) | data[1] # mm output 
+        return dist_mm / 1000.0
 
-        except OSError:
-            return None
+    except OSError:
+        close()
+        return None
+    except Exception:
+        close()
+        return None
         
 def close():
     global _bus
