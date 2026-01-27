@@ -20,44 +20,48 @@ PIN_12 = 21
 h = lgpio.gpiochip_open(4)
 
 # Define lists for the loops
-# Input pins
-input_pins_list = [PIN_1, PIN_2, PIN_3, PIN_4, PIN_5, PIN_6]
-# Output pins
-output_pins_list = [PIN_7, PIN_8, PIN_9, PIN_10, PIN_11, PIN_12]
+# all pins list for new 12x12 matrix logic
+all_pins_list = [PIN_1, PIN_2, PIN_3, PIN_4, PIN_5, PIN_6, PIN_7, PIN_8, PIN_9, PIN_10, PIN_11, PIN_12]
 
-# Setup pins
-for pin in input_pins_list:
-    # lgpio.SET_PULL_DOWN mimics GPIO.PUD_DOWN from RPI.GPIO library 
-    # This ensures the pin is 0 until your output drives it HIGH
-    lgpio.gpio_claim_input(h, pin, lgpio.SET_PULL_DOWN)
-
-# --- CHANGE 1: REMOVED the initial output setup loop ---
-# (Deleting the 'for pin in output_pins_list' loop prevents the bridge conflict)
-
-#Create output matrix -> 6x6 matrix all zeros instially
-output_matrix = np.zeros((6, 6), dtype=int)
+# Create output matrix -> 12x12 matrix all zeros initially
+output_matrix = np.zeros((12, 12), dtype=int)
+# pass_matrix 
 pass_matrix = np.array([
-    [1, 0, 0, 0, 0, 0],
-    [0, 1, 0, 1, 0, 0],
-    [0, 0, 1, 0, 0, 0],            
-    [0, 1, 0, 1, 0, 0],
-    [0, 0, 0, 0, 1, 0],
-    [0, 0, 0, 0, 0, 1]])
-
+    [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+    [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+    [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
+    [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+    [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+    [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+    [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
+    [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],])
 #Main Logic
 try:
-    for i, pin_in_physical in enumerate(output_pins_list):
+    for i, pin_drive in enumerate(all_pins_list):
         
-        # --- CHANGE 2: Claim the pin HIGH right here ---
-        lgpio.gpio_claim_output(h, pin_in_physical, 1) 
+        # Ensure all other pins are set as inputs before driving the current pin
+        for other_pin in all_pins_list:
+            if other_pin != pin_drive:
+                try:
+                    lgpio.gpio_free(h, other_pin)
+                    lgpio.gpio_claim_input(h, other_pin, lgpio.SET_PULL_DOWN)
+                except:
+                    pass
+
+        # Claim the pin HIGH right here 
+        lgpio.gpio_claim_output(h, pin_drive, 1) 
         
         time.sleep(0.1)  # Short delay to allow state to stabilize
 
-        for j, pin_out_physical in enumerate(input_pins_list):
-            output_matrix[i, j] = lgpio.gpio_read(h, pin_out_physical)  # Read input pin state
+        for j, pin_read in enumerate(all_pins_list):
+            output_matrix[i, j] = lgpio.gpio_read(h, pin_read)  # Read input pin state
         
-        # --- CHANGE 3: Free the pin immediately after reading ---
-        lgpio.gpio_free(h, pin_in_physical)
+        # Free the pin immediately after reading 
+        lgpio.gpio_free(h, pin_drive)
 
     print(output_matrix)
 
@@ -68,4 +72,9 @@ try:
 
 finally:
     # Release the chip and pins not sure if this is needed
+    for pin in all_pins_list:
+        try:
+            lgpio.gpio_free(h, pin)
+        except:
+            pass
     lgpio.gpiochip_close(h)
