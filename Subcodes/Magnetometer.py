@@ -19,10 +19,16 @@ def init_qmc5883l(bus):                    # Initialize Magnetometer
     time.sleep(0.05)
 
     # OSR=512, RNG=8G, ODR=200Hz, MODE=continuous
-    bus.write_byte_data(ADDR, REG_CONTROL_1, 0b11011101)
-    time.sleep(0.1)
+    bus.write_byte_data(ADDR, REG_CONTROL_1, 0b11011101) # 1110 1101
+    time.sleep(0.01)
 
-#below changed from previous console version to not have a while true loop since gui handles re-calling the function to update values
+def _get_bus():
+    global _bus, _inited
+    if _bus is None:
+          _bus = SMBus(BUS)
+          init_qmc5883l(_bus)
+          _inited = True
+    return _bus
 
 def read_mag_xyz(bus):
     data = bus.read_i2c_block_data(ADDR, REG_DATA, 6)
@@ -31,10 +37,20 @@ def read_mag_xyz(bus):
     z = to_s16((data[5] << 8) | data[4])
     return x, y, z
 
-def main():
-        with SMBus(BUS) as bus:
-            init_qmc5883l(bus)
-            x, y, z = read_mag_xyz(bus)
-            b = math.sqrt(x*x + y*y + z*z)
-            return [x, y, z, b]
-  
+def read_once():
+    try:
+        bus = _get_bus()
+        x, y, z = read_mag_xyz(bus)
+        b = math.sqrt(x*x + y*y + z*z)
+        return [x, y, z, b]
+    except Exception:
+        return None
+    
+def close():
+    global _bus, _inited
+    if _bus is not None:
+        try:
+            _bus.close()
+        finally:
+            _bus = None
+            _inited = False
