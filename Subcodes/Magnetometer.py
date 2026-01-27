@@ -11,6 +11,8 @@ REG_STATUS = 0x06
 REG_CONTROL_1 = 0x09
 REG_CONTROL_2 = 0x0A
 
+_bus = None
+
 def to_s16(v):                 # Limit big-endian 16-bit
     return v - 65536 if v >= 32768 else v
 
