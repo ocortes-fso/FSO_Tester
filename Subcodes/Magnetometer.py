@@ -32,12 +32,9 @@ def read_mag_xyz(bus):
     return x, y, z
 
 def main():
-    try:
         with SMBus(BUS) as bus:
             init_qmc5883l(bus)
             x, y, z = read_mag_xyz(bus)
             b = math.sqrt(x*x + y*y + z*z)
             return [x, y, z, b]
-    except Exception:
-        return None
-    
+  
