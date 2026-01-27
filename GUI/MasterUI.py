@@ -4,15 +4,14 @@ import sys
 import os
 import numpy as np
 from tkinter import BOTH, TRUE
+import time
 
 # must have this since not in same directory as subcodes
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-try:
-    from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test
-except ImportError as e:
-    print(f"Hardware modules not found: {e}")
+from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test
+
 
 mag_after_id = None
 lidar_after_id = None
@@ -69,49 +68,73 @@ l7.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 # labels voltage test
 volt_container = ttk.Frame(volt_f)
 volt_container.pack(expand=TRUE)
+
 l8 = ttk.Label(volt_container, text="3. SERIAL", bootstyle=SECONDARY, style='Header.TLabel')
 l8.pack(pady=(20, 5))
-l9 = ttk.Label(volt_container, text="A1:", bootstyle=SECONDARY, style='Sub.TLabel'); l9.pack()
-l10 = ttk.Label(volt_container, text="A2:", bootstyle=SECONDARY, style='Sub.TLabel'); l10.pack()
-l11 = ttk.Label(volt_container, text="A3:", bootstyle=SECONDARY, style='Sub.TLabel'); l11.pack()
-l12 = ttk.Label(volt_container, text="A4:", bootstyle=SECONDARY, style='Sub.TLabel'); l12.pack()
+l9 = ttk.Label(volt_container, text="A1:", bootstyle=SECONDARY, style='Sub.TLabel')
+l9.pack()
+l10 = ttk.Label(volt_container, text="A2:", bootstyle=SECONDARY, style='Sub.TLabel')
+l10.pack()
+l11 = ttk.Label(volt_container, text="A3:", bootstyle=SECONDARY, style='Sub.TLabel')
+l11.pack()
+l12 = ttk.Label(volt_container, text="A4:", bootstyle=SECONDARY, style='Sub.TLabel')
+l12.pack()
+l13 = ttk.Label(volt_container, text="4. CAN/SBUS", bootstyle=SECONDARY, style='Header.TLabel')
+l13.pack(pady=(20, 5))
+l14 = ttk.Label(volt_container, text="A5:", bootstyle=SECONDARY, style='Sub.TLabel')
+l14.pack()
+l15 = ttk.Label(volt_container, text="A6:", bootstyle=SECONDARY, style='Sub.TLabel')
+l15.pack()
+l16 = ttk.Label(volt_container, text="5. RC-OUT", bootstyle=SECONDARY, style='Header.TLabel')
+l16.pack(pady=(20, 5))
+l17 = ttk.Label(volt_container, text="A7:", bootstyle=SECONDARY, style='Sub.TLabel')
+l17.pack()
+l18 = ttk.Label(volt_container, text="A8:", bootstyle=SECONDARY, style='Sub.TLabel')
+l18.pack()
+l19 = ttk.Label(volt_container, text="6. PAYLOAD", bootstyle=SECONDARY, style='Header.TLabel')
+l19.pack(pady=(20, 5))
+l20 = ttk.Label(volt_container, text="A9:", bootstyle=SECONDARY, style='Sub.TLabel')
+l20.pack()
 
 # labels switch plate
 l_sw = ttk.Label(switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l_sw.pack(fill=BOTH, expand=TRUE)
 
 # --- FUNCTIONS ---
-
 def home():
     global mag_after_id, lidar_after_id
-    if mag_after_id:
+
+    if mag_after_id is not None:            # kill the update loop
         root.after_cancel(mag_after_id)
         mag_after_id = None
-    if lidar_after_id:
+
+    if lidar_after_id is not None:          # kill the update loop
         root.after_cancel(lidar_after_id)
         lidar_after_id = None
     
     Magnetometer.close()
     Lidar.close()
 
-    for f in [lidar_f, mag_f, switch_plate_f, arm_f, body_f, volt_f, SBUS_f, SBUS_f_INF, Eth_f]:
-        f.pack_forget()
-    main.pack(fill=BOTH, expand=TRUE)
-    
-def Eth():
+    lidar_f.pack_forget()
+    mag_f.pack_forget()
+    switch_plate_f.pack_forget()
+    arm_f.pack_forget()
     body_f.pack_forget()
-    Eth_f.pack(fill=BOTH, expand=TRUE)
-    root.update()
-    Eth_test()
+    volt_f.pack_forget()
+    SBUS_f.pack_forget()
+    SBUS_f_INF.pack_forget()
+    Eth_f.pack_forget()
+    main.pack(fill=BOTH, expand=TRUE)
 
 def lidar():
     global lidar_after_id
     main.pack_forget()
     lidar_f.pack(fill=BOTH, expand=TRUE)
     root.update()
-    if lidar_after_id is None:
+    if lidar_after_id is None:              # Start the loop if it is not duplicated
         update_lidar()
    
+    
 def mag():
     global mag_after_id
     main.pack_forget()
@@ -178,9 +201,12 @@ def create_sliders(parent):
         c.set(1500)
         c.grid(row=i, column=2, padx=10, sticky="w")
 
+def Eth():
+    body_f.pack_forget()
+    Eth_f.pack(fill=BOTH, expand=TRUE)
+    Eth_test()
+
 def Eth_test():
-    l3.config(text="Pinging air unit...")
-    root.update()
     result = Network_test.ping()
     if result:
         l3.config(text="PASS! Network Test Passed: H16Pro receiver is reachable.")
@@ -229,10 +255,15 @@ home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
 
 
 # Body buttons
-ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=25, command=Eth).pack(expand=TRUE, anchor=E, padx=75)
-ttk.Button(body_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=25, command=SBUS_INF).pack(expand=TRUE, anchor=E, padx=75)
-ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=25).pack(expand=TRUE, anchor=E, padx=75)
-ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=25).pack(expand=TRUE, anchor=E, padx=75)
+eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
+eth1.pack(expand=TRUE, anchor=E, padx=75)
+SB1 = ttk.Button(body_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=20, command=SBUS_INF)
+SB1.pack(expand=TRUE, anchor=E, padx=75)
+SB2 = ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20)
+SB2.pack(expand=TRUE, anchor=E, padx=75)
+Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20)
+Debug.pack(expand=TRUE, anchor=E, padx=75)
+
 
 # Arm test page
 l20 = ttk.Label(arm_f, text="Ready to test", bootstyle=PRIMARY, font=(None, 24))
