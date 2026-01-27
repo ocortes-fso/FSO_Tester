@@ -28,7 +28,7 @@ def arm_loom():
             time.sleep(0.01)
 
             for j in range(len(all_pins_list)):
-                if i == j:# Skip self-test to match pass_matrix
+                if i == j:
                     output_matrix[i, j] = 1
                 if lgpio.gpio_read(h, all_pins_list[j]) == 1:
                     output_matrix[i, j] = 1
@@ -36,7 +36,6 @@ def arm_loom():
             # Toggle back to Input
             lgpio.gpio_free(h, currentPin)
             lgpio.gpio_claim_input(h, currentPin, lgpio.SET_PULL_DOWN)
-        print(output_matrix)
         return output_matrix
         
 

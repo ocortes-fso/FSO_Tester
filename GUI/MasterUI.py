@@ -6,12 +6,13 @@ import sys
 import os
 from PIL import Image, ImageTk
 import threading
+import numpy as np
 
 # must have this since not in same directory as subcodes
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test
+from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test
 mag_after_id = None
 lidar_after_id = None
 
@@ -261,8 +262,39 @@ def create_sliders(SBUS_f_INF):
     
     return sliders
 
+#arm loom test function
 
+def arm_test():
+    # Call the hardware logic
+    matrix = Arm_loom_test.arm_loom()
+    
+    # Fixed syntax: removed extra comma in first row [1, , 0...]
+    pass_matrix = np.array([
+        [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+        [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+        [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
+        [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+        
+        [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+        [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+        [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
+        [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
+    ])
 
+    # Update the display label with the matrix text
+    l21.config(text=f"{matrix}")
+
+    if np.array_equal(matrix, pass_matrix):
+        l20.config(text="Pass!")
+    else:
+        l20.config(text="Fail!")
+        
+        
+        
 # Main window buttons
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
 b1.pack(expand=TRUE, pady=(75,0))
@@ -292,9 +324,13 @@ SB2.pack(expand=TRUE, anchor=E, padx=75)
 Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20)
 Debug.pack(expand=TRUE, anchor=E, padx=75)
 
-# Arm test buttons -
-test_b = ttk.Button(arm_f, text="Test", bootstyle=SECONDARY, width=10)
+# Arm test buttons + labels
+test_b = ttk.Button(arm_f, text="Test", bootstyle=SECONDARY, width=10, COMMAND=arm_test)
 test_b.pack(expand=TRUE, anchor=SE, padx=50, pady=75)
+l20 = ttk.Label(arm_f, text="Ready to test", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
+l20.pack(fill=BOTH, expand=TRUE)
+l21 = ttk.Label(arm_f, text="", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
+l21.pack(fill=BOTH, expand=TRUE)
 
 
 
