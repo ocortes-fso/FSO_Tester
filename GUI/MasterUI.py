@@ -169,7 +169,7 @@ def lidar():
     global lidar_after_id
     main.pack_forget()
     lidar_f.pack(fill=BOTH, expand=TRUE)
-    root.refresh()
+    root.update()
     if lidar_after_id is None:              # Start the loop if it is not duplicated
         update_lidar()
    
@@ -177,7 +177,7 @@ def mag():
     global mag_after_id
     main.pack_forget()
     mag_f.pack(fill=BOTH, expand=TRUE)
-    root.refresh()
+    root.update()
     if mag_after_id is None:
         update_mag()         # Start the magnetometer update loop if the loop is not duplicated
    
