@@ -54,4 +54,25 @@ try:
         time.sleep(0.1)  # Short delay to allow state to stabilize
 
         for j, pin_out_physical in enumerate(input_pins_list):
-            output_matrix
+            output_matrix[i, j] = lgpio.gpio_read(h, pin_out_physical)  # Read input pin state, and store in matrix against output states
+        
+        # --- CHANGE 4: Free the pin immediately after reading ---
+        lgpio.gpio_write(h, pin_in_physical, 0)  # Reset output pin to low after reading all inputs
+        lgpio.gpio_free(h, pin_in_physical)
+
+    print(output_matrix)
+
+    if np.array_equal(output_matrix, pass_matrix):
+        print("Pass")   
+    else:
+        print("Fail!")
+
+finally:
+    # Release the chip and pins not sure if this is needed
+    # --- CHANGE 5: Added cleanup loop for input pins ---
+    for pin in input_pins_list:
+        try:
+            lgpio.gpio_free(h, pin)
+        except:
+            pass
+    lgpio.gpiochip_close(h)
