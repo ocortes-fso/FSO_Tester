@@ -1,1 +1,8 @@
-#code should send mavlink message to enter debug mode (AAA_options) through serial line to CAN node 125 (powerstack) and return/print messages
+# code should send mavlink message to enter debug mode (AAA_options) through serial line to CAN node 125 (powerstack) 
+#      and return/print messages
+
+##### CONFIG #####
+import time 
+from pymavlink import mavutil
+
+   
