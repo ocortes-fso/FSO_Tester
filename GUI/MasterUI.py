@@ -78,7 +78,7 @@ l12 = ttk.Label(volt_container, text="A4:", bootstyle=SECONDARY, style='Sub.TLab
 
 # labels switch plate
 l_sw = ttk.Label(switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
-l_sw.pack(fill=BOTH, expand=TRUE)    
+l_sw.pack(fill=BOTH, expand=TRUE)
 
 # --- FUNCTIONS ---
 
@@ -130,7 +130,7 @@ def arm():
 
 def body():
     main.pack_forget()
-    body_f.pack(fill=BOTH, expand=TRUE)    
+    body_f.pack(fill=BOTH, expand=TRUE)
 
 def volt():
     main.pack_forget()
