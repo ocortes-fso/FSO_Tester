@@ -157,7 +157,8 @@ def lidar():
    
 def mag():
     main.pack_forget()
-    mag_f.pack(fill=BOTH, expand=TRUE) 
+    mag_f.pack(fill=BOTH, expand=TRUE)
+    root.update() 
     update_mag()  # Start the magnetometer update loop
    
 def switch_plate():
