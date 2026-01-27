@@ -9,8 +9,10 @@ from tkinter import BOTH, TRUE
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-# Note: Ensure these modules exist in your Subcodes folder
-from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test
+try:
+    from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test
+except ImportError as e:
+    print(f"Hardware modules not found: {e}")
 
 mag_after_id = None
 lidar_after_id = None
@@ -100,7 +102,7 @@ def Eth():
     body_f.pack_forget()
     Eth_f.pack(fill=BOTH, expand=TRUE)
     root.update()
-    Eth_test() # Run the actual ping test logic
+    Eth_test()
 
 def lidar():
     global lidar_after_id
@@ -207,23 +209,24 @@ def arm_test():
     else:
         l20.config(text="Fail!", bootstyle=DANGER)
 
-# --- UI ELEMENTS ---
-
 # Main window buttons
-buttons = [
-    ("Lidar Test", lidar),
-    ("Magnetometer Test", mag),
-    ("Rear Switch Plate Test", switch_plate),
-    ("Arm Loom Test", arm),
-    ("Body Test", body),
-    ("Voltage Test", volt)
-]
+b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
+b1.pack(expand=TRUE, pady=(75,0))
+b2 = ttk.Button(main, text="Magnetometer Test", bootstyle=PRIMARY, width=30, command=mag) 
+b2.pack(expand=TRUE)
+b3 = ttk.Button(main, text="Rear Switch Plate Test", bootstyle=PRIMARY, width=30, command=switch_plate)
+b3.pack(expand=TRUE)
+b4 = ttk.Button(main, text="Arm Loom Test", bootstyle=PRIMARY, width=30, command=arm)
+b4.pack(expand=TRUE) 
+b5 = ttk.Button(main, text="Body Test", bootstyle=PRIMARY, width=30, command=body)
+b5.pack(expand=TRUE) 
+b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=volt)
+b6.pack(expand=TRUE) 
 
-for txt, cmd in buttons:
-    ttk.Button(main, text=txt, bootstyle=PRIMARY, width=30, command=cmd).pack(expand=TRUE, pady=5)
 
 home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
 home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
+
 
 # Body buttons
 ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=25, command=Eth).pack(expand=TRUE, anchor=E, padx=75)
