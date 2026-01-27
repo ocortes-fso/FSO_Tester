@@ -15,7 +15,7 @@ from Subcodes import Magnetometer, Lidar, Network_test, Rear_switch_plate_test
 mag_after_id = None
 lidar_after_id = None
 
-root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester") 
+root = ttk.Window(themename="cyborg", size=[1280,720], title="FSO Tester") 
 style = ttk.Style()
 style.configure('primary.TButton', font=(None, 32, 'bold'))
 style.configure('Outline.TButton', font=(None, 16, 'bold'))
