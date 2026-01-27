@@ -1,11 +1,9 @@
 ##### LIDAR TEST USING I2C #####
 ## Requirements:
 #   Need to enable I2C on the Raspberry PI
-#   Need to have "smbus" library installed for I2C communication in Python
-#       on windows, need to use 'smbus2'
 
 ### CONFIG ###
-from smbus2 import SMBus  # Change this line to "import smbus" if in Linux based
+from smbus2 import SMBus  
 import time
 
 ### Params ###
