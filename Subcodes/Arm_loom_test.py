@@ -19,50 +19,57 @@ PIN_12 = 21
 # Open the gpiochip (Pi 5 uses chip 4 for the RP1 GPIOs)
 h = lgpio.gpiochip_open(4)
 
-# Define lists for the loops
-# all pins list for new 12x12 matrix logic
+# Define list for the 12x12 loop
 all_pins_list = [PIN_1, PIN_2, PIN_3, PIN_4, PIN_5, PIN_6, PIN_7, PIN_8, PIN_9, PIN_10, PIN_11, PIN_12]
 
 # Create output matrix -> 12x12 matrix all zeros initially
 output_matrix = np.zeros((12, 12), dtype=int)
-# pass_matrix 
 pass_matrix = np.array([
-    [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-    [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
-    [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-    [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
-    [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
-    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-    [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
-    [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-    [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
-    [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
-    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],])
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+
 #Main Logic
 try:
-    for i, pin_drive in enumerate(all_pins_list):
-        
-        # Ensure all other pins are set as inputs before driving the current pin
-        for other_pin in all_pins_list:
-            if other_pin != pin_drive:
-                try:
-                    lgpio.gpio_free(h, other_pin)
-                    lgpio.gpio_claim_input(h, other_pin, lgpio.SET_PULL_DOWN)
-                except:
-                    pass
+    # This loop follows your C logic: Test connections for each pin
+    for i in range(len(all_pins_list)):
+        currentPin = all_pins_list[i]
 
-        # Claim the pin HIGH right here 
-        lgpio.gpio_claim_output(h, pin_drive, 1) 
-        
-        time.sleep(0.1)  # Short delay to allow state to stabilize
+        # Initialize all pins as INPUT with PULL_DOWN (like your INPUT_PULLUP reset)
+        for p in all_pins_list:
+            try:
+                lgpio.gpio_free(h, p)
+                lgpio.gpio_claim_input(h, p, lgpio.SET_PULL_DOWN)
+            except:
+                pass
 
-        for j, pin_read in enumerate(all_pins_list):
-            output_matrix[i, j] = lgpio.gpio_read(h, pin_read)  # Read input pin state
-        
-        # Free the pin immediately after reading 
-        lgpio.gpio_free(h, pin_drive)
+        # Set the current pin as OUTPUT and HIGH
+        lgpio.gpio_free(h, currentPin) # Free from input mode first
+        lgpio.gpio_claim_output(h, currentPin, 1)
+        time.sleep(0.01) # Small delay for stabilization
 
+        # Check connections to all other pins
+        for j in range(len(all_pins_list)):
+            if i == j: 
+                continue # Skip self-testing to match your C logic 'if (i == j) continue'
+
+            testPin = all_pins_list[j]
+            if lgpio.gpio_read(h, testPin) == 1:
+                output_matrix[i, j] = 1
+
+        # Reset the current pin (Freeing it acts like setting back to INPUT)
+        lgpio.gpio_free(h, currentPin)
+
+    # Output results
     print(output_matrix)
 
     if np.array_equal(output_matrix, pass_matrix):
@@ -71,10 +78,5 @@ try:
         print("Fail!")
 
 finally:
-    # Release the chip and pins not sure if this is needed
-    for pin in all_pins_list:
-        try:
-            lgpio.gpio_free(h, pin)
-        except:
-            pass
+    # Final cleanup for the chip
     lgpio.gpiochip_close(h)
