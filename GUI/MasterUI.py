@@ -153,6 +153,7 @@ def Eth():
 def lidar():
     main.pack_forget()
     lidar_f.pack(fill=BOTH, expand=TRUE)
+    root.update()
     update_lidar()
    
 def mag():
