@@ -1,16 +1,16 @@
-from tkinter import BOTH, TRUE
+from tkinter import BOTH, TRUE, LEFT, TOP, W, SE, SW, CENTER
 import ttkbootstrap as ttk 
 from ttkbootstrap.constants import *
 import sys
 import os
 import numpy as np
 
-
 # must have this since not in same directory as subcodes
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
 from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test
+
 mag_after_id = None
 lidar_after_id = None
 
@@ -38,34 +38,29 @@ SBUS_f = ttk.Frame(root)
 SBUS_f_INF = ttk.Frame(root)
 Eth_f = ttk.Frame(root)
 
-# labels mag
+# Labels - Magnetometer
 l1 = ttk.Label(mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l1.pack(fill=BOTH, expand=TRUE)
 
-# labels lidar
+# Labels - Lidar
 l2 = ttk.Label(lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l2.pack(fill=BOTH, expand=TRUE)
 
+# Labels - Body frame
 body_left_container = ttk.Frame(body_f)
 body_left_container.pack(side=LEFT, fill=BOTH, expand=TRUE)
-
-# labels body test (Stacked vertically inside the container above)
 l4 = ttk.Label(body_left_container, text="SERIAL", bootstyle=SECONDARY)
 l4.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
-
 l5 = ttk.Label(body_left_container, text="ANALOG PORT", bootstyle=SECONDARY)
 l5.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
-
 l6 = ttk.Label(body_left_container, text="CAN", bootstyle=SECONDARY)
 l6.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
-
 l7 = ttk.Label(body_left_container, text="PWM", bootstyle=SECONDARY)
 l7.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
-# labels voltage test
+# Labels - Voltage frame
 volt_container = ttk.Frame(volt_f)
 volt_container.pack(expand=TRUE)
-
 l8 = ttk.Label(volt_container, text="3. SERIAL", bootstyle=SECONDARY, style='Header.TLabel')
 l8.pack(pady=(20, 5))
 l9 = ttk.Label(volt_container, text="A1:", bootstyle=SECONDARY, style='Sub.TLabel')
@@ -93,34 +88,24 @@ l19.pack(pady=(20, 5))
 l20 = ttk.Label(volt_container, text="A9:", bootstyle=SECONDARY, style='Sub.TLabel')
 l20.pack()
 
-# labels switch plate
+# Labels - Switch Plate
 l21 = ttk.Label(switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l21.pack(fill=BOTH, expand=TRUE)    
 
-# main UI functions
+# ---------------- Main UI Functions ----------------
 def home():
     global mag_after_id, lidar_after_id
-
     if mag_after_id is not None:
         root.after_cancel(mag_after_id)
         mag_after_id = None
-
     if lidar_after_id is not None:
         root.after_cancel(lidar_after_id)
         lidar_after_id = None
-    
     Magnetometer.close()
     Lidar.close()
-
-    lidar_f.pack_forget()
-    mag_f.pack_forget()
-    switch_plate_f.pack_forget()
-    arm_f.pack_forget()
-    body_f.pack_forget()
-    volt_f.pack_forget()
-    SBUS_f.pack_forget()
-    SBUS_f_INF.pack_forget()
-    Eth_f.pack_forget()
+    # Hide all frames
+    for f in [lidar_f, mag_f, switch_plate_f, arm_f, body_f, volt_f, SBUS_f, SBUS_f_INF, Eth_f]:
+        f.pack_forget()
     main.pack(fill=BOTH, expand=TRUE)
     
 def Eth():
@@ -174,13 +159,11 @@ def update_mag():
     if not mag_f.winfo_viewable():
         mag_after_id = None
         return
-
     val = Magnetometer.read_once()
     if val:
         l1.config(text=f"X: {val[0]} \nY: {val[1]} \nZ: {val[2]} \n|B|: {val[3]:.1f}")
     else:
         l1.config(text="Waiting for Magnetometer...")
-
     delay = 100 if val is not None else 500
     mag_after_id = root.after(delay, update_mag)
 
@@ -190,13 +173,11 @@ def update_lidar():
     if not lidar_f.winfo_viewable():
         lidar_after_id = None
         return
-
     distance = Lidar.read_lidar_distance()
     if distance is not None:
         l2.config(text=f"Lidar Distance: {distance} m")
     else:
         l2.config(text="Waiting for Lidar")
-
     delay = 100 if distance is not None else 500
     lidar_after_id = root.after(delay, update_lidar)
 
@@ -204,61 +185,44 @@ def update_lidar():
 def create_sliders(SBUS_f_INF):
     for widget in SBUS_f_INF.winfo_children():
         widget.destroy()
-
     SBUS_f_INF.columnconfigure(0, weight=1)
     SBUS_f_INF.columnconfigure(3, weight=1)
-
     sliders = []
     for i in range(8):
         SBUS_f_INF.rowconfigure(i, weight=1)
         row_pad = (100, 0) if i == 0 else 0
-
         lbl = ttk.Label(SBUS_f_INF, text=f"C{i+1}", bootstyle=PRIMARY)
         lbl.grid(row=i, column=1, padx=(20, 10), pady=row_pad, sticky="e")
-
         c = ttk.Scale(SBUS_f_INF, from_=1000, to=2000, bootstyle=PRIMARY, length=800)
         c.set(1500)
         c.grid(row=i, column=2, padx=10, pady=row_pad, sticky="w")
         sliders.append(c)
-    
     return sliders
 
-#arm loom test function
-
+# ---------------- Arm Loom Test ----------------
 def arm_test():
-    # Call the hardware logic
     matrix = Arm_loom_test.arm_loom()
-    
-    # Fixed syntax: removed extra comma in first row [1, , 0...]
     pass_matrix = np.array([
-        [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-        [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
-        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-        [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
-        [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
-        
-        [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-        [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
-        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-        [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
-        [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
+        [1,0,0,0,0,0,1,0,0,0,0,0],
+        [0,1,0,1,0,0,0,1,0,1,0,0],
+        [0,0,1,0,0,0,0,0,1,0,0,0],
+        [0,1,0,1,0,0,0,1,0,1,0,0],
+        [0,0,0,0,1,0,0,0,0,0,1,0],
+        [0,0,0,0,0,1,0,0,0,0,0,1],
+        [1,0,0,0,0,0,1,0,0,0,0,0],
+        [0,1,0,1,0,0,0,1,0,1,0,0],
+        [0,0,1,0,0,0,0,0,1,0,0,0],
+        [0,1,0,1,0,0,0,1,0,1,0,0],
+        [0,0,0,0,1,0,0,0,0,0,1,0],
+        [0,0,0,0,0,1,0,0,0,0,0,1]
     ])
-
-    # Update the display label with the matrix text
-    l21.config(text=f"{matrix}")
-
+    arm_matrix_label.config(text=f"{matrix}")
     if np.array_equal(matrix, pass_matrix):
-        l20.config(text="Pass!")
+        arm_status_label.config(text="Pass!")
     else:
-        l20.config(text="Fail!")
-        
-        
-        
+        arm_status_label.config(text="Fail!")
 
-
-# Main window buttons
+# ---------------- Main Window Buttons ----------------
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
 b1.pack(expand=TRUE, pady=(75,0))
 b2 = ttk.Button(main, text="Magnetometer Test", bootstyle=PRIMARY, width=30, command=mag) 
@@ -275,27 +239,26 @@ b6.pack(expand=TRUE)
 home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
 home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
 
-# Body buttons
+# Body frame buttons
 eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
 eth1.pack(expand=TRUE, anchor=E, padx=75)
 SB1 = ttk.Button(body_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=20, command=SBUS_INF)
 SB1.pack(expand=TRUE, anchor=E, padx=75)
-SB2 = ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20)
+SB2 = ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20, command=SBUS)
 SB2.pack(expand=TRUE, anchor=E, padx=75)
 Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20)
 Debug.pack(expand=TRUE, anchor=E, padx=75)
 
+# Arm loom frame buttons and labels (unique names)
+arm_test_button = ttk.Button(arm_f, text="Test", bootstyle=SECONDARY, width=10, command=arm_test)
+arm_test_button.pack(expand=TRUE, anchor=SE, padx=50, pady=75)
 
-# Arm test buttons + labels
-test_b = ttk.Button(arm_f, text="Test", bootstyle=SECONDARY, width=10, command=arm_test)
-test_b.pack(expand=TRUE, anchor=SE, padx=50, pady=75)
-l20 = ttk.Label(arm_f, text="Ready to test", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
-l20.pack(fill=BOTH, expand=TRUE)
-l21 = ttk.Label(arm_f, text="", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
-l21.pack(fill=BOTH, expand=TRUE)
+arm_status_label = ttk.Label(arm_f, text="Ready to test", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
+arm_status_label.pack(fill=BOTH, expand=TRUE)
 
+arm_matrix_label = ttk.Label(arm_f, text="", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
+arm_matrix_label.pack(fill=BOTH, expand=TRUE)
 
-
-# Initialize main loop for UI
+# ---------------- Initialize main loop ----------------
 main.pack(fill=BOTH, expand=True)             
 root.mainloop()
