@@ -4,7 +4,7 @@ import smbus2  #this package is only for linux will work on pi but cannot isntal
 #define variables
 
 I2C_ADD = 1000101  #all  pins left floating (not connected)
-I2C_bus = smbus2.SMBus(1)
+bus = smbus2.SMBus(1)
 Voltage_ref = float(3.3)
 ADC_raw_factor = float(65535) #float to to find output relative to reference (STANDARD ADC for 16-bit resolution)
 
