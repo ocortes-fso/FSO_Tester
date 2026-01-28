@@ -4,6 +4,7 @@ import sys
 import os
 import numpy as np
 from tkinter import BOTH, TRUE
+import threading
 import time
 
 # must have this since not in same directory as subcodes
@@ -103,18 +104,14 @@ l_sw.pack(fill=BOTH, expand=TRUE)
 # --- FUNCTIONS ---
 def home():
     global mag_after_id, lidar_after_id
-
-    if mag_after_id is not None:            # kill the update loop
+    if mag_after_id is not None:
         root.after_cancel(mag_after_id)
         mag_after_id = None
-
-    if lidar_after_id is not None:          # kill the update loop
+    if lidar_after_id is not None:
         root.after_cancel(lidar_after_id)
         lidar_after_id = None
-    
     Magnetometer.close()
     Lidar.close()
-
     lidar_f.pack_forget()
     mag_f.pack_forget()
     switch_plate_f.pack_forget()
@@ -131,10 +128,9 @@ def lidar():
     main.pack_forget()
     lidar_f.pack(fill=BOTH, expand=TRUE)
     root.update()
-    if lidar_after_id is None:              # Start the loop if it is not duplicated
+    if lidar_after_id is None:
         update_lidar()
-   
-    
+
 def mag():
     global mag_after_id
     main.pack_forget()
@@ -142,11 +138,11 @@ def mag():
     root.update()
     if mag_after_id is None:
         update_mag()
-   
+
 def switch_plate():
     main.pack_forget()
     switch_plate_f.pack(fill=BOTH, expand=TRUE)
-   
+
 def arm():
     main.pack_forget()
     arm_f.pack(fill=BOTH, expand=TRUE)
@@ -204,14 +200,15 @@ def create_sliders(parent):
 def Eth():
     body_f.pack_forget()
     Eth_f.pack(fill=BOTH, expand=TRUE)
-    Eth_test()
+    threading.Thread(target=Eth_test, daemon=True).start()  # run in background thread
 
 def Eth_test():
+    l3.after(0, lambda: l3.config(text="Pinging air unit..."))
     result = Network_test.ping()
     if result:
-        l3.config(text="PASS! Network Test Passed: H16Pro receiver is reachable.")
+        l3.after(0, lambda: l3.config(text="PASS! Network Test Passed: H16Pro receiver is reachable."))
     else:
-        l3.config(text="Network Test Failed: H16Pro receiver is not reachable.")
+        l3.after(0, lambda: l3.config(text="Network Test Failed: H16Pro receiver is not reachable."))
 
 def arm_test():
     matrix = Arm_loom_test.arm_loom()
@@ -249,10 +246,8 @@ b5.pack(expand=TRUE)
 b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=volt)
 b6.pack(expand=TRUE) 
 
-
 home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
 home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
-
 
 # Body buttons
 eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
@@ -263,7 +258,6 @@ SB2 = ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, widt
 SB2.pack(expand=TRUE, anchor=E, padx=75)
 Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20)
 Debug.pack(expand=TRUE, anchor=E, padx=75)
-
 
 # Arm test page
 l20 = ttk.Label(arm_f, text="Ready to test", bootstyle=PRIMARY, font=(None, 24))
