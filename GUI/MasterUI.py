@@ -11,7 +11,7 @@ import threading
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Rear_switch_plate_test
+from Subcodes import Magnetometer, Lidar,  Rear_switch_plate_test
 mag_after_id = None
 lidar_after_id = None
 
@@ -39,10 +39,6 @@ SBUS_f = ttk.Frame(root)
 SBUS_f_INF = ttk.Frame(root)
 Eth_f = ttk.Frame(root)
 
-# video frame
-vid_f = ttk.Frame(Eth_f, width=640, height=480) # small video can change if needed but should be fine
-vid_f.pack(anchor=E, expand=TRUE, padx=50, pady=50)
-vid_f.pack_propagate(False)  # prevent frame from resizing to video size
 
 # labels mag
 l1 = ttk.Label(mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
@@ -132,38 +128,12 @@ def home():
     SBUS_f.pack_forget()
     SBUS_f_INF.pack_forget()
     Eth_f.pack_forget()
-    vid_f.pack_forget()
     main.pack(fill=BOTH, expand=TRUE)
     
 def Eth():
     body_f.pack_forget()
     Eth_f.pack(fill=BOTH, expand=TRUE)
-    vid_f.pack(anchor=E, expand=TRUE, padx=50, pady=50) # Ensure vid_f is visible
-
-    def update_vid():
-        # Inner function to run in a separate thread
-        def fetch_frame():
-            frame = Network_test.cam()
-            # Use root.after to update the UI from the main thread
-            root.after(0, lambda: process_frame(frame))
-
-        def process_frame(frame):
-            if frame:
-                frame = frame.resize((640, 480))  
-                imgtk = ImageTk.PhotoImage(frame)
-                l3.imgtk = imgtk  
-                l3.config(image=imgtk, text="")  
-            else:
-                l3.config(image="", text="Waiting for camera...")
-
-            # Schedule next update only if Eth frame is still visible
-            if Eth_f.winfo_viewable():
-                root.after(40, update_vid) # Shorter delay for smoother video may need to adjust if laggy
-
-        # Start the network-heavy task in the background in separate thread
-        threading.Thread(target=fetch_frame, daemon=True).start()
-
-    update_vid()
+   
 
 def lidar():
     global lidar_after_id
