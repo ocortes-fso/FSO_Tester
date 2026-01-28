@@ -13,18 +13,17 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # import of codes used in GUI
 from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test
 
-
 mag_after_id = None
 lidar_after_id = None
 
 root = ttk.Window(themename="cyborg", size=[1280, 720], title="FSO Tester") 
 style = ttk.Style()
-style.configure('primary.TButton', font=(None, 28 'bold'))
+style.configure('primary.TButton', font=(None, 28, 'bold'))
 style.configure('Outline.TButton', font=(None, 16, 'bold'))
-style.configure('primary.TLabel', font=(None, 28'bold'))
-style.configure('secondary.TButton', font=(None, 24 'bold'))
+style.configure('primary.TLabel', font=(None, 28, 'bold'))
+style.configure('secondary.TButton', font=(None, 24, 'bold'))
 style.configure('secondary.TLabel', font=(None, 24, 'bold'))
-style.configure('Header.TLabel', font=(None, 28 'bold'))
+style.configure('Header.TLabel', font=(None, 28, 'bold'))
 style.configure('Sub.TLabel', font=(None, 28))
 
 # Main window/home page
@@ -147,7 +146,6 @@ def arm():
     main.pack_forget()
     arm_f.pack(fill=BOTH, expand=TRUE)
     
-
 def body():
     main.pack_forget()
     body_f.pack(fill=BOTH, expand=TRUE)
@@ -201,7 +199,7 @@ def create_sliders(parent):
 def Eth():
     body_f.pack_forget()
     Eth_f.pack(fill=BOTH, expand=TRUE)
-    threading.Thread(target=Eth_test, daemon=True).start()  # run in background thread
+    threading.Thread(target=Eth_test, daemon=True).start()
 
 def Eth_test():
     l3.after(0, lambda: l3.config(text="Pinging air unit..."))
@@ -261,11 +259,17 @@ Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20)
 Debug.pack(expand=TRUE, anchor=E, padx=75)
 
 # Arm test page
-l20 = ttk.Label(arm_f, text="Ready to test", bootstyle=PRIMARY, font=(None, 24))
+arm_top_container = ttk.Frame(arm_f)
+arm_top_container.pack(fill=BOTH, expand=TRUE)
+
+l20 = ttk.Label(arm_top_container, text="Ready to test", bootstyle=PRIMARY, font=(None, 24))
 l20.pack(pady=20)
-l21 = ttk.Label(arm_f, text="", bootstyle=PRIMARY)
+l21 = ttk.Label(arm_top_container, text="", bootstyle=PRIMARY)
 l21.pack(expand=TRUE)
-ttk.Button(arm_f, text="Run Test", bootstyle=SECONDARY, width=15, command=arm_test).pack(side=BOTTOM, pady=25)
+
+# Run Test button pinned at the bottom
+run_button = ttk.Button(arm_f, text="Run Test", bootstyle=SECONDARY, width=15, command=arm_test)
+run_button.pack(side=BOTTOM, pady=25)
 
 # Start
 main.pack(fill=BOTH, expand=True)
