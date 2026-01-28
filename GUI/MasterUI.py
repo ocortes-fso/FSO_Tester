@@ -11,7 +11,8 @@ import threading
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar,  Rear_switch_plate_test
+from Subcodes import Magnetometer, Lidar, Rear_switch_plate_test
+
 mag_after_id = None
 lidar_after_id = None
 
@@ -39,7 +40,6 @@ SBUS_f = ttk.Frame(root)
 SBUS_f_INF = ttk.Frame(root)
 Eth_f = ttk.Frame(root)
 
-
 # labels mag
 l1 = ttk.Label(mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l1.pack(fill=BOTH, expand=TRUE)
@@ -48,6 +48,7 @@ l1.pack(fill=BOTH, expand=TRUE)
 l2 = ttk.Label(lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l2.pack(fill=BOTH, expand=TRUE)
 
+# body frame container
 body_left_container = ttk.Frame(body_f)
 body_left_container.pack(side=LEFT, fill=BOTH, expand=TRUE)
 
@@ -95,20 +96,19 @@ l19.pack(pady=(20, 5))
 l20 = ttk.Label(volt_container, text="A9:", bootstyle=SECONDARY, style='Sub.TLabel')
 l20.pack()
 
-#labels switch plate
+# labels switch plate
 l21 = ttk.Label(switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l21.pack(fill=BOTH, expand=TRUE)    
-
 
 # main UI functions
 def home():
     global mag_after_id, lidar_after_id
 
-    if mag_after_id is not None:            # kill the update loop
+    if mag_after_id is not None:
         root.after_cancel(mag_after_id)
         mag_after_id = None
 
-    if lidar_after_id is not None:          # kill the update loop
+    if lidar_after_id is not None:
         root.after_cancel(lidar_after_id)
         lidar_after_id = None
     
@@ -129,14 +129,13 @@ def home():
 def Eth():
     body_f.pack_forget()
     Eth_f.pack(fill=BOTH, expand=TRUE)
-   
 
 def lidar():
     global lidar_after_id
     main.pack_forget()
     lidar_f.pack(fill=BOTH, expand=TRUE)
     root.update()
-    if lidar_after_id is None:              # Start the loop if it is not duplicated
+    if lidar_after_id is None:
         update_lidar()
    
 def mag():
@@ -145,7 +144,7 @@ def mag():
     mag_f.pack(fill=BOTH, expand=TRUE)
     root.update()
     if mag_after_id is None:
-        update_mag()         # Start the magnetometer update loop if the loop is not duplicated
+        update_mag()
    
 def switch_plate():
     main.pack_forget()
@@ -227,8 +226,6 @@ def create_sliders(SBUS_f_INF):
     
     return sliders
 
-
-
 # Main window buttons
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
 b1.pack(expand=TRUE, pady=(75,0))
@@ -243,10 +240,8 @@ b5.pack(expand=TRUE)
 b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=volt)
 b6.pack(expand=TRUE) 
 
-
 home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
 home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
-
 
 # Body buttons
 eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
@@ -258,11 +253,9 @@ SB2.pack(expand=TRUE, anchor=E, padx=75)
 Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20)
 Debug.pack(expand=TRUE, anchor=E, padx=75)
 
-# Arm test buttons -
+# Arm test buttons
 test_b = ttk.Button(arm_f, text="Test", bootstyle=SECONDARY, width=10)
 test_b.pack(expand=TRUE, anchor=SE, padx=50, pady=75)
-
-
 
 # Initialize main loop for UI
 main.pack(fill=BOTH, expand=True)             
