@@ -80,12 +80,12 @@ def start():                                # Call when GUI frame opens (or Star
         lgpio.gpio_claim_output(_h, pin)
 
     lgpio.gpio_claim_input(_h, SWITCH_PIN, lgpio.SET_PULL_NONE)
-    
+
     _thread = threading.Thread(target=_run_loop, daemon=True)
     _thread.start()
 
 
-def stop():                                 # Call when GUI frame closes (or Stop button)
+def close():                                 # Call when GUI frame closes (or Stop button)
     global _h, _thread
 
     _stop_event.set()
