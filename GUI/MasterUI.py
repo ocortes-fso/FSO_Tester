@@ -145,7 +145,7 @@ def switch_plate():
 def arm():
     main.pack_forget()
     arm_f.pack(fill=BOTH, expand=TRUE)
-    
+
 def body():
     main.pack_forget()
     body_f.pack(fill=BOTH, expand=TRUE)
@@ -199,7 +199,7 @@ def create_sliders(parent):
 def Eth():
     body_f.pack_forget()
     Eth_f.pack(fill=BOTH, expand=TRUE)
-    threading.Thread(target=Eth_test, daemon=True).start()
+    threading.Thread(target=Eth_test, daemon=True).start()  # run in background thread
 
 def Eth_test():
     l3.after(0, lambda: l3.config(text="Pinging air unit..."))
@@ -264,12 +264,15 @@ arm_top_container.pack(fill=BOTH, expand=TRUE)
 
 l20 = ttk.Label(arm_top_container, text="Ready to test", bootstyle=PRIMARY, font=(None, 24))
 l20.pack(pady=20)
+
 l21 = ttk.Label(arm_top_container, text="", bootstyle=PRIMARY)
 l21.pack(expand=TRUE)
 
-# Run Test button pinned at the bottom
-run_button = ttk.Button(arm_f, text="Run Test", bootstyle=SECONDARY, width=15, command=arm_test)
-run_button.pack(side=BOTTOM, pady=25)
+# Button stays visible
+arm_button_frame = ttk.Frame(arm_f)
+arm_button_frame.pack(side=BOTTOM, fill=X, pady=25)
+run_button = ttk.Button(arm_button_frame, text="Run Test", bootstyle=SECONDARY, width=15, command=arm_test)
+run_button.pack()
 
 # Start
 main.pack(fill=BOTH, expand=True)
