@@ -169,14 +169,14 @@ def read_messages(max_lines: int = 200):  # Call from root.after loop. Returns a
 
 def close():                        # Call when leaving Debug page or going Home. Stops thread, closes port. Best-effort restore to 40.
     global _mav, _reader_t, _connected, _target_system
-    
+
     try:
         if _mav is not None and _target_system is not None:
             _set_param(MODE_OFF, timeout_s=2.0)
     except Exception:
         pass
 
-    _stop.set()
+    _stop.set()      
     _reader_t = None
     _connected = False
     _target_system = None
