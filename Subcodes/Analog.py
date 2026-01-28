@@ -2,7 +2,6 @@ import time
 import smbus2 
 
 # --- Configuration ---
-# Corrected to 0x45 (Hex) to match your binary 1000101 logic
 I2C_ADD = 0x45  
 bus = smbus2.SMBus(1)
 Voltage_ref = 3.3
@@ -21,10 +20,7 @@ CH_DSUB3B = [0xB5, 0xBD]
 CH_POWER  = 0xBE
 
 def read_adc_safe(channel, divider, label):
-    """
-    Attempts to read a channel. 
-    If disconnected/error, returns 0.0 and prints a warning.
-    """
+ 
     try:
         # Step 1: Tell ADC which channel to read next
         bus.write_byte(I2C_ADD, channel)
@@ -44,8 +40,6 @@ def read_adc_safe(channel, divider, label):
         # This triggers if the I2C bus doesn't see the device (wire unplugged)
         print(f"  [!] {label} Communication Error: Pin/Wire not detected.")
         return 0.0
-
-print("--- PCB Voltage Verification Start ---")
 
 # --- DSUB 1 ---
 v1 = read_adc_safe(CH_DSUB1[0], DIV_12V, "DSUB1-12V")
@@ -75,5 +69,3 @@ print(f"DSUB 3B Results: {v7}V, {v8}V -> {res4}")
 v9 = read_adc_safe(CH_POWER, DIV_50V, "POWER-50V")
 res5 = "PASS" if (49.5 <= v9 <= 50.5) else "FAIL"
 print(f"DSUB Power Result: {v9}V -> {res5}")
-
-print("--- Verification Complete ---")
