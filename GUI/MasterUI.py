@@ -48,10 +48,6 @@ l1.pack(fill=BOTH, expand=TRUE)
 l2 = ttk.Label(lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l2.pack(fill=BOTH, expand=TRUE)
 
-# labels ethernet
-l3 = ttk.Label(vid_f, text="Waitng for camera...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER) # centred to the video frame not parent window
-l3.pack(fill=BOTH, expand=TRUE)
-
 body_left_container = ttk.Frame(body_f)
 body_left_container.pack(side=LEFT, fill=BOTH, expand=TRUE)
 
