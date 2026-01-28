@@ -19,12 +19,12 @@ lidar_after_id = None
 
 root = ttk.Window(themename="cyborg", size=[1280, 720], title="FSO Tester") 
 style = ttk.Style()
-style.configure('primary.TButton', font=(None, 32, 'bold'))
+style.configure('primary.TButton', font=(None, 28 'bold'))
 style.configure('Outline.TButton', font=(None, 16, 'bold'))
-style.configure('primary.TLabel', font=(None, 32, 'bold'))
-style.configure('secondary.TButton', font=(None, 32, 'bold'))
-style.configure('secondary.TLabel', font=(None, 28, 'bold'))
-style.configure('Header.TLabel', font=(None, 32, 'bold'))
+style.configure('primary.TLabel', font=(None, 28'bold'))
+style.configure('secondary.TButton', font=(None, 24 'bold'))
+style.configure('secondary.TLabel', font=(None, 24, 'bold'))
+style.configure('Header.TLabel', font=(None, 28 'bold'))
 style.configure('Sub.TLabel', font=(None, 28))
 
 # Main window/home page
@@ -206,9 +206,9 @@ def Eth_test():
     l3.after(0, lambda: l3.config(text="Pinging air unit..."))
     result = Network_test.ping()
     if result:
-        l3.after(0, lambda: l3.config(text="PASS! Network Test Passed: H16Pro receiver is reachable."))
+        l3.after(0, lambda: l3.config(text="PASS! Network Test Passed"))
     else:
-        l3.after(0, lambda: l3.config(text="Network Test Failed: H16Pro receiver is not reachable."))
+        l3.after(0, lambda: l3.config(text="Network Test Failed"))
 
 def arm_test():
     matrix = Arm_loom_test.arm_loom()
@@ -264,7 +264,7 @@ l20 = ttk.Label(arm_f, text="Ready to test", bootstyle=PRIMARY, font=(None, 24))
 l20.pack(pady=20)
 l21 = ttk.Label(arm_f, text="", bootstyle=PRIMARY)
 l21.pack(expand=TRUE)
-ttk.Button(arm_f, text="Run Test", bootstyle=SECONDARY, width=15, command=arm_test).pack(side=BOTTOM, pady=50)
+ttk.Button(arm_f, text="Run Test", bootstyle=SECONDARY, width=15, command=arm_test).pack(side=BOTTOM, pady=25)
 
 # Start
 main.pack(fill=BOTH, expand=True)
