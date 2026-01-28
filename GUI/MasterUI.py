@@ -1,22 +1,21 @@
+from tkinter import BOTH, TRUE
+import cv2
 import ttkbootstrap as ttk 
 from ttkbootstrap.constants import *
 import sys
 import os
-import numpy as np
-from tkinter import BOTH, TRUE
-import time
+from PIL import Image, ImageTk
+import threading
 
 # must have this since not in same directory as subcodes
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test
-
-
+from Subcodes import Magnetometer, Lidar, Network_test, Rear_switch_plate_test
 mag_after_id = None
 lidar_after_id = None
 
-root = ttk.Window(themename="cyborg", size=[1280, 720], title="FSO Tester") 
+root = ttk.Window(themename="cyborg", size=[1280,720], title="FSO Tester") 
 style = ttk.Style()
 style.configure('primary.TButton', font=(None, 32, 'bold'))
 style.configure('Outline.TButton', font=(None, 16, 'bold'))
@@ -40,6 +39,11 @@ SBUS_f = ttk.Frame(root)
 SBUS_f_INF = ttk.Frame(root)
 Eth_f = ttk.Frame(root)
 
+# video frame
+vid_f = ttk.Frame(Eth_f, width=640, height=480) # small video can change if needed but should be fine
+vid_f.pack(anchor=E, expand=TRUE, padx=50, pady=50)
+vid_f.pack_propagate(False)  # prevent frame from resizing to video size
+
 # labels mag
 l1 = ttk.Label(mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l1.pack(fill=BOTH, expand=TRUE)
@@ -49,19 +53,22 @@ l2 = ttk.Label(lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, justify=
 l2.pack(fill=BOTH, expand=TRUE)
 
 # labels ethernet
-l3 = ttk.Label(Eth_f, text="Pinging air unit...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER) 
+l3 = ttk.Label(vid_f, text="Waitng for camera...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER) # centred to the video frame not parent window
 l3.pack(fill=BOTH, expand=TRUE)
 
 body_left_container = ttk.Frame(body_f)
 body_left_container.pack(side=LEFT, fill=BOTH, expand=TRUE)
 
-# labels body test
+# labels body test (Stacked vertically inside the container above)
 l4 = ttk.Label(body_left_container, text="SERIAL", bootstyle=SECONDARY)
 l4.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+
 l5 = ttk.Label(body_left_container, text="ANALOG PORT", bootstyle=SECONDARY)
 l5.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+
 l6 = ttk.Label(body_left_container, text="CAN", bootstyle=SECONDARY)
 l6.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+
 l7 = ttk.Label(body_left_container, text="PWM", bootstyle=SECONDARY)
 l7.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
@@ -96,11 +103,12 @@ l19.pack(pady=(20, 5))
 l20 = ttk.Label(volt_container, text="A9:", bootstyle=SECONDARY, style='Sub.TLabel')
 l20.pack()
 
-# labels switch plate
-l_sw = ttk.Label(switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
-l_sw.pack(fill=BOTH, expand=TRUE)
+#labels switch plate
+l21 = ttk.Label(switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
+l21.pack(fill=BOTH, expand=TRUE)    
 
-# --- FUNCTIONS ---
+
+# main UI functions
 def home():
     global mag_after_id, lidar_after_id
 
@@ -124,7 +132,38 @@ def home():
     SBUS_f.pack_forget()
     SBUS_f_INF.pack_forget()
     Eth_f.pack_forget()
+    vid_f.pack_forget()
     main.pack(fill=BOTH, expand=TRUE)
+    
+def Eth():
+    body_f.pack_forget()
+    Eth_f.pack(fill=BOTH, expand=TRUE)
+    vid_f.pack(anchor=E, expand=TRUE, padx=50, pady=50) # Ensure vid_f is visible
+
+    def update_vid():
+        # Inner function to run in a separate thread
+        def fetch_frame():
+            frame = Network_test.cam()
+            # Use root.after to update the UI from the main thread
+            root.after(0, lambda: process_frame(frame))
+
+        def process_frame(frame):
+            if frame:
+                frame = frame.resize((640, 480))  
+                imgtk = ImageTk.PhotoImage(frame)
+                l3.imgtk = imgtk  
+                l3.config(image=imgtk, text="")  
+            else:
+                l3.config(image="", text="Waiting for camera...")
+
+            # Schedule next update only if Eth frame is still visible
+            if Eth_f.winfo_viewable():
+                root.after(40, update_vid) # Shorter delay for smoother video may need to adjust if laggy
+
+        # Start the network-heavy task in the background in separate thread
+        threading.Thread(target=fetch_frame, daemon=True).start()
+
+    update_vid()
 
 def lidar():
     global lidar_after_id
@@ -134,14 +173,13 @@ def lidar():
     if lidar_after_id is None:              # Start the loop if it is not duplicated
         update_lidar()
    
-    
 def mag():
     global mag_after_id
     main.pack_forget()
     mag_f.pack(fill=BOTH, expand=TRUE)
     root.update()
     if mag_after_id is None:
-        update_mag()
+        update_mag()         # Start the magnetometer update loop if the loop is not duplicated
    
 def switch_plate():
     main.pack_forget()
@@ -153,7 +191,7 @@ def arm():
 
 def body():
     main.pack_forget()
-    body_f.pack(fill=BOTH, expand=TRUE)
+    body_f.pack(fill=BOTH, expand=TRUE)    
 
 def volt():
     main.pack_forget()
@@ -163,77 +201,67 @@ def SBUS_INF():
     body_f.pack_forget()
     create_sliders(SBUS_f_INF)
     SBUS_f_INF.pack(fill=BOTH, expand=TRUE)
+   
+def SBUS():
+    body_f.pack_forget()
+    SBUS_f.pack(fill=BOTH, expand=TRUE)
 
+# Magnetometer update function
 def update_mag():
     global mag_after_id
     if not mag_f.winfo_viewable():
         mag_after_id = None
         return
+
     val = Magnetometer.read_once()
     if val:
         l1.config(text=f"X: {val[0]} \nY: {val[1]} \nZ: {val[2]} \n|B|: {val[3]:.1f}")
     else:
         l1.config(text="Waiting for Magnetometer...")
-    mag_after_id = root.after(500, update_mag)
 
+    delay = 100 if val is not None else 500
+    mag_after_id = root.after(delay, update_mag)
+
+# Lidar update function
 def update_lidar():
     global lidar_after_id
     if not lidar_f.winfo_viewable():
         lidar_after_id = None
         return
+
     distance = Lidar.read_lidar_distance()
     if distance is not None:
         l2.config(text=f"Lidar Distance: {distance} m")
     else:
         l2.config(text="Waiting for Lidar")
-    lidar_after_id = root.after(500, update_lidar)
 
-def create_sliders(parent):
-    for widget in parent.winfo_children():
+    delay = 100 if distance is not None else 500
+    lidar_after_id = root.after(delay, update_lidar)
+
+# SBUS slider function
+def create_sliders(SBUS_f_INF):
+    for widget in SBUS_f_INF.winfo_children():
         widget.destroy()
-    parent.columnconfigure(0, weight=1)
-    parent.columnconfigure(3, weight=1)
+
+    SBUS_f_INF.columnconfigure(0, weight=1)
+    SBUS_f_INF.columnconfigure(3, weight=1)
+
+    sliders = []
     for i in range(8):
-        parent.rowconfigure(i, weight=1)
-        lbl = ttk.Label(parent, text=f"C{i+1}", bootstyle=PRIMARY)
-        lbl.grid(row=i, column=1, padx=(20, 10), sticky="e")
-        c = ttk.Scale(parent, from_=1000, to=2000, bootstyle=PRIMARY, length=800)
+        SBUS_f_INF.rowconfigure(i, weight=1)
+        row_pad = (100, 0) if i == 0 else 0
+
+        lbl = ttk.Label(SBUS_f_INF, text=f"C{i+1}", bootstyle=PRIMARY)
+        lbl.grid(row=i, column=1, padx=(20, 10), pady=row_pad, sticky="e")
+
+        c = ttk.Scale(SBUS_f_INF, from_=1000, to=2000, bootstyle=PRIMARY, length=800)
         c.set(1500)
-        c.grid(row=i, column=2, padx=10, sticky="w")
+        c.grid(row=i, column=2, padx=10, pady=row_pad, sticky="w")
+        sliders.append(c)
+    
+    return sliders
 
-def Eth():
-    body_f.pack_forget()
-    Eth_f.pack(fill=BOTH, expand=TRUE)
-    Eth_test()
 
-def Eth_test():
-    result = Network_test.ping()
-    if result:
-        l3.config(text="PASS! Network Test Passed: H16Pro receiver is reachable.")
-    else:
-        l3.config(text="Network Test Failed: H16Pro receiver is not reachable.")
-
-def arm_test():
-    matrix = Arm_loom_test.arm_loom()
-    pass_matrix = np.array([
-        [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-        [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
-        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-        [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
-        [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
-        [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-        [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
-        [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-        [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
-        [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
-    ])
-    l21.config(text=f"{matrix}")
-    if np.array_equal(matrix, pass_matrix):
-        l20.config(text="Pass!", bootstyle=SUCCESS)
-    else:
-        l20.config(text="Fail!", bootstyle=DANGER)
 
 # Main window buttons
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
@@ -264,14 +292,12 @@ SB2.pack(expand=TRUE, anchor=E, padx=75)
 Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20)
 Debug.pack(expand=TRUE, anchor=E, padx=75)
 
+# Arm test buttons -
+test_b = ttk.Button(arm_f, text="Test", bootstyle=SECONDARY, width=10)
+test_b.pack(expand=TRUE, anchor=SE, padx=50, pady=75)
 
-# Arm test page
-l20 = ttk.Label(arm_f, text="Ready to test", bootstyle=PRIMARY, font=(None, 24))
-l20.pack(pady=20)
-l21 = ttk.Label(arm_f, text="", bootstyle=PRIMARY)
-l21.pack(expand=TRUE)
-ttk.Button(arm_f, text="Run Test", bootstyle=SECONDARY, width=15, command=arm_test).pack(side=BOTTOM, pady=50)
 
-# Start
-main.pack(fill=BOTH, expand=True)
+
+# Initialize main loop for UI
+main.pack(fill=BOTH, expand=True)             
 root.mainloop()
