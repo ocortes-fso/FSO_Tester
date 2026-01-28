@@ -6,7 +6,6 @@ import numpy as np
 from tkinter import BOTH, TRUE
 import threading
 import time
-import tkinter as tk  # Needed for Text widget
 
 # must have this since not in same directory as subcodes
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -19,13 +18,13 @@ lidar_after_id = None
 
 root = ttk.Window(themename="cyborg", size=[1280, 720], title="FSO Tester") 
 style = ttk.Style()
-style.configure('primary.TButton', font=(None, 28, 'bold'))
-style.configure('Outline.TButton', font=(None, 16, 'bold'))
-style.configure('primary.TLabel', font=(None, 28, 'bold'))
-style.configure('secondary.TButton', font=(None, 24, 'bold'))
-style.configure('secondary.TLabel', font=(None, 24, 'bold'))
-style.configure('Header.TLabel', font=(None, 20,'bold'))
-style.configure('Sub.TLabel', font=(None, 16)
+style.configure('primary.TButton', font=(None, 24, 'bold'))
+style.configure('Outline.TButton', font=(None, 14, 'bold'))
+style.configure('primary.TLabel', font=(None, 24, 'bold'))
+style.configure('secondary.TButton', font=(None, 20, 'bold'))
+style.configure('secondary.TLabel', font=(None, 18, 'bold'))
+style.configure('Header.TLabel', font=(None, 20, 'bold'))
+style.configure('Sub.TLabel', font=(None, 16))
 
 # Main window/home page
 main = ttk.Frame(root) 
@@ -71,7 +70,7 @@ volt_container = ttk.Frame(volt_f)
 volt_container.pack(expand=TRUE)
 
 l8 = ttk.Label(volt_container, text="3. SERIAL", bootstyle=SECONDARY, style='Header.TLabel')
-l8.pack(pady=(20, 5))
+l8.pack(pady=(10, 3))
 l9 = ttk.Label(volt_container, text="A1:", bootstyle=SECONDARY, style='Sub.TLabel')
 l9.pack()
 l10 = ttk.Label(volt_container, text="A2:", bootstyle=SECONDARY, style='Sub.TLabel')
@@ -81,19 +80,19 @@ l11.pack()
 l12 = ttk.Label(volt_container, text="A4:", bootstyle=SECONDARY, style='Sub.TLabel')
 l12.pack()
 l13 = ttk.Label(volt_container, text="4. CAN/SBUS", bootstyle=SECONDARY, style='Header.TLabel')
-l13.pack(pady=(20, 5))
+l13.pack(pady=(10, 3))
 l14 = ttk.Label(volt_container, text="A5:", bootstyle=SECONDARY, style='Sub.TLabel')
 l14.pack()
 l15 = ttk.Label(volt_container, text="A6:", bootstyle=SECONDARY, style='Sub.TLabel')
 l15.pack()
 l16 = ttk.Label(volt_container, text="5. RC-OUT", bootstyle=SECONDARY, style='Header.TLabel')
-l16.pack(pady=(105))
+l16.pack(pady=(10, 3))
 l17 = ttk.Label(volt_container, text="A7:", bootstyle=SECONDARY, style='Sub.TLabel')
 l17.pack()
 l18 = ttk.Label(volt_container, text="A8:", bootstyle=SECONDARY, style='Sub.TLabel')
 l18.pack()
 l19 = ttk.Label(volt_container, text="6. PAYLOAD", bootstyle=SECONDARY, style='Header.TLabel')
-l19.pack(pady=(20, 5))
+l19.pack(pady=(10, 3))
 l22 = ttk.Label(volt_container, text="A9:", bootstyle=SECONDARY, style='Sub.TLabel')
 l22.pack()
 
@@ -200,7 +199,7 @@ def create_sliders(parent):
 def Eth():
     body_f.pack_forget()
     Eth_f.pack(fill=BOTH, expand=TRUE)
-    threading.Thread(target=Eth_test, daemon=True).start()
+    threading.Thread(target=Eth_test, daemon=True).start()  # run in background thread
 
 def Eth_test():
     l3.after(0, lambda: l3.config(text="Pinging air unit..."))
@@ -209,21 +208,6 @@ def Eth_test():
         l3.after(0, lambda: l3.config(text="PASS! Network Test Passed"))
     else:
         l3.after(0, lambda: l3.config(text="Network Test Failed"))
-
-# --- Arm Loom Test with persistent Run button ---
-arm_top_container = ttk.Frame(arm_f)
-arm_top_container.pack(fill=BOTH, expand=TRUE)
-
-l20 = ttk.Label(arm_top_container, text="Ready to test", bootstyle=PRIMARY, font=(None, 24))
-l20.pack(pady=20)
-
-matrix_display = tk.Text(arm_top_container, height=12, width=80)
-matrix_display.pack(expand=TRUE, padx=20, pady=10)
-
-arm_button_frame = ttk.Frame(arm_f)
-arm_button_frame.pack(side=BOTTOM, fill=X, pady=25)
-run_button = ttk.Button(arm_button_frame, text="Run Test", bootstyle=SECONDARY, width=15)
-run_button.pack()
 
 def arm_test():
     matrix = Arm_loom_test.arm_loom()
@@ -241,16 +225,9 @@ def arm_test():
         [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
         [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
     ])
-    
-    matrix_display.delete('1.0', tk.END)
-    matrix_display.insert(tk.END, f"{matrix}\n")
-    
-    if np.array_equal(matrix, pass_matrix):
-        l20.config(text="Pass!", bootstyle=SUCCESS)
-    else:
-        l20.config(text="Fail!", bootstyle=DANGER)
-
-run_button.config(command=arm_test)
+    l21.config(font=("Courier", 18), justify=CENTER, text=f"{matrix}")  # center and monospaced font
+    l20.config(text="Pass!" if np.array_equal(matrix, pass_matrix) else "Fail!",
+               bootstyle=SUCCESS if np.array_equal(matrix, pass_matrix) else DANGER)
 
 # Main window buttons
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
@@ -278,6 +255,13 @@ SB2 = ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, widt
 SB2.pack(expand=TRUE, anchor=E, padx=75)
 Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20)
 Debug.pack(expand=TRUE, anchor=E, padx=75)
+
+# Arm test page
+l20 = ttk.Label(arm_f, text="Ready to test", bootstyle=PRIMARY, font=(None, 24))
+l20.pack(pady=20)
+l21 = ttk.Label(arm_f, text="", bootstyle=PRIMARY)
+l21.pack(expand=TRUE)
+ttk.Button(arm_f, text="Run Test", bootstyle=SECONDARY, width=15, command=arm_test).pack(pady=25)  # always visible
 
 # Start
 main.pack(fill=BOTH, expand=True)
