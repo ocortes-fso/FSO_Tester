@@ -4,7 +4,7 @@ import subprocess
 import os
 
 H16P_IP = "192.168.144.10" 
-Num_pings = "10" 
+Num_pings = "5"
 RTSP = "rtsp://192.168.43.1:8554/fpv_stream"
 
 

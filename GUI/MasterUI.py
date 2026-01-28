@@ -146,6 +146,7 @@ def switch_plate():
 def arm():
     main.pack_forget()
     arm_f.pack(fill=BOTH, expand=TRUE)
+    
 
 def body():
     main.pack_forget()
