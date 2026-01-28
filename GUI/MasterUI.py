@@ -1,22 +1,19 @@
 from tkinter import BOTH, TRUE
-import cv2
 import ttkbootstrap as ttk 
 from ttkbootstrap.constants import *
 import sys
 import os
-from PIL import Image, ImageTk
-import threading
+
 
 # must have this since not in same directory as subcodes
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Rear_switch_plate_test
-
+from Subcodes import Magnetometer, Lidar, Network_test
 mag_after_id = None
 lidar_after_id = None
 
-root = ttk.Window(themename="cyborg", size=[1280,720], title="FSO Tester") 
+root = ttk.Window(themename="cyborg", size=[1920,1080], title="FSO Tester") 
 style = ttk.Style()
 style.configure('primary.TButton', font=(None, 32, 'bold'))
 style.configure('Outline.TButton', font=(None, 16, 'bold'))
@@ -48,7 +45,6 @@ l1.pack(fill=BOTH, expand=TRUE)
 l2 = ttk.Label(lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l2.pack(fill=BOTH, expand=TRUE)
 
-# body frame container
 body_left_container = ttk.Frame(body_f)
 body_left_container.pack(side=LEFT, fill=BOTH, expand=TRUE)
 
