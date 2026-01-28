@@ -78,7 +78,7 @@ l12 = ttk.Label(volt_container, text="A4:", bootstyle=SECONDARY, style='Sub.TLab
 l_sw = ttk.Label(switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l_sw.pack(fill=BOTH, expand=TRUE)    
 
-# --- FUNCTIONS ---
+# --- SCREENS ---
 
 def home():
     global mag_after_id, lidar_after_id
@@ -91,6 +91,7 @@ def home():
     
     Magnetometer.close()
     Lidar.close()
+    Rear_switch_plate_test.close()
 
     for f in [lidar_f, mag_f, switch_plate_f, arm_f, body_f, volt_f, SBUS_f, SBUS_f_INF, Eth_f]:
         f.pack_forget()
@@ -121,6 +122,8 @@ def mag():
 def switch_plate():
     main.pack_forget()
     switch_plate_f.pack(fill=BOTH, expand=TRUE)
+    Rear_switch_plate_test.start()
+    l_sw.config(text="Rear Switch Plate Test Running... \nToggle the Main Power Button to see LED behaviour")
    
 def arm():
     main.pack_forget()
@@ -138,6 +141,8 @@ def SBUS_INF():
     body_f.pack_forget()
     create_sliders(SBUS_f_INF)
     SBUS_f_INF.pack(fill=BOTH, expand=TRUE)
+
+##### Functions #####
 
 def update_mag():
     global mag_after_id
