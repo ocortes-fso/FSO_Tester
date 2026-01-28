@@ -3,12 +3,12 @@ import serial  #need pyserial module
 #config uart for SBUS and open serial port 
 
 SBUS = serial.Serial(
-    port="/dev/ttyAMA10",       #debug pi5 serial port - used for SBUS
-    baudrate=100000,        #need to check this is the aircraft sbus rate or is it 115200??
-    bytesize=serial.EIGHTBITS,
-    parity=serial.PARITY_EVEN,
-    stopbits=serial.STOPBITS_TWO,
-    timeout=0.02
+    port="/dev/ttyAMA10",       # debug pi5 serial port - used for SBUS
+    baudrate = 115200,          
+    bytesize = serial.EIGHTBITS,
+    parity = serial.PARITY_EVEN,
+    stopbits = serial.STOPBITS_TWO,
+    timeout = 0.02
 )
 
 
