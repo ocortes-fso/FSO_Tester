@@ -100,7 +100,8 @@ l22.pack()
 l_sw = ttk.Label(switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l_sw.pack(fill=BOTH, expand=TRUE)
 
-# --- FUNCTIONS ---
+# --- SCREENS ---
+
 def home():
     global mag_after_id, lidar_after_id
     if mag_after_id is not None:
@@ -111,10 +112,13 @@ def home():
         lidar_after_id = None
     Magnetometer.close()
     Lidar.close()
-    lidar_f.pack_forget()
-    mag_f.pack_forget()
-    switch_plate_f.pack_forget()
-    arm_f.pack_forget()
+    Rear_switch_plate_test.close()
+
+    for f in [lidar_f, mag_f, switch_plate_f, arm_f, body_f, volt_f, SBUS_f, SBUS_f_INF, Eth_f]:
+        f.pack_forget()
+    main.pack(fill=BOTH, expand=TRUE)
+    
+def Eth():
     body_f.pack_forget()
     volt_f.pack_forget()
     SBUS_f.pack_forget()
@@ -141,7 +145,8 @@ def mag():
 def switch_plate():
     main.pack_forget()
     switch_plate_f.pack(fill=BOTH, expand=TRUE)
-
+    Rear_switch_plate_test.start()
+   
 def arm():
     main.pack_forget()
     arm_f.pack(fill=BOTH, expand=TRUE)
@@ -158,6 +163,8 @@ def SBUS_INF():
     body_f.pack_forget()
     create_sliders(SBUS_f_INF)
     SBUS_f_INF.pack(fill=BOTH, expand=TRUE)
+
+##### Functions #####
 
 def update_mag():
     global mag_after_id
