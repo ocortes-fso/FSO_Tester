@@ -2,18 +2,18 @@
 # Use the UART GPIOS on the RASPI5.
 
 ##### CONFIG #####
-import time 
+import time
 from pymavlink import mavutil
 import threading
 from collections import deque
 
-PORT = "/dev/ttyAMA0"           # or /dev/serial0
-BAUD = 115200 
+PORT = "/dev/serial0"           # *** CHANGED: prefer stable alias over ttyAMA0
+BAUD = 115200
 
-NODE_ID = 125                   # CAN node ID
-PARAM_NAME = "AAA_OPTIONS"      # Parameter to change
-MODE_ON = "44"                  # Parameter value
-MODE_OFF = "40"            
+NODE_ID = 125
+PARAM_NAME = "AAA_OPTIONS"
+MODE_ON = "44"
+MODE_OFF = "40"
 
 ##### STATE #####
 _mav = None
@@ -23,7 +23,6 @@ _lines = deque(maxlen=500)
 
 _target_system = None
 _target_component = NODE_ID
-
 _connected = False
 
 ##### INTERNAL FUNCTIONS #####
@@ -42,7 +41,6 @@ def _reader_loop():
             if isinstance(txt, (bytes, bytearray)):
                 txt = txt.decode(errors="ignore")
             txt = txt.strip("\x00")
-
             _push(txt)
 
         except Exception as e:
@@ -77,10 +75,11 @@ def _ensure_connected() -> bool:
         close()
         return False
 
+# *** CHANGED: remove PARAM_EXT read/wait; use classic PARAM_VALUE
 def _wait_param_value(timeout_s: float = 2.0):
     t0 = time.time()
     while time.time() - t0 < timeout_s:
-        msg = _mav.recv_match(type="PARAM_EXT_VALUE", blocking=False)
+        msg = _mav.recv_match(type="PARAM_VALUE", blocking=False)   # *** CHANGED
         if not msg:
             time.sleep(0.02)
             continue
@@ -89,14 +88,12 @@ def _wait_param_value(timeout_s: float = 2.0):
         if name != PARAM_NAME:
             continue
 
-        val = msg.param_value
-        if isinstance(val, (bytes, bytearray)):
-            val = val.decode(errors="ignore").strip("\x00")
-        return str(val)
+        return msg.param_value  # *** CHANGED: classic params return numeric
     return None
 
-def _read_param() -> str | None:
-    _mav.mav.param_ext_request_read_send(
+# *** CHANGED: request classic param
+def _read_param():
+    _mav.mav.param_request_read_send(                               # *** CHANGED
         _target_system,
         _target_component,
         PARAM_NAME.encode("ascii"),
@@ -104,79 +101,68 @@ def _read_param() -> str | None:
     )
     return _wait_param_value(timeout_s=2.0)
 
-def _set_param(value_str: str, timeout_s: float = 5.0) -> bool:
-    _mav.mav.param_ext_set_send(
+# *** CHANGED: set classic param (no reliable ACK; verify by readback)
+def _set_param(value_str: str) -> bool:
+    try:
+        v = float(value_str)                                        # *** CHANGED
+    except ValueError:
+        v = 0.0
+
+    _mav.mav.param_set_send(                                         # *** CHANGED
         _target_system,
         _target_component,
         PARAM_NAME.encode("ascii"),
-        str(value_str).encode("ascii"),
+        v,
         mavutil.mavlink.MAV_PARAM_TYPE_REAL32
     )
-
-    t0 = time.time()
-    while time.time() - t0 < timeout_s:
-        msg = _mav.recv_match(type=["PARAM_EXT_ACK", "PARAM_EXT_VALUE"], blocking=True, timeout=1)
-        if not msg:
-            continue
-
-        if msg.get_type() == "PARAM_EXT_ACK":
-            name = msg.param_id.decode(errors="ignore").strip("\x00")
-            if name == PARAM_NAME:
-                return True
-
-        if msg.get_type() == "PARAM_EXT_VALUE":
-            name = msg.param_id.decode(errors="ignore").strip("\x00")
-            if name == PARAM_NAME:
-                val = msg.param_value
-                if isinstance(val, (bytes, bytearray)):
-                    val = val.decode(errors="ignore").strip("\x00")
-                if str(val).strip() == str(value_str).strip():
-                    return True
-
-    return False
+    return True                                                     # *** CHANGED
 
 ##### PUBLIC FUNCTIONS (API) #####
-def start() -> bool:                # Call when entering the Debug page. Connects and starts reader thread if needed.
+def start() -> bool:
     ok = _ensure_connected()
     if ok:
         cur = _read_param()
         _push(f"{PARAM_NAME} current: {cur}")
     return ok
 
-
-def set_mode_44() -> bool:          # Set AAA_OPTIONS=44 (enable debug view).
+# *** CHANGED: verify by reading back (since PARAM_SET may not ACK)
+def set_mode_44() -> bool:
     if not _ensure_connected():
         return False
-    ok = _set_param(MODE_ON)
+    _set_param(MODE_ON)
+    time.sleep(0.3)                                                 # *** CHANGED
+    cur = _read_param()                                             # *** CHANGED
+    ok = (cur is not None and float(cur) == float(MODE_ON))         # *** CHANGED
     _push(f"{PARAM_NAME} -> {MODE_ON} ({'OK' if ok else 'FAIL'})")
     return ok
 
-
-def set_mode_40() -> bool:          # Set AAA_OPTIONS=40 (restore normal).
+# *** CHANGED: verify by reading back
+def set_mode_40() -> bool:
     if not _ensure_connected():
         return False
-    ok = _set_param(MODE_OFF)
+    _set_param(MODE_OFF)
+    time.sleep(0.3)                                                 # *** CHANGED
+    cur = _read_param()                                             # *** CHANGED
+    ok = (cur is not None and float(cur) == float(MODE_OFF))        # *** CHANGED
     _push(f"{PARAM_NAME} -> {MODE_OFF} ({'OK' if ok else 'FAIL'})")
     return ok
 
-
-def read_messages(max_lines: int = 200):  # Call from root.after loop. Returns a list of new lines since last call.
+def read_messages(max_lines: int = 200):
     out = []
     while _lines and len(out) < max_lines:
         out.append(_lines.popleft())
     return out
 
-
-def close():                        # Call when leaving Debug page or going Home. Stops thread, closes port. Best-effort restore to 40.
+def close():
     global _mav, _reader_t, _connected, _target_system
 
     try:
         if _mav is not None and _target_system is not None:
-            _set_param(MODE_OFF, timeout_s=2.0)
+            _set_param(MODE_OFF)                                     # *** CHANGED: no timeout arg anymore
     except Exception:
         pass
 
-    _stop.set()      
+    _stop.set()
     _reader_t = None
     _connected = False
     _target_system = None
