@@ -5,21 +5,24 @@ PORT="/dev/ttyAMA0"; BAUD=115200
 NAME="AAA_OPTIONS"
 
 m = mavutil.mavlink_connection(PORT, baud=BAUD)
-m.wait_heartbeat(timeout=10)
-SYS = m.target_system
-print("FC sysid:", SYS)
 
-# 1) collect component IDs we can see
+hb = m.wait_heartbeat(timeout=10)
+if not hb:
+    raise RuntimeError("No heartbeat")
+SYS = hb.get_srcSystem()
+print("Heartbeat sysid:", SYS)
+
+# collect seen components
 comps=set()
 t0=time.time()
-while time.time()-t0 < 3:
-    hb = m.recv_match(type="HEARTBEAT", blocking=False)
-    if hb:
-        comps.add(hb.get_srcComponent())
+while time.time()-t0 < 2:
+    h = m.recv_match(type="HEARTBEAT", blocking=False)
+    if h:
+        comps.add(h.get_srcComponent())
     time.sleep(0.01)
-print("Seen components:", sorted(comps))
+comps = sorted(comps) or [hb.get_srcComponent()]
+print("Seen components:", comps)
 
-# 2) ask each component for AAA_OPTIONS, stop when one replies
 def read_from(comp):
     m.mav.param_request_read_send(SYS, comp, NAME.encode(), -1)
     t0=time.time()
@@ -30,6 +33,5 @@ def read_from(comp):
         time.sleep(0.02)
     return None
 
-for comp in sorted(comps):
-    val = read_from(comp)
-    print(f"comp {comp}: {val}")
+for comp in comps:
+    print("comp", comp, "->", read_from(comp))
