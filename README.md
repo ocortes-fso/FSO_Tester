@@ -7,7 +7,7 @@ Repository of all the codes used for the testing boxes.
     - "under all dtoverlay=mcp2515-can0"
     - "enable_uart=1"
 - Remove the following string from "/boot/firmware/cmdline.txt":
-    - "console=serial0,..."
+    - "console=serial0,115200 "
 - Enable I2C
 - Static IP has to be set on 144 gateway
 
@@ -18,7 +18,7 @@ Repository of all the codes used for the testing boxes.
 3. NumPy         
 4. Pyserial      
 5. smbus2        
-6. ttkbootstrap  
-7. OpenCv        
-8. can           
-9. Pillow      
+6. ttkbootstrap        
+7. python-can           
+8. Pillow
+9. DroneCAN  
