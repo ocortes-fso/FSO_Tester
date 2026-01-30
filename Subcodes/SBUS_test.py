@@ -7,6 +7,8 @@ BIT_TIME_US = 10
 SBUS_FRAME_LENGTH = 25
 SBUS_HEADER = 0x0F
 
+_sbus_read = None
+
 h = lgpio.gpiochip_open(SBUS_CHIP)
 lgpio.gpio_claim_input(h, SBUS_GPIO)
 
@@ -31,14 +33,21 @@ try:
     while True:
         # Just grab one byte at a time and see if it's the header
         byte = read_sbus_byte()
+        t0 = time.time()
         
-        if byte == SBUS_HEADER:
-            print("SBUS Connected **PASS**")
-            # After a PASS, wait a moment so we don't spam the screen
-            time.sleep(0.5)
+        while time.time() - t0 < 5:  # Wait up to 5s for a valid header
+            if byte == SBUS_HEADER:
+                _sbus_read = True
+
+            else:
+                # If we see other data, just keep scanning silently
+                pass
+            
+        if _sbus_read == True:
+            print("Active SBUS stream detected!")
+            break
         else:
-            # If we see other data, just keep scanning silently
-            pass
+            print("No SBUS stream detected, retrying...")
             
 except KeyboardInterrupt:
     pass
