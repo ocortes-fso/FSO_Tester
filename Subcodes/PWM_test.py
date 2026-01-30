@@ -69,8 +69,14 @@ for current_PWM in range(len(Channels)):
                 break
             time.sleep(0.0002)
         row.append(High if level else Low)
-    final_values.append(row[current_PWM])  # store only the active channel reading
+    final_values.append(row[current_PWM])
 
 print(final_values)
+
+# Pass/fail check
+if final_values == [High]*5:
+    print("PWM Test **PASS**")
+else:
+    print("PWM Test **FAIL**")
 
 lgpio.gpiochip_close(h)
