@@ -1,4 +1,4 @@
-import RPi.GPIO as GPIO
+import lgpio
 import time
 from pymavlink import mavutil
 
@@ -66,29 +66,34 @@ Channels = [9,10,11,12,13] #actual RC servo channels
 Pass_status = [1,1,1,1,1] #create pass status list array - numpy might be better to use here 
 output_matrix = [0,0,0,0,0]
 
+# lgpio handle initialization
+h = lgpio.gpiochip_open(4)
 
 #read PWM function/(s) 
 
 pwm_data = {}
 
-def pwm_interrupt_handler(channel):
+def pwm_interrupt_handler(chip, gpio, level, tick):
     current_time = time.time()
-    if GPIO.input(channel):
+    if level == 1:
         # Signal went HIGH - start the stopwatch
-        pwm_data[channel]['start'] = current_time
-    else:
+        pwm_data[gpio]['start'] = current_time
+    elif level == 0:
         # Signal went LOW - stop the stopwatch and calculate width
-        if pwm_data[channel]['start'] > 0:
-            duration = (current_time - pwm_data[channel]['start']) * 1000000
-            pwm_data[channel]['width'] = int(duration)
+        if pwm_data[gpio]['start'] > 0:
+            duration = (current_time - pwm_data[gpio]['start']) * 1000000
+            pwm_data[gpio]['width'] = int(duration)
 
 def setup_pwm_reader(pins):
-    GPIO.setmode(GPIO.BCM)
+    # GPIO.setmode(GPIO.BCM) -> Not needed in lgpio, chip handle handles it
     for pin in pins:
         pwm_data[pin] = {'start': 0, 'width': 0}
-        GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        # GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        lgpio.gpio_claim_input(h, pin, lgpio.SET_PULL_DOWN)
         # Monitor BOTH rising and falling edges
-        GPIO.add_event_detect(pin, GPIO.BOTH, callback=pwm_interrupt_handler)
+        # GPIO.add_event_detect(pin, GPIO.BOTH, callback=pwm_interrupt_handler)
+        lgpio.gpio_claim_alert(h, pin, lgpio.BOTH_EDGES)
+        lgpio.callback(h, pin, lgpio.BOTH_EDGES, pwm_interrupt_handler)
 
 def read_pwm_values(pin):
     return pwm_data[pin]['width']
@@ -117,6 +122,10 @@ for current_PWM in range(len(Channels)):
     for i in range(len(Channels)):
         PWM_Val = High if i == current_PWM else Low
         set_servo_pwm(Channels[i], PWM_Val)
+        
+        # Give Mavlink time to process and the PWM signal to stabilize
+        time.sleep(0.1)
+        
         PWM_output = read_pwm_values(PWMs[i])
         
         #check PWM output is within range +/- tolerance and output to array (1 is pass, 0 is fail)
@@ -132,8 +141,9 @@ if output_matrix == Pass_status:
 else:
     print("PWM Test **FAIL**")  
     
-GPIO.cleanup()     
+# GPIO.cleanup()
+lgpio.gpiochip_close(h) 
 
 
 
-#set back to default params can be done in main UI script for full body test.. 
+#set back to default params can be done in main UI script for full body test..
