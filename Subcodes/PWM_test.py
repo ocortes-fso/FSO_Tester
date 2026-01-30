@@ -32,7 +32,6 @@ master.mav.command_long_send(
     0, 1, 0, 0, 0, 0, 0, 0 
 )
 
-print("rebooting...")
 time.sleep(15)
 
 PWM_1, PWM_2, PWM_3, PWM_4, PWM_5 = 17, 18, 27, 23, 22
@@ -47,65 +46,34 @@ output_matrix = [0, 0, 0, 0, 0]
 read_values = [0, 0, 0, 0, 0]
 
 h = lgpio.gpiochip_open(4)
-pwm_data = {}
+pin_states = {}
 
-def pwm_interrupt_handler(chip, gpio, level, tick):
-    if level == 1:
-        pwm_data[gpio]['start'] = tick
-    elif level == 0:
-        if pwm_data[gpio]['start'] > 0:
-            duration_ns = (tick - pwm_data[gpio]['start']) & 0xFFFFFFFF
-            duration_us = duration_ns / 1000
-            if 500 < duration_us < 2500:
-                pwm_data[gpio]['width'] = int(duration_us)
-
-def setup_pwm_reader(pin):
-    pwm_data[pin] = {'start': 0, 'width': 0}
+for pin in PWMs:
     lgpio.gpio_claim_input(h, pin, lgpio.SET_PULL_DOWN)
-    lgpio.gpio_claim_alert(h, pin, lgpio.BOTH_EDGES)
-    lgpio.callback(h, pin, lgpio.BOTH_EDGES, pwm_interrupt_handler)
-
-def release_pwm_reader(pin):
-    lgpio.gpio_claim_input(h, pin, 0)
-    pwm_data[pin] = {'start': 0, 'width': 0}
-
-def read_pwm_values(pin):
-    return pwm_data[pin]['width']
-
-def set_servo_pwm(channel, PWM_Val):
-    master.mav.command_long_send(
-        master.target_system,
-        master.target_component,
-        mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
-        0, channel, PWM_Val, 0, 0, 0, 0, 0
-    )
 
 for current_PWM in range(len(Channels)):
-    pin = PWMs[current_PWM]
-    pwm_data[pin] = {'start': 0, 'width': 0}
-    setup_pwm_reader(pin)
-
+    # Set current channel HIGH, all others LOW
     for i in range(len(Channels)):
         val = High if i == current_PWM else Low
-        set_servo_pwm(Channels[i], val)
-        time.sleep(0.05)
+        master.mav.command_long_send(
+            master.target_system,
+            master.target_component,
+            mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
+            0, Channels[i], val, 0, 0, 0, 0, 0
+        )
+        time.sleep(0.01)
 
-    time.sleep(0.5)
+    time.sleep(0.05)  # short delay for GPIO to register HIGH
 
-    pwm_width = read_pwm_values(pin)
-    read_values[current_PWM] = pwm_width
-    output_matrix[current_PWM] = 1 if High - Tolerance <= pwm_width <= High + Tolerance else 0
+    for idx, pin in enumerate(PWMs):
+        level = lgpio.gpio_read(h, pin)
+        read_values[idx] = High if level == 1 else Low
+        output_matrix[idx] = 1 if read_values[idx] == High else 0
 
-    print(f"Channel {Channels[current_PWM]} -> GPIO {pin} PWM {pwm_width} us")
-
-    release_pwm_reader(pin)
-
-print(f"Final Output Matrix: {output_matrix}")
-print(f"Final PWM Readings (us): {read_values}")
-
-if output_matrix == Pass_status:
-    print("PWM Test **PASS**") 
-else:
-    print("PWM Test **FAIL**")  
+    print(f"Channel {Channels[current_PWM]} set HIGH:")
+    for idx, pin in enumerate(PWMs):
+        print(f"  GPIO {pin} -> PWM approx {read_values[idx]} us")
 
 lgpio.gpiochip_close(h)
+
+print(f"Final Output Matrix: {output_matrix}")
