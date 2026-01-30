@@ -58,12 +58,15 @@ def pwm_interrupt_handler(chip, gpio, level, tick):
             if 500 < duration_us < 2500:
                 pwm_data[gpio]['width'] = int(duration_us)
 
-def setup_pwm_reader(pins):
-    for pin in pins:
-        pwm_data[pin] = {'start': 0, 'width': 0}
-        lgpio.gpio_claim_input(h, pin, lgpio.SET_PULL_DOWN)
-        lgpio.gpio_claim_alert(h, pin, lgpio.BOTH_EDGES)
-        lgpio.callback(h, pin, lgpio.BOTH_EDGES, pwm_interrupt_handler)
+def setup_pwm_reader(pin):
+    pwm_data[pin] = {'start': 0, 'width': 0}
+    lgpio.gpio_claim_input(h, pin, lgpio.SET_PULL_DOWN)
+    lgpio.gpio_claim_alert(h, pin, lgpio.BOTH_EDGES)
+    lgpio.callback(h, pin, lgpio.BOTH_EDGES, pwm_interrupt_handler)
+
+def release_pwm_reader(pin):
+    lgpio.gpio_claim_input(h, pin, 0)
+    pwm_data[pin] = {'start': 0, 'width': 0}
 
 def read_pwm_values(pin):
     return pwm_data[pin]['width']
@@ -76,29 +79,30 @@ def set_servo_pwm(channel, PWM_Val):
         0, channel, PWM_Val, 0, 0, 0, 0, 0
     )
 
-setup_pwm_reader(PWMs)
-
 for current_PWM in range(len(Channels)):
-    for pin in PWMs:
-        pwm_data[pin]['width'] = 0
-        pwm_data[pin]['start'] = 0
+    pin = PWMs[current_PWM]
 
+    # reset pwm_data
+    pwm_data[pin] = {'start': 0, 'width': 0}
+
+    # setup only this pin
+    setup_pwm_reader(pin)
+
+    # set current channel HIGH, all others LOW
     for i in range(len(Channels)):
-        target_val = High if i == current_PWM else Low
-        set_servo_pwm(Channels[i], target_val)
+        val = High if i == current_PWM else Low
+        set_servo_pwm(Channels[i], val)
         time.sleep(0.05)
 
+    # wait for multiple PWM cycles
     time.sleep(0.5)
 
-    for idx, pin in enumerate(PWMs):
-        _ = read_pwm_values(pin)
+    # read only this pin
+    read_values[current_PWM] = read_pwm_values(pin)
+    output_matrix[current_PWM] = 1 if High - Tolerance <= read_values[current_PWM] <= High + Tolerance else 0
 
-    read_values[current_PWM] = read_pwm_values(PWMs[current_PWM])
-
-    if High - Tolerance <= read_values[current_PWM] <= High + Tolerance:
-        output_matrix[current_PWM] = 1
-    else:
-        output_matrix[current_PWM] = 0
+    # release pin
+    release_pwm_reader(pin)
 
 print(f"Final Output Matrix: {output_matrix}")
 print(f"Final PWM Readings (us): {read_values}")
