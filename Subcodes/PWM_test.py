@@ -90,7 +90,6 @@ def set_servo_pwm(channel, PWM_Val):
 
 # main logic
 setup_pwm_reader(PWMs)
-print("Starting PWM verification...")
 
 for current_PWM in range(len(Channels)):
     # Toggle logic: Current channel to HIGH, others to LOW
@@ -99,7 +98,7 @@ for current_PWM in range(len(Channels)):
         set_servo_pwm(Channels[i], target_val)
     
     # Wait for PWM signal to update and stabilize
-    time.sleep(0.5)
+    time.sleep(1)
     
     # Read the specific pin being tested
     PWM_output = read_pwm_values(PWMs[current_PWM])
@@ -111,7 +110,6 @@ for current_PWM in range(len(Channels)):
         output_matrix[current_PWM] = 0
 
 # final outputs
-print("-" * 30)
 print(f"Final Output Matrix: {output_matrix}")
 print(f"Final PWM Readings (us): {read_values}")
 
