@@ -89,35 +89,4 @@ def set_servo_pwm(channel, PWM_Val):
     )
 
 # main logic
-setup_pwm_reader(PWMs)
-
-for current_PWM in range(len(Channels)):
-    # Toggle logic: Current channel to HIGH, others to LOW
-    for i in range(len(Channels)):
-        target_val = High if i == current_PWM else Low
-        set_servo_pwm(Channels[i], target_val)
-    
-    # Wait for PWM signal to update and stabilize
-    time.sleep(0.5)
-    
-    # Read the specific pin being tested
-    PWM_output = read_pwm_values(PWMs[current_PWM])
-    read_values[current_PWM] = PWM_output 
-    
-    if High - Tolerance <= PWM_output <= High + Tolerance:
-        output_matrix[current_PWM] = 1
-    else:
-        output_matrix[current_PWM] = 0
-
-# final outputs
-print(f"Final Output Matrix: {output_matrix}")
-print(f"Final PWM Readings (us): {read_values}")
-
-
-
-if output_matrix == Pass_status:
-    print("PWM Test **PASS**") 
-else:
-    print("PWM Test **FAIL**")  
-    
-lgpio.gpiochip_close(h)
+setup_pw_
