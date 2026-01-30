@@ -31,8 +31,8 @@ master.mav.command_long_send(
     mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
     0, 1, 0, 0, 0, 0, 0, 0
 )
-
-time.sleep(15)
+print("rebooting..")
+time.sleep(10)
 
 PWM_1, PWM_2, PWM_3, PWM_4, PWM_5 = 17, 18, 27, 23, 22
 PWMs = [PWM_1, PWM_2, PWM_3, PWM_4, PWM_5]
