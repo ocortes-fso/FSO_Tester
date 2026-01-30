@@ -7,8 +7,6 @@ BIT_TIME_US = 10
 SBUS_FRAME_LENGTH = 25
 SBUS_HEADER = 0x0F
 
-_sbus_read = None
-
 h = lgpio.gpiochip_open(SBUS_CHIP)
 lgpio.gpio_claim_input(h, SBUS_GPIO)
 
@@ -31,6 +29,7 @@ def read_sbus_byte():
 try:
     print("Scanning active SBUS stream...")
     while True:
+        _sbus_read = False
         # Just grab one byte at a time and see if it's the header
         byte = read_sbus_byte()
         t0 = time.time()
