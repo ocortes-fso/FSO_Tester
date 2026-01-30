@@ -32,6 +32,7 @@ master.mav.command_long_send(
     0, 1, 0, 0, 0, 0, 0, 0 
 )
 
+print("rebooting...")
 time.sleep(15)
 
 PWM_1, PWM_2, PWM_3, PWM_4, PWM_5 = 17, 18, 27, 23, 22
@@ -81,27 +82,22 @@ def set_servo_pwm(channel, PWM_Val):
 
 for current_PWM in range(len(Channels)):
     pin = PWMs[current_PWM]
-
-    # reset pwm_data
     pwm_data[pin] = {'start': 0, 'width': 0}
-
-    # setup only this pin
     setup_pwm_reader(pin)
 
-    # set current channel HIGH, all others LOW
     for i in range(len(Channels)):
         val = High if i == current_PWM else Low
         set_servo_pwm(Channels[i], val)
         time.sleep(0.05)
 
-    # wait for multiple PWM cycles
     time.sleep(0.5)
 
-    # read only this pin
-    read_values[current_PWM] = read_pwm_values(pin)
-    output_matrix[current_PWM] = 1 if High - Tolerance <= read_values[current_PWM] <= High + Tolerance else 0
+    pwm_width = read_pwm_values(pin)
+    read_values[current_PWM] = pwm_width
+    output_matrix[current_PWM] = 1 if High - Tolerance <= pwm_width <= High + Tolerance else 0
 
-    # release pin
+    print(f"Channel {Channels[current_PWM]} -> GPIO {pin} PWM {pwm_width} us")
+
     release_pwm_reader(pin)
 
 print(f"Final Output Matrix: {output_matrix}")
@@ -111,5 +107,5 @@ if output_matrix == Pass_status:
     print("PWM Test **PASS**") 
 else:
     print("PWM Test **FAIL**")  
-    
+
 lgpio.gpiochip_close(h)
