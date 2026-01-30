@@ -1,36 +1,49 @@
-##We will need to add the kernel level driver to the boot config file, there is a standard overlay driver for the can bus chip we are using mcp2515
-
-import can
-import time
 import os
+import asyncio
+import pyuavcan
+from pyuavcan.transport.can.media.socketcan import SocketCANMedia
 
-#send bash cmds to setup can interface
+async def main():
+    iface = "can0"
+    bitrate = 500_000
 
-os.system("sudo ip link set can0 down")
-os.system("sudo ip link set can0 up type can bitrate 500000 loopback on")  #is this bitratte fine? does this need to match the aircraft can rate... #loopback on for testing own node
+    # Setup CAN interface
+    os.system(f"sudo ip link set {iface} down")
+    os.system(f"sudo ip link set {iface} up type can bitrate {bitrate}")
 
-time.sleep(0.5)
+    # Create transport
+    media = SocketCANMedia(iface)
+    transport = pyuavcan.transport.can.CANTransport(media)
 
-#main logic
+    # Create a simple node
+    node_info = pyuavcan.node.NodeInfo(name="org.example.testnode")
+    node = pyuavcan.application.Node(transport, node_info)
+    node.node_id = 42  # example Node ID
+    await node.start()
 
-canbus = can.interface.Bus(channel='can0', bustype='socketcan')
+    # Send a simple test message
+    from uavcan.node import Heartbeat_1_0  # can use any message type for test
+    test_msg = Heartbeat_1_0(
+        uptime=123456,
+        health=Heartbeat_1_0.HEALTH_OK,
+        mode=Heartbeat_1_0.MODE_OPERATIONAL
+    )
+    await node.broadcast(test_msg)
+    print("Sent DroneCAN test message")
 
+    # Wait briefly to see if we receive any messages on the bus
+    received = False
+    try:
+        async for transfer in node.transport.listen(Heartbeat_1_0):
+            print("DroneCAN check PASS: Received message!")
+            received = True
+            break
+    except asyncio.TimeoutError:
+        pass
 
-#send can message to bus
-msg_tx = can.Message(arbitration_id=0x123, data=[0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88], is_extended_id=False)
-print("sending CAN mesasage...")
-canbus.send(msg_tx)
+    if not received:
+        print("DroneCAN check FAIL: No message received")
 
-time.sleep(0.5)
+    await node.close()
 
-
-#recieve can message on same bus
-print("receiving CAN message...")
-msg_rx = canbus.recv(timeout=5)  
-
-if msg_rx: 
-    print ("CAN check PASS!!:")
-else :
-    print("CAN check FAIL: No message received")
-
-
+asyncio.run(main())
