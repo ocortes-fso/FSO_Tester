@@ -8,26 +8,37 @@ SBUS_FRAME_LENGTH = 25
 SBUS_HEADER = 0x0F
 
 chip_handle = lgGpiochipOpen(SBUS_CHIP)
-alert_handle = lgGpioClaimAlert(chip_handle, 0, LG_BOTH_EDGES, SBUS_GPIO, -1)
+lgGpioClaimInput(chip_handle, 0, SBUS_GPIO)
 
 def read_sbus_byte():
-    while lgGpioRead(chip_handle, SBUS_GPIO) == 0:
-        pass
+    start_wait = time.time()
+    while lgGpioRead(chip_handle, SBUS_GPIO) == 1:
+        if time.time() - start_wait > 0.1: return None
+    
     time.sleep(1.5 * BIT_TIME_US / 1_000_000)
     value = 0
     for i in range(8):
         bit = lgGpioRead(chip_handle, SBUS_GPIO)
         value |= (bit << i)
         time.sleep(BIT_TIME_US / 1_000_000)
-    time.sleep(3 * BIT_TIME_US / 1_000_000)
+    
     return value ^ 0xFF
 
-def read_sbus_frame():
-    return bytes(read_sbus_byte() for _ in range(SBUS_FRAME_LENGTH))
+def sync_sbus():
+    # Wait for a 4ms gap of "High" (idle) to ensure we are at the start of a frame
+    idle_start = time.time()
+    while time.time() - idle_start < 0.004:
+        if lgGpioRead(chip_handle, SBUS_GPIO) == 0:
+            idle_start = time.time()
 
 try:
     while True:
-        frame = read_sbus_frame()
+        sync_sbus() # Ensures we start at the Header
+        frame = []
+        for _ in range(SBUS_FRAME_LENGTH):
+            b = read_sbus_byte()
+            if b is not None: frame.append(b)
+        
         if len(frame) == SBUS_FRAME_LENGTH and frame[0] == SBUS_HEADER:
             print("SBUS Connected **PASS**")
         else:
