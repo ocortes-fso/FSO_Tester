@@ -1,36 +1,30 @@
-##We will need to add the kernel level driver to the boot config file, there is a standard overlay driver for the can bus chip we are using mcp2515
-
 import can
 import time
 import os
 
-#send bash cmds to setup can interface
+CAN_INTERFACE = 'can0'  # Interface name (adjust if needed)
+BITRATE = 500000  # Ensure this matches the flight controller's CAN bitrate
+TIMEOUT = 5  # Time in seconds to wait for a response
 
-os.system("sudo ip link set can0 down")
-os.system("sudo ip link set can0 up type can bitrate 500000 loopback on")  #is this bitratte fine? does this need to match the aircraft can rate... #loopback on for testing own node
-
+#Set up the CAN interface (ensure CAN bus is running)
+os.system(f"sudo ip link set {CAN_INTERFACE} down")  # Bring CAN interface down
+os.system(f"sudo ip link set {CAN_INTERFACE} up type can bitrate {BITRATE}")  # Set bitrate and bring CAN interface up
 time.sleep(0.5)
 
-#main logic
+#Initialize CAN bus interface (debugging can remove this when all wokring)
+try:
+    canbus = can.interface.Bus(channel=CAN_INTERFACE, bustype='socketcan')
+    print(f"CAN interface {CAN_INTERFACE} set up with bitrate {BITRATE}")
+except can.CanError:
+    print(f"Error: CAN interface {CAN_INTERFACE} is not working properly.")
+    exit(1)
 
-canbus = can.interface.Bus(channel='can0', bustype='socketcan')
+#Listen for CAN messages
+print(f"Listening for CAN messages on {CAN_INTERFACE}...")
+msg_rx = canbus.recv(timeout=TIMEOUT)  # Wait up to 5 seconds for a message
 
-
-#send can message to bus
-msg_tx = can.Message(arbitration_id=0x123, data=[0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88], is_extended_id=False)
-print("sending CAN mesasage...")
-canbus.send(msg_tx)
-
-time.sleep(0.5)
-
-
-#recieve can message on same bus
-print("receiving CAN message...")
-msg_rx = canbus.recv(timeout=5)  
-
-if msg_rx: 
-    print ("CAN check PASS!!:")
-else :
+#Check if any messages were received and print
+if msg_rx:
+    print(f"CAN check PASS!! Received message: {msg_rx}")
+else:
     print("CAN check FAIL: No message received")
-
-
