@@ -31,10 +31,10 @@ try:
     while True:
         _sbus_read = False
         # Just grab one byte at a time and see if it's the header
-        byte = read_sbus_byte()
         t0 = time.time()
         
         while time.time() - t0 < 5:  # Wait up to 5s for a valid header
+            byte = read_sbus_byte()
             if byte == SBUS_HEADER:
                 _sbus_read = True
 
