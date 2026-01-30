@@ -2,14 +2,13 @@ import lgpio
 import time
 from pymavlink import mavutil
 
-#need serial connection to write params (servo functions)
-
-serial_port = "/dev/ttyAMA10" #GPIO pin serial port may need to config boot config file to enable
-baud_rate = 115200 #again confirm this is correct serial 5 baud rate
+# serial connection setup
+serial_port = "/dev/ttyAMA10" 
+baud_rate = 115200 
 master = mavutil.mavlink_connection(serial_port, baud_rate)
 master.wait_heartbeat()
 
-#servo PWM channel paramters -- set to disabled
+# servo PWM channel parameters -- set to disabled
 Param_set = {
     "SERVO9_FUNCTION": 0,
     "SERVO10_FUNCTION": 0,
@@ -18,8 +17,7 @@ Param_set = {
     "SERVO13_FUNCTION": 0,
 }
 
-#send parms to autopilot -- looping through each one with a small delay..
-
+# send parms to autopilot
 for name, value in Param_set.items():
     master.mav.param_set_send(
         master.target_system,
@@ -30,48 +28,32 @@ for name, value in Param_set.items():
     )
     time.sleep(0.02)
 
-#send reboot command
-print("Rebooting")
-
+# send reboot command
+print("Rebooting autopilot...")
 master.mav.command_long_send(
     master.target_system,
     master.target_component,
     mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
-    0, # Confirmation
-    1, # param1: 1 = Reboot
-    0, 
-    0, 
-    0, 
-    0, 
-    0,
-    0 
+    0, 1, 0, 0, 0, 0, 0, 0 
 )
 
-time.sleep(15) 
+time.sleep(15) # Wait for reboot and PWM rail initialization
 
-#GPIO pin setup
-
-PWM_1 = 17
-PWM_2 = 18
-PWM_3 = 27
-PWM_4 = 23
-PWM_5 = 22
+# GPIO pin setup
+PWM_1, PWM_2, PWM_3, PWM_4, PWM_5 = 17, 18, 27, 23, 22
 PWMs = [PWM_1, PWM_2, PWM_3, PWM_4, PWM_5]
 
-#Define conditions
+# Define conditions
 High = 1900
 Low = 1100
 Tolerance = 200
-Channels = [9,10,11,12,13] #actual RC servo channels 
-Pass_status = [1,1,1,1,1] 
-output_matrix = [0,0,0,0,0]
-read_values = [0,0,0,0,0] # Added to store the raw PWM readings
+Channels = [9, 10, 11, 12, 13] 
+Pass_status = [1, 1, 1, 1, 1] 
+output_matrix = [0, 0, 0, 0, 0]
+read_values = [0, 0, 0, 0, 0]
 
 # lgpio handle initialization
 h = lgpio.gpiochip_open(4)
-
-#read PWM function/(s) 
-
 pwm_data = {}
 
 def pwm_interrupt_handler(chip, gpio, level, tick):
@@ -79,9 +61,14 @@ def pwm_interrupt_handler(chip, gpio, level, tick):
         pwm_data[gpio]['start'] = tick
     elif level == 0:
         if pwm_data[gpio]['start'] > 0:
-            duration = tick - pwm_data[gpio]['start']
-            if duration < 0: duration += 4294967296
-            pwm_data[gpio]['width'] = int(duration)
+            # Calculate nanoseconds and mask for 32-bit rollover
+            duration_ns = (tick - pwm_data[gpio]['start']) & 0xFFFFFFFF
+            # Convert Nanoseconds to Microseconds for Pi 5
+            duration_us = duration_ns / 1000
+            
+            # Sanity filter for valid PWM pulse range
+            if 500 < duration_us < 2500:
+                pwm_data[gpio]['width'] = int(duration_us)
 
 def setup_pwm_reader(pins):
     for pin in pins:
@@ -93,42 +80,43 @@ def setup_pwm_reader(pins):
 def read_pwm_values(pin):
     return pwm_data[pin]['width']
 
-#Function to set PWM/servo outputs on autopilot via MAVLink
 def set_servo_pwm(channel, PWM_Val):
     master.mav.command_long_send(
         master.target_system,
         master.target_component,
         mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
-        0,                 
-        channel,            
-        PWM_Val,            
-        0, 0, 0, 0, 0       
+        0, channel, PWM_Val, 0, 0, 0, 0, 0
     )
 
-#main logic
-
+# main logic
 setup_pwm_reader(PWMs)
+print("Starting PWM verification...")
 
 for current_PWM in range(len(Channels)):
+    # Toggle logic: Current channel to HIGH, others to LOW
     for i in range(len(Channels)):
         target_val = High if i == current_PWM else Low
         set_servo_pwm(Channels[i], target_val)
     
+    # Wait for PWM signal to update and stabilize
     time.sleep(0.5)
     
+    # Read the specific pin being tested
     PWM_output = read_pwm_values(PWMs[current_PWM])
-    read_values[current_PWM] = PWM_output # Store raw microsecond value
+    read_values[current_PWM] = PWM_output 
     
-    if PWM_output <= High + Tolerance and PWM_output >= High - Tolerance:
+    if High - Tolerance <= PWM_output <= High + Tolerance:
         output_matrix[current_PWM] = 1
     else:
         output_matrix[current_PWM] = 0
 
-# One-time output of both results
+# final outputs
+print("-" * 30)
 print(f"Final Output Matrix: {output_matrix}")
 print(f"Final PWM Readings (us): {read_values}")
 
-#final check against pass condition      
+
+
 if output_matrix == Pass_status:
     print("PWM Test **PASS**") 
 else:
