@@ -39,20 +39,17 @@ PWMs = [PWM_1, PWM_2, PWM_3, PWM_4, PWM_5]
 
 High = 1900
 Low = 1100
-Tolerance = 200
-Channels = [9, 10, 11, 12, 13] 
-Pass_status = [1, 1, 1, 1, 1] 
-output_matrix = [0, 0, 0, 0, 0]
-read_values = [0, 0, 0, 0, 0]
+Channels = [9, 10, 11, 12, 13]
 
 h = lgpio.gpiochip_open(4)
-pin_states = {}
 
 for pin in PWMs:
     lgpio.gpio_claim_input(h, pin, lgpio.SET_PULL_DOWN)
 
+final_matrix = []
+
 for current_PWM in range(len(Channels)):
-    # Set current channel HIGH, all others LOW
+    # Set current channel HIGH, others LOW
     for i in range(len(Channels)):
         val = High if i == current_PWM else Low
         master.mav.command_long_send(
@@ -63,17 +60,13 @@ for current_PWM in range(len(Channels)):
         )
         time.sleep(0.01)
 
-    time.sleep(0.05)  # short delay for GPIO to register HIGH
+    time.sleep(0.05)  # allow signals to stabilize
 
-    for idx, pin in enumerate(PWMs):
+    row = []
+    for pin in PWMs:
         level = lgpio.gpio_read(h, pin)
-        read_values[idx] = High if level == 1 else Low
-        output_matrix[idx] = 1 if read_values[idx] == High else 0
-
-    print(f"Channel {Channels[current_PWM]} set HIGH:")
-    for idx, pin in enumerate(PWMs):
-        print(f"  GPIO {pin} -> PWM approx {read_values[idx]} us")
+        row.append(High if level == 1 else Low)
+    final_matrix.append(row)
+    print(row)  # single line per test
 
 lgpio.gpiochip_close(h)
-
-print(f"Final Output Matrix: {output_matrix}")
