@@ -26,13 +26,12 @@ for name, value in Param_set.items():
         master.target_component,
         name.encode('utf-8'), 
         value,                
-        mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
-        time.sleep(0.02)
-        
+        mavutil.mavlink.MAV_PARAM_TYPE_REAL32,    
     )
-
+    time.sleep(0.02)
 
 #send reboot command
+print("Rebooting")
 
 master.mav.command_long_send(
     master.target_system,
@@ -44,10 +43,11 @@ master.mav.command_long_send(
     0, 
     0, 
     0, 
-    0  
+    0,
+    0 
 )
 
-time.sleep(5) #may need longer here...
+time.sleep(10) #may need longer here...
 
 #GPIO pin setup
 
