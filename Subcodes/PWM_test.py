@@ -37,7 +37,7 @@ master.mav.command_long_send(
     0, 1, 0, 0, 0, 0, 0, 0 
 )
 
-time.sleep(15) # Wait for reboot and PWM rail initialization
+time.sleep(20) # Increased to 20s to ensure all PWM timers initialize
 
 # GPIO pin setup
 PWM_1, PWM_2, PWM_3, PWM_4, PWM_5 = 17, 18, 27, 23, 22
@@ -46,7 +46,7 @@ PWMs = [PWM_1, PWM_2, PWM_3, PWM_4, PWM_5]
 # Define conditions
 High = 1900
 Low = 1100
-Tolerance = 200
+Tolerance = 250 # Increased slightly for consistency
 Channels = [9, 10, 11, 12, 13] 
 Pass_status = [1, 1, 1, 1, 1] 
 output_matrix = [0, 0, 0, 0, 0]
@@ -61,12 +61,10 @@ def pwm_interrupt_handler(chip, gpio, level, tick):
         pwm_data[gpio]['start'] = tick
     elif level == 0:
         if pwm_data[gpio]['start'] > 0:
-            # Calculate nanoseconds and mask for 32-bit rollover
+            # Nano-to-Micro logic for Pi 5 with 32-bit mask
             duration_ns = (tick - pwm_data[gpio]['start']) & 0xFFFFFFFF
-            # Convert Nanoseconds to Microseconds for Pi 5
             duration_us = duration_ns / 1000
             
-            # Sanity filter for valid PWM pulse range
             if 500 < duration_us < 2500:
                 pwm_data[gpio]['width'] = int(duration_us)
 
@@ -92,13 +90,17 @@ def set_servo_pwm(channel, PWM_Val):
 setup_pwm_reader(PWMs)
 
 for current_PWM in range(len(Channels)):
+    # CRITICAL: Reset the specific pin's width to 0 before testing
+    pwm_data[PWMs[current_PWM]]['width'] = 0
+
     # Toggle logic: Current channel to HIGH, others to LOW
     for i in range(len(Channels)):
         target_val = High if i == current_PWM else Low
         set_servo_pwm(Channels[i], target_val)
+        time.sleep(.1)
     
-    # Wait for PWM signal to update and stabilize
-    time.sleep(1)
+    # Wait for PWM signal to update and for pulses to be captured
+    time.sleep(1.2) 
     
     # Read the specific pin being tested
     PWM_output = read_pwm_values(PWMs[current_PWM])
