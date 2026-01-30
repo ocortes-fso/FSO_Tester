@@ -4,45 +4,29 @@ import pyuavcan
 from pyuavcan.transport.can.media.socketcan import SocketCANMedia
 
 async def main():
-    iface = "can0"
-    bitrate = 500_000
+    os.system("sudo ip link set can0 down")
+    os.system("sudo ip link set can0 up type can bitrate 500000")
 
-    # Setup CAN interface
-    os.system(f"sudo ip link set {iface} down")
-    os.system(f"sudo ip link set {iface} up type can bitrate {bitrate}")
-
-    # Create transport
-    media = SocketCANMedia(iface)
+    media = SocketCANMedia('can0')
     transport = pyuavcan.transport.can.CANTransport(media)
 
-    # Create a simple node
     node_info = pyuavcan.node.NodeInfo(name="org.example.testnode")
     node = pyuavcan.application.Node(transport, node_info)
-    node.node_id = 42  # example Node ID
+    node.node_id = 42
     await node.start()
 
-    # Send a simple test message
-    from uavcan.node import Heartbeat_1_0  # can use any message type for test
-    test_msg = Heartbeat_1_0(
-        uptime=123456,
-        health=Heartbeat_1_0.HEALTH_OK,
-        mode=Heartbeat_1_0.MODE_OPERATIONAL
-    )
-    await node.broadcast(test_msg)
-    print("Sent DroneCAN test message")
-
-    # Wait briefly to see if we receive any messages on the bus
     received = False
     try:
-        async for transfer in node.transport.listen(Heartbeat_1_0):
-            print("DroneCAN check PASS: Received message!")
+        async for transfer in node.transport.listen(timeout=5):
             received = True
             break
     except asyncio.TimeoutError:
         pass
 
-    if not received:
-        print("DroneCAN check FAIL: No message received")
+    if received:
+        print("DroneCAN check PASS")
+    else:
+        print("DroneCAN check FAIL")
 
     await node.close()
 
