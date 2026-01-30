@@ -115,7 +115,6 @@ def set_servo_pwm(channel, PWM_Val):
 
 #loop through each PWM channel and set 1 by 1 to high and others low, and read PWM on GPIO the current GPIO pin for that channel
 
-PWM_Val = {}
 setup_pwm_reader(PWMs)
 
 for current_PWM in range(len(Channels)):
