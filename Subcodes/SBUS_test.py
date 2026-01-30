@@ -1,35 +1,38 @@
-import serial  #need pyserial module 
+from lgpio import *
+import time
 
-#config uart for SBUS and open serial port 
+SBUS_GPIO = 15
+SBUS_CHIP = 4
+BIT_TIME_US = 10
+SBUS_FRAME_LENGTH = 25
+SBUS_HEADER = 0x0F
 
-SBUS = serial.Serial(
-    port="/dev/ttyAMA10",       #debug pi5 serial port - used for SBUS
-    baudrate=100000,        #need to check this is the aircraft sbus rate or is it 115200??
-    bytesize=serial.EIGHTBITS,
-    parity=serial.PARITY_EVEN,
-    stopbits=serial.STOPBITS_TWO,
-    timeout=0.02
-)
+chip_handle = lgGpiochipOpen(SBUS_CHIP)
+alert_handle = lgGpioClaimAlert(chip_handle, 0, LG_BOTH_EDGES, SBUS_GPIO, -1)
 
+def read_sbus_byte():
+    while lgGpioRead(chip_handle, SBUS_GPIO) == 0:
+        pass
+    time.sleep(1.5 * BIT_TIME_US / 1_000_000)
+    value = 0
+    for i in range(8):
+        bit = lgGpioRead(chip_handle, SBUS_GPIO)
+        value |= (bit << i)
+        time.sleep(BIT_TIME_US / 1_000_000)
+    time.sleep(3 * BIT_TIME_US / 1_000_000)
+    return value ^ 0xFF
 
-SBUS_frame_length = 25  #SBUS frame length in bytes (standard SBUS frame length)
-SBUS_header = 0x0F     #SBUS frame header byte (standard SBUS starting byte)
+def read_sbus_frame():
+    return bytes(read_sbus_byte() for _ in range(SBUS_FRAME_LENGTH))
 
-while True:
-    
-    # This prevents the serial read from crashing the whole loop if it fails to detect the frame
-    try:
-        frame = SBUS.read(SBUS_frame_length)  #read SBUS frame
-    except serial.SerialException as e:
-        print(f"Error reading SBUS: {e}")
-        continue
-    
-    # read and verify valid SBUS frames are being received
-    if len(frame) == SBUS_frame_length and frame[0] == SBUS_header:
-        print("SBUS Connected **PASS**")
-    else:
-        print("SBUS not detected **FAIL**")
-
-#close serial port (SBUS) -- will not loop
-          
-SBUS.close()
+try:
+    while True:
+        frame = read_sbus_frame()
+        if len(frame) == SBUS_FRAME_LENGTH and frame[0] == SBUS_HEADER:
+            print("SBUS Connected **PASS**")
+        else:
+            print("SBUS not detected **FAIL**")
+except KeyboardInterrupt:
+    pass
+finally:
+    lgGpioClose(chip_handle)
