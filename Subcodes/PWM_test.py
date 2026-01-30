@@ -133,7 +133,10 @@ for current_PWM in range(len(Channels)):
             output_matrix[i] = 1
         else:
             output_matrix[i] = 0
-            
+     
+        print(f"Output Matrix: {output_matrix}")       
+     
+     
 #final check against pass condition      
 if output_matrix == Pass_status:
     print("PWM Test **PASS**") 
