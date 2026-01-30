@@ -4,8 +4,8 @@ from pymavlink import mavutil
 
 #need serial connection to write params (servo functions)
 
-serial_port = "/dev/ttyAMA0" #GPIO pin serial port may need to config boot config file to enable
-baud_rate = 57600 #again confirm this is correct serial 5 baud rate
+serial_port = "/dev/ttyAMA10" #GPIO pin serial port may need to config boot config file to enable
+baud_rate = 115200 #again confirm this is correct serial 5 baud rate
 master = mavutil.mavlink_connection(serial_port, baud_rate)
 master.wait_heartbeat()
 
@@ -47,7 +47,7 @@ master.mav.command_long_send(
     0 
 )
 
-time.sleep(10) #may need longer here...
+time.sleep(15) # Increased for Pi 5 / Flight Controller boot sync
 
 #GPIO pin setup
 
@@ -74,14 +74,16 @@ h = lgpio.gpiochip_open(4)
 pwm_data = {}
 
 def pwm_interrupt_handler(chip, gpio, level, tick):
-    current_time = time.time()
+    # Using 'tick' (hardware microseconds) for Pi 5 precision
     if level == 1:
         # Signal went HIGH - start the stopwatch
-        pwm_data[gpio]['start'] = current_time
+        pwm_data[gpio]['start'] = tick
     elif level == 0:
         # Signal went LOW - stop the stopwatch and calculate width
         if pwm_data[gpio]['start'] > 0:
-            duration = (current_time - pwm_data[gpio]['start']) * 1000000
+            duration = tick - pwm_data[gpio]['start']
+            # Handle 32-bit wrap around
+            if duration < 0: duration += 4294967296
             pwm_data[gpio]['width'] = int(duration)
 
 def setup_pwm_reader(pins):
@@ -108,44 +110,41 @@ def set_servo_pwm(channel, PWM_Val):
         0,                 #confirmation 
         channel,            # servo/channel number
         PWM_Val,            # PWM in microseconds (e.g. 1100 or 1900)
-        0, 0, 0, 0, 0       #set unused parameters to 0  ---- https://ardupilot.org/copter/docs/common-mavlink-mission-command-messages-mav_cmd.html#mav-cmd-do-set-servo
+        0, 0, 0, 0, 0       #set unused parameters to 0 
     )
 
 #main logic
 
-#loop through each PWM channel and set 1 by 1 to high and others low, and read PWM on GPIO the current GPIO pin for that channel
-
 setup_pwm_reader(PWMs)
 
+# Single loop strategy to prevent overwriting results
 for current_PWM in range(len(Channels)):
+    # Set the specific channel to HIGH, others to LOW
     for i in range(len(Channels)):
-        PWM_Val = High if i == current_PWM else Low
-        set_servo_pwm(Channels[i], PWM_Val)
-        
-        # Give Mavlink time to process and the PWM signal to stabilize
-        time.sleep(0.1)
-        
-        PWM_output = read_pwm_values(PWMs[i])
-        
-        #check PWM output is within range +/- tolerance and output to array (1 is pass, 0 is fail)
-        
-        if PWM_output <= High + Tolerance and PWM_output >= High - Tolerance:
-            output_matrix[i] = 1
-        else:
-            output_matrix[i] = 0
-     
-        print(f"Output Matrix: {output_matrix}")       
-     
-     
+        target_val = High if i == current_PWM else Low
+        set_servo_pwm(Channels[i], target_val)
+    
+    # Wait for the signal to reach the pins
+    time.sleep(0.5)
+    
+    # Read the specific pin we are testing
+    PWM_output = read_pwm_values(PWMs[current_PWM])
+    
+    # Check PWM output within range and update matrix
+    if PWM_output <= High + Tolerance and PWM_output >= High - Tolerance:
+        output_matrix[current_PWM] = 1
+    else:
+        output_matrix[current_PWM] = 0
+
+# One-time output of the matrix result
+print(f"Final Output Matrix: {output_matrix}")
+
 #final check against pass condition      
 if output_matrix == Pass_status:
     print("PWM Test **PASS**") 
 else:
     print("PWM Test **FAIL**")  
     
-# GPIO.cleanup()
 lgpio.gpiochip_close(h) 
-
-
 
 #set back to default params can be done in main UI script for full body test..
