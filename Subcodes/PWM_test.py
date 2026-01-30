@@ -37,7 +37,7 @@ master.mav.command_long_send(
     0, 1, 0, 0, 0, 0, 0, 0 
 )
 
-time.sleep(20) # Increased to 20s to ensure all PWM timers initialize
+time.sleep(20) # Wait for reboot and PWM rail initialization
 
 # GPIO pin setup
 PWM_1, PWM_2, PWM_3, PWM_4, PWM_5 = 17, 18, 27, 23, 22
@@ -46,7 +46,7 @@ PWMs = [PWM_1, PWM_2, PWM_3, PWM_4, PWM_5]
 # Define conditions
 High = 1900
 Low = 1100
-Tolerance = 250 # Increased slightly for consistency
+Tolerance = 250 
 Channels = [9, 10, 11, 12, 13] 
 Pass_status = [1, 1, 1, 1, 1] 
 output_matrix = [0, 0, 0, 0, 0]
@@ -88,19 +88,21 @@ def set_servo_pwm(channel, PWM_Val):
 
 # main logic
 setup_pwm_reader(PWMs)
+print("Starting PWM verification...")
 
 for current_PWM in range(len(Channels)):
-    # CRITICAL: Reset the specific pin's width to 0 before testing
+    # RESET EVERYTHING for the current pin to force a fresh capture
     pwm_data[PWMs[current_PWM]]['width'] = 0
+    pwm_data[PWMs[current_PWM]]['start'] = 0
 
     # Toggle logic: Current channel to HIGH, others to LOW
     for i in range(len(Channels)):
         target_val = High if i == current_PWM else Low
         set_servo_pwm(Channels[i], target_val)
-        time.sleep(.1)
+        time.sleep(0.1) # Prevents serial buffer overflow
     
-    # Wait for PWM signal to update and for pulses to be captured
-    time.sleep(1.2) 
+    # Wait for the flight controller to output the 1900us pulses
+    time.sleep(1.5) 
     
     # Read the specific pin being tested
     PWM_output = read_pwm_values(PWMs[current_PWM])
@@ -112,6 +114,7 @@ for current_PWM in range(len(Channels)):
         output_matrix[current_PWM] = 0
 
 # final outputs
+print("-" * 30)
 print(f"Final Output Matrix: {output_matrix}")
 print(f"Final PWM Readings (us): {read_values}")
 
