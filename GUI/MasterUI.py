@@ -79,8 +79,6 @@ l7 = ttk.Label(body_left_container, text="PWM", bootstyle=SECONDARY)
 l7.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 lpwm = ttk.Label(body_left_container, text="Running PWM test", bootstyle=SECONDARY, font=(None, 14)) #test how looks may need to adjust fonts
 lpwm.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
-lpwm2 = ttk.Label(body_left_container, text="", bootstyle=SECONDARY, font=(None, 14))
-lpwm2.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 
 # labels voltage test
@@ -275,16 +273,19 @@ def body_test():
     # 3. CAN test.... (Placeholder)
 
     # 4. PWM test
-    lpwm.after(0, lambda: lpwm.config(text="Running PWM test (Waiting for Reboot)...", bootstyle=INFO, font=(None, 14)))
+    lpwm.after(0, lambda: lpwm.config(text="Running PWM test (Rebooting)...", bootstyle=INFO, font=(None, 14)))
     
     pwm_result = PWM_test.run_pwm_test()
     
-    if pwm_result[1]:  # Check if test passed
-        lpwm.after(0, lambda: lpwm.config(text="PWM Test Passed", bootstyle=SUCCESS, font=(None, 14)))
-        lpwm2.after(0, lambda: lpwm2.config(text=f"{pwm_result[0]}", bootstyle=SECONDARY, font=(None, 14)))
+    if pwm_result[1]:  # If True
+        # Combines the word PASS and the matrix into one string and push to label
+        combined_text = f"PASS!  Results: {pwm_result[0]}"
+        lpwm.after(0, lambda: lpwm.config(text=combined_text, bootstyle=SUCCESS, font=(None, 14)))
     else:
-        lpwm.after(0, lambda: lpwm.config(text="PWM Test Failed", bootstyle=DANGER, font=(None, 14)))
-        lpwm2.after(0, lambda: lpwm2.config(text=f"{pwm_result[0]}", bootstyle=SECONDARY, font=(None, 14)))
+        # Combines the word FAIL and the matrix into one string
+        combined_text = f"FAIL!  Results: {pwm_result[0]}"
+        lpwm.after(0, lambda: lpwm.config(text=combined_text, bootstyle=DANGER, font=(None, 14)))
+
 
 def SBUS_run_test():
     # Update UI to show scanning started
