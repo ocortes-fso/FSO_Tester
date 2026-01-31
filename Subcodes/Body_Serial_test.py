@@ -6,12 +6,14 @@ from pymavlink import mavutil
 serial_port = "/dev/ttyAMA10" #GPIO pin serial port may need to config boot config file to enable
 baud_rate = 115200 #again confirm this is correct serial 5 baud rate
 
-#test for serial receive
+#test for serial receive changed to function for GUI
 
-master = mavutil.mavlink_connection(serial_port, baud_rate)
-print ("waiting for heatbeart **CONNECTING**") 
-time.sleep(1)
-master.wait_heartbeat()
-print("Heartbeat received from system (system %u)" % (master.target_system))
-
-
+def serial_test():
+    master = mavutil.mavlink_connection(serial_port, baud_rate)
+    time.sleep(1)
+    if master.wait_heartbeat(timeout=5):
+        return True
+    else:
+        return False
+    
+    
