@@ -136,11 +136,8 @@ def home():
     
 def Eth():
     body_f.pack_forget()
-    volt_f.pack_forget()
-    SBUS_f.pack_forget()
-    SBUS_f_INF.pack_forget()
-    Eth_f.pack_forget()
-    main.pack(fill=BOTH, expand=TRUE)
+    Eth_f.pack(fill=BOTH, expand=TRUE)
+    threading.Thread(target=Eth_test, daemon=True).start()  # run in background thread
 
 def lidar():
     global lidar_after_id
@@ -226,10 +223,6 @@ def create_sliders(parent):
         c.set(1500)
         c.grid(row=i, column=2, padx=10, sticky="w")
 
-def Eth():
-    body_f.pack_forget()
-    Eth_f.pack(fill=BOTH, expand=TRUE)
-    threading.Thread(target=Eth_test, daemon=True).start()  # run in background thread
 
 def Eth_test():
     l3.after(0, lambda: l3.config(text="Pinging air unit..."))
