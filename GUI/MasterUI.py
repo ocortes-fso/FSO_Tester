@@ -11,7 +11,7 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test
+from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test
 
 mag_after_id = None
 lidar_after_id = None
@@ -55,15 +55,22 @@ l3.pack(fill=BOTH, expand=TRUE)
 body_left_container = ttk.Frame(body_f)
 body_left_container.pack(side=LEFT, fill=BOTH, expand=TRUE)
 
-# labels body test
+# header and labels labels body test
 l4 = ttk.Label(body_left_container, text="SERIAL", bootstyle=SECONDARY)
 l4.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+ls = ttk.Label(body_left_container, text="Waiting for heatbeat", bootstyle=SECONDARY, font=(None, 14)) #test how looks may need to adjust fonts 
+
 l5 = ttk.Label(body_left_container, text="ANALOG PORT", bootstyle=SECONDARY)
 l5.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 l6 = ttk.Label(body_left_container, text="CAN", bootstyle=SECONDARY)
 l6.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 l7 = ttk.Label(body_left_container, text="PWM", bootstyle=SECONDARY)
 l7.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+lpwm = ttk.Label(body_left_container, text="Running PWM test", bootstyle=SECONDARY, font=(None, 14)) #test how looks may need to adjust fonts
+lpwm.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+lpwm2 = ttk.Label(body_left_container, text="", bootstyle=SECONDARY, font=(None, 14))
+lpwm2.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+
 
 # labels voltage test
 volt_container = ttk.Frame(volt_f)
@@ -187,7 +194,7 @@ def update_lidar():
     if distance is not None:
         l2.config(text=f"Lidar Distance: {distance} m")
     else:
-        l2.config(text="Waiting for Lidar")
+        l2.config(text="Waiting for Lidar...")
     lidar_after_id = root.after(500, update_lidar)
 
 def create_sliders(parent):
@@ -235,6 +242,14 @@ def arm_test():
     l21.config(font=("Courier", 18), justify=CENTER, text=f"{matrix}")  # center and monospaced font
     l20.config(text="Pass!" if np.array_equal(matrix, pass_matrix) else "Fail!",
                bootstyle=SUCCESS if np.array_equal(matrix, pass_matrix) else DANGER)
+    
+def body():
+    #serial test
+    serial_result = Body_Serial_test.serial_test()
+    if serial_result:
+        ls.config(text="Heartbeat received - PASS", bootstyle=SUCCESS, font=(None, 14))
+    else:
+        ls.config(text="No Heartbeat - FAIL", bootstyle=DANGER, font=(None, 14))
 
 # Main window buttons
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
