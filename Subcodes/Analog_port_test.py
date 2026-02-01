@@ -1,8 +1,8 @@
 import time
 from pymavlink import mavutil
 
-serial_port = "/dev/ttyAMA0" #GPIO pin serial port may need to config boot config file to enable
-baud_rate = 57600 #again confirm this is correct serial 5 baud rate
+serial_port = "/dev/ttyAMA10" #GPIO pin serial port may need to config boot config file to enable
+baud_rate = 115200 #again confirm this is correct serial 5 baud rate
 
 Param_set = {
     "BATT8_OPTIONS": 1,
@@ -32,12 +32,11 @@ for name, value in Param_set.items():
         name.encode('utf-8'), 
         value,                
         mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
-        time.sleep(0.02)
-        
     )
-
+time.sleep(0.02)
 
 #send reboot command
+print("Rebooting autopilot to apply parameters...")
 
 master.mav.command_long_send(
     master.target_system,
@@ -49,10 +48,11 @@ master.mav.command_long_send(
     0, 
     0, 
     0, 
-    0  
+    0,
+    0 
 )
 
-time.sleep(10)
+time.sleep(20)
 
 #request battery status..
 
@@ -80,11 +80,13 @@ while True:
         # Check the 'id' field to find Battery 8 and 9 and print result for each
         
         if msg.id == 7:   #index starts at zero (n-1)
+            time.sleep(0.5)
             voltage8 = msg.voltages[0]/1000 #convert from Mv to Volts
             print(f"BATT8 Status: {voltage8}")
             received_batt8 = True
         
         elif msg.id == 8:
+            time.sleep(0.5)
             voltage9 = msg.voltages[0]/1000
             print(f"BATT9 Status: {voltage9}")
             received_batt9 = True
