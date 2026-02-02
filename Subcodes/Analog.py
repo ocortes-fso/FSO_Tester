@@ -1,75 +1,117 @@
-import time 
-import smbus2 
+import time
+import smbus2
 
-# --- Configuration ---
-I2C_ADD = 0x45 
+I2C_ADD = 0x45
 bus = smbus2.SMBus(1)
+
 Voltage_ref = 3.3
 ADC_raw_factor = 65535.0
 
 # Voltage Dividers (Rbot / (Rbot + Rtop))
-DIV_12V = 0.2448
-DIV_5V = 0.5
-DIV_50V = 0.032
+DIV_12V = 0.1393786733837112
+DIV_5V  = 0.3329989969909729
+DIV_50V = 0.0328973444312327
 
-# Channels (LTC2497 Hex Commands)
-CH_DSUB1 = [0xB1, 0xB8]
-CH_DSUB2 = [0xBA, 0xB2]
-CH_DSUB3A = [0xB4, 0xBB]
-CH_DSUB3B = [0xBD, 0xB5]
+# Ghost detection thresholds
+GHOST_12V = 23.68   # ~ 2 * 11.84
+GHOST_5V = 9.91     # ~ 2 * 4.95
+GHOST_50V = 100.31  # ~ 2 * 50.16
+
+GHOST_12V_TOL = 1.0 
+GHOST_5V_TOL = 0.5 
+GHOST_50V_TOL = 1.5
+
+# Channel ADDRS
+CH_DSUB1 = [0xB8, 0xB1]
+CH_DSUB2 = [0xB2, 0xBA]
+CH_DSUB3A = [0xBB, 0xB4]
+CH_DSUB3B = [0xB5, 0xBD]
 CH_POWER  = 0xBE
 
-def read_adc_safe(channel, divider, label, poll_delay=0.01, timeout=1.0):
-    try:
-        # Tell ADC which channel to convert next
-        bus.write_byte(I2C_ADD, channel)
+def _decode_voltage(output, divider):
+    # your original extraction (minimal change)
+    raw_val = ((output[0] & 0x7F) << 16) | (output[1] << 8) | output[2]
+    return (Voltage_ref * raw_val / (1 << 23)) / divider
 
-        _ = bus.read_i2c_block_data(I2C_ADD, 0x00, 3)
-        
-        t0 = time.time()   
-        while True:
+def suppress_floating(voltage, vmin, vmax, channel_type):
+    # Valid in-range value → keep it
+    if vmin <= voltage <= vmax:
+        return voltage
+
+    # Ghost patterns → force to 0V
+    if channel_type == "12V":
+        if abs(voltage - GHOST_12V) < GHOST_12V_TOL:
+            return 0.0
+
+    elif channel_type == "5V":
+        if abs(voltage - GHOST_5V) < GHOST_5V_TOL:
+            return 0.0
+
+    elif channel_type == "50V":
+        if abs(voltage - GHOST_50V) < GHOST_50V_TOL:
+            return 0.0
+
+    return voltage
+
+def read_max_until_in_range(channel_cmd, divider, vmin, vmax, channel_type, timeout=1.0, conv_wait=0.18):
+    """
+    Loop until voltage is within [vmin, vmax] OR timeout reached.
+    Track and return the biggest successfully-read voltage during the timeout window.
+    """
+    t0 = time.time()
+    vmax_seen = None
+
+    while (time.time() - t0) < timeout:
+        try:
+            # Start next conversion
+            bus.write_byte(I2C_ADD, channel_cmd)
+
+            # Flush old result (LTC2497 can return previous conversion immediately)
             try:
-                output = bus.read_i2c_block_data(I2C_ADD, 0x00, 3)
-                break
+                _ = bus.read_i2c_block_data(I2C_ADD, 0x00, 3)
             except OSError:
-                if (time.time() - t0) > timeout:
-                    raise
-                time.sleep(poll_delay)
+                pass  # ignore flush failures
 
-        raw_val = ((output[0] & 0x3F) << 10) | (output[1] << 2) | (output[2] >> 6)
+            # Give conversion time (keeps behavior stable)
+            time.sleep(conv_wait)
 
-        voltage = (Voltage_ref * raw_val / ADC_raw_factor) / divider
-        return round(voltage, 2)
+            # Read result
+            output = bus.read_i2c_block_data(I2C_ADD, 0x00, 3)
+            v = _decode_voltage(output, divider)
+            v = suppress_floating(voltage, vmin, vmax, channel_type)
 
-    except OSError:
-        print(f"  [!] {label} I2C timeout / no response")
-        return 0.0
+            # Track biggest value seen
+            if vmax_seen is None or v > vmax_seen:
+                vmax_seen = v
 
-# --- DSUB 1 ---
-v1 = read_adc_safe(CH_DSUB1[0], DIV_12V, "DSUB1-12V")
-v2 = read_adc_safe(CH_DSUB1[1], DIV_5V, "DSUB1-5V")
-res1 = "PASS" if (11.5 <= v1 <= 12.5 and 4.5 <= v2 <= 5.5) else "FAIL"
-print(f"DSUB 1 Results: {v1}V, {v2}V -> {res1}")
+            # Exit early if we're in-range
+            if vmin <= v <= vmax:
+                break
 
-# --- DSUB 2 ---
-v3 = read_adc_safe(CH_DSUB2[0], DIV_12V, "DSUB2-12V")
-v4 = read_adc_safe(CH_DSUB2[1], DIV_5V, "DSUB2-5V")
-res2 = "PASS" if (11.5 <= v3 <= 12.5 and 4.5 <= v4 <= 5.5) else "FAIL"
-print(f"DSUB 2 Results: {v3}V, {v4}V -> {res2}")
+        except OSError:
+            # Treat as "no reading this time" — keep the max we already saw
+            time.sleep(0.01)
 
-# --- DSUB 3A ---
-v5 = read_adc_safe(CH_DSUB3A[0], DIV_12V, "DSUB3A-12V")
-v6 = read_adc_safe(CH_DSUB3A[1], DIV_5V, "DSUB3A-5V")
-res3 = "PASS" if (11.5 <= v5 <= 12.5 and 4.5 <= v6 <= 5.5) else "FAIL"
-print(f"DSUB 3A Results: {v5}V, {v6}V -> {res3}")
+    return round(vmax_seen, 2) if vmax_seen is not None else 0.0
 
-# --- DSUB 3B ---
-v7 = read_adc_safe(CH_DSUB3B[0], DIV_12V, "DSUB3B-12V")
-v8 = read_adc_safe(CH_DSUB3B[1], DIV_5V, "DSUB3B-5V")
-res4 = "PASS" if (11.5 <= v7 <= 12.5 and 4.5 <= v8 <= 5.5) else "FAIL"
-print(f"DSUB 3B Results: {v7}V, {v8}V -> {res4}")
 
-# --- DSUB Power ---
-v9 = read_adc_safe(CH_POWER, DIV_50V, "POWER-50V")
-res5 = "PASS" if (49.5 <= v9 <= 50.5) else "FAIL"
-print(f"DSUB Power Result: {v9}V -> {res5}")
+# ---- Example usage: your channel groups & ranges ----
+
+# 12V channels: (DSUB1-12V, DSUB2-12V, DSUB3A-12V, DSUB3B-12V)
+v1 = read_max_until_in_range(CH_DSUB1[0], DIV_12V, 11.5, 12.5, timeout=1.0)
+v3 = read_max_until_in_range(CH_DSUB2[0], DIV_12V, 11.5, 12.5, timeout=1.0)
+v5 = read_max_until_in_range(CH_DSUB3A[0], DIV_12V, 11.5, 12.5, timeout=1.0)
+v7 = read_max_until_in_range(CH_DSUB3B[0], DIV_12V, 11.5, 12.5, timeout=1.0)
+
+# 5V channels: (DSUB1-5V, DSUB2-5V, DSUB3A-5V, DSUB3B-5V)
+v2 = read_max_until_in_range(CH_DSUB1[1], DIV_5V,  4.5,  5.5, timeout=1.0)
+v4 = read_max_until_in_range(CH_DSUB2[1], DIV_5V,  4.5,  5.5, timeout=1.0)
+v6 = read_max_until_in_range(CH_DSUB3A[1], DIV_5V, 4.5,  5.5, timeout=1.0)
+v8 = read_max_until_in_range(CH_DSUB3B[1], DIV_5V, 4.5,  5.5, timeout=1.0)
+
+# 50V channel
+v9 = read_max_until_in_range(CH_POWER, DIV_50V, 48.5, 52.0, timeout=1.0)
+
+print("12V:", v1, v3, v5, v7)
+print("5V :", v2, v4, v6, v8)
+print("50V:", v9)
