@@ -241,7 +241,7 @@ def Eth_test():
     result = Network_test.ping()
     if eth_stop.is_set():
         return
-    l3.after(0, lambda: l3.config(text="PASS! Network Test Passed" if result else "Network Test Failed"))
+    l3.after(0, lambda: l3.config(text="PASS! Network Test Passed" if result else "Network Test Failed", bootstyle=SUCCESS if result else DANGER))
 
 def arm_test():
     matrix = Arm_loom_test.arm_loom()
