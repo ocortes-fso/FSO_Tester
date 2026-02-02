@@ -335,7 +335,10 @@ back_b = ttk.Button(root, text="Back", bootstyle=OUTLINE, command=lambda: show_b
 
 def show_body_from_back():
     back_b.pack_forget()
+    for f in [SBUS_f, SBUS_f_INF, Eth_f]:
+        f.pack_forget()
     body_f.pack(fill=BOTH, expand=TRUE)
+
 
 # Body buttons
 eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
