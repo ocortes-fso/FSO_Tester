@@ -80,7 +80,7 @@ l6.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 l7 = ttk.Label(body_left_container, text="PWM", bootstyle=SECONDARY)
 l7.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
-lpwm = ttk.Label(body_left_container, text="Running PWM test", bootstyle=SECONDARY, font=(None, 14))
+lpwm = ttk.Label(body_left_container, text="", bootstyle=SECONDARY, font=(None, 14))
 lpwm.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 # labels voltage test

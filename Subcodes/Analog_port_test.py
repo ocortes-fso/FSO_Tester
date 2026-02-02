@@ -40,7 +40,7 @@ def analog_port_run():
         1,
         0, 0, 0, 0, 0, 0
     )
-    time.sleep(20)
+    time.sleep(15)
 
     master.mav.command_long_send(
         master.target_system, 
