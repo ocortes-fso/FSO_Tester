@@ -11,7 +11,8 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, INF_SBUS
+from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test
+
 
 # Initialize global tracking variables
 mag_after_id = None
@@ -187,6 +188,9 @@ def volt():
     volt_f.pack(fill=BOTH, expand=TRUE)
 
 def SBUS_INF():
+    import Subcodes.INF_SBUS as INF_SBUS
+
+    
     inf_sbus_stop.clear() # Ensure the loop can start/restart
     body_f.pack_forget()
     SBUS_f_INF.pack(fill=BOTH, expand=TRUE)
