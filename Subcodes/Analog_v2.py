@@ -19,8 +19,8 @@ CH_POWER  = 0xBE
 
 def _decode_voltage(output, divider):
     # your original extraction (minimal change)
-    raw_val = ((output[0] & 0x3F) << 10) | (output[1] << 2) | (output[2] >> 6)
-    return (Voltage_ref * raw_val / ADC_raw_factor) / divider
+    raw_val = ((output[0] & 0x7F) << 16) | (output[1] << 8) | output[2]
+    return (Voltage_ref * raw_val / (1 << 23)) / divider
 
 def read_max_until_in_range(channel_cmd, divider, vmin, vmax, timeout=1.0, conv_wait=0.18):
     """
