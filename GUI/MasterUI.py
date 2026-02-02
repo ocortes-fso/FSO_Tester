@@ -72,7 +72,7 @@ ls.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 l5 = ttk.Label(body_left_container, text="ANALOG PORT", bootstyle=SECONDARY)
 l5.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
-la = ttk.Label(body_left_container, text="Running Analog Port test", bootstyle=SECONDARY, font=(None, 14))
+la = ttk.Label(body_left_container, text="", bootstyle=SECONDARY, font=(None, 14))
 la.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 l6 = ttk.Label(body_left_container, text="CAN", bootstyle=SECONDARY)
@@ -142,10 +142,8 @@ def home():
 def Eth():
     eth_stop.clear()
     body_f.pack_forget()
-    volt_f.pack_forget()
-    SBUS_f.pack_forget()
-    SBUS_f_INF.pack_forget()
     Eth_f.pack(fill=BOTH, expand=TRUE)
+    back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     threading.Thread(target=Eth_test, daemon=True).start()
 
 def lidar():
@@ -187,11 +185,13 @@ def SBUS_INF():
     body_f.pack_forget()
     create_sliders(SBUS_f_INF)
     SBUS_f_INF.pack(fill=BOTH, expand=TRUE)
+    back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
 
 def SBUS():
     sbus_stop.clear()
     body_f.pack_forget()
     SBUS_f.pack(fill=BOTH, expand=TRUE)
+    back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     threading.Thread(target=SBUS_run_test, daemon=True).start()
 
 
@@ -329,6 +329,13 @@ b6.pack(expand=TRUE)
 
 home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
 home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
+
+# Single Back button (used on SBUS, INF SBUS, Ethernet, and add to debug once tested that)
+back_b = ttk.Button(root, text="Back", bootstyle=OUTLINE, command=lambda: show_body_from_back(), width=10)
+
+def show_body_from_back():
+    back_b.pack_forget()
+    body_f.pack(fill=BOTH, expand=TRUE)
 
 # Body buttons
 eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
