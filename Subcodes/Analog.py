@@ -2,7 +2,7 @@ import time
 import smbus2 
 
 # --- Configuration ---
-I2C_ADD = 0x45                  # It is not an accepted addres for the LTC2497. The posibilities are 0x14-0x17.
+I2C_ADD = 0x45 
 bus = smbus2.SMBus(1)
 Voltage_ref = 3.3
 ADC_raw_factor = 65535.0
@@ -13,35 +13,34 @@ DIV_5V = 0.5
 DIV_50V = 0.032
 
 # Channels (LTC2497 Hex Commands)
-CH_DSUB1 = [0xB8, 0xB1]
-CH_DSUB2 = [0xB2, 0xBA]
-CH_DSUB3A = [0xBB, 0xB4]
-CH_DSUB3B = [0xB5, 0xBD]
+CH_DSUB1 = [0xB1, 0xB8]
+CH_DSUB2 = [0xBA, 0xB2]
+CH_DSUB3A = [0xB4, 0xBB]
+CH_DSUB3B = [0xBD, 0xB5]
 CH_POWER  = 0xBE
 
-def read_adc_safe(channel, divider, label):
+def read_adc_safe(channel, divider, label, poll_delay=0.01, timeout=1.0):
     try:
         # Tell ADC which channel to convert next
         bus.write_byte(I2C_ADD, channel)
-        time.sleep(0.18)  # LTC2497 conversions are typically ~150ms-ish depending on mode
+        
+        t0 = time.time()   
+        while True:
+            try:
+                output = bus.read_i2c_block_data(I2C_ADD, 0x00, 3)
+                break
+            except OSError:
+                if (time.time() - t0) > timeout:
+                    raise
+                time.sleep(poll_delay)
 
-        # Read 3 bytes (no "register" concept)
-        output = bus.read_i2c_block_data(I2C_ADD, 0x00, 3)
+        raw_val = ((output[0] & 0x3F) << 10) | (output[1] << 2) | (output[2] >> 6)
 
-        code24 = (output[0] << 16) | (output[1] << 8) | output[2]
-
-        # Quick sanity: many LTC24xx parts put status in MSBs; mask off status bits cautiously.
-        # This mask may need adjustment based on your exact mode:
-        data = code24 & 0x3FFFFF  # keep lower 22 bits as a starting point
-
-        # Scale assuming unipolar-ish mapping into 22 bits (adjust if needed)
-        voltage_adc = (data / float(0x3FFFFF)) * Voltage_ref
-
-        voltage = voltage_adc / divider
+        voltage = (Voltage_ref * raw_val / ADC_raw_factor) / divider
         return round(voltage, 2)
 
     except OSError:
-        print(f"  [!] {label} Communication Error: Pin/Wire not detected.")
+        print(f"  [!] {label} I2C timeout / no response")
         return 0.0
 
 # --- DSUB 1 ---
