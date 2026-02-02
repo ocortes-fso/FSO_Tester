@@ -1,7 +1,7 @@
 import time
 from pymavlink import mavutil
 
-serial_port = "/dev/ttyAMA10" #GPIO pin serial port may need to config boot config file to enable
+serial_port = "/dev/ttyAMA0" #GPIO pin serial port may need to config boot config file to enable
 baud_rate = 115200 #again confirm this is correct serial 5 baud rate
 
 Param_set = {
