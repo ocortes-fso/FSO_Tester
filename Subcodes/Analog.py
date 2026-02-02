@@ -98,19 +98,19 @@ def read_max_until_in_range(channel_cmd, divider, vmin, vmax, channel_type, time
 # ---- Example usage: your channel groups & ranges ----
 
 # 12V channels: (DSUB1-12V, DSUB2-12V, DSUB3A-12V, DSUB3B-12V)
-v1 = read_max_until_in_range(CH_DSUB1[0], DIV_12V, 11.5, 12.5, timeout=1.0)
-v3 = read_max_until_in_range(CH_DSUB2[0], DIV_12V, 11.5, 12.5, timeout=1.0)
-v5 = read_max_until_in_range(CH_DSUB3A[0], DIV_12V, 11.5, 12.5, timeout=1.0)
-v7 = read_max_until_in_range(CH_DSUB3B[0], DIV_12V, 11.5, 12.5, timeout=1.0)
+v1 = read_max_until_in_range(CH_DSUB1[0], DIV_12V, 11.5, 12.5, "12V")
+v3 = read_max_until_in_range(CH_DSUB2[0], DIV_12V, 11.5, 12.5, "12V")
+v5 = read_max_until_in_range(CH_DSUB3A[0], DIV_12V, 11.5, 12.5, "12V")
+v7 = read_max_until_in_range(CH_DSUB3B[0], DIV_12V, 11.5, 12.5, "12V")
 
 # 5V channels: (DSUB1-5V, DSUB2-5V, DSUB3A-5V, DSUB3B-5V)
-v2 = read_max_until_in_range(CH_DSUB1[1], DIV_5V,  4.5,  5.5, timeout=1.0)
-v4 = read_max_until_in_range(CH_DSUB2[1], DIV_5V,  4.5,  5.5, timeout=1.0)
-v6 = read_max_until_in_range(CH_DSUB3A[1], DIV_5V, 4.5,  5.5, timeout=1.0)
-v8 = read_max_until_in_range(CH_DSUB3B[1], DIV_5V, 4.5,  5.5, timeout=1.0)
+v2 = read_max_until_in_range(CH_DSUB1[1], DIV_5V, 4.5, 5.5, "5V")
+v4 = read_max_until_in_range(CH_DSUB2[1], DIV_5V, 4.5, 5.5, "5V")
+v6 = read_max_until_in_range(CH_DSUB3A[1], DIV_5V, 4.5, 5.5, "5V")
+v8 = read_max_until_in_range(CH_DSUB3B[1], DIV_5V, 4.5, 5.5, "5V")
 
 # 50V channel
-v9 = read_max_until_in_range(CH_POWER, DIV_50V, 48.5, 52.0, timeout=1.0)
+v9 = read_max_until_in_range(CH_POWER, DIV_50V, 48.5, 52.0, "50V")
 
 print("12V:", v1, v3, v5, v7)
 print("5V :", v2, v4, v6, v8)
