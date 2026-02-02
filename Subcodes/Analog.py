@@ -2,7 +2,7 @@ import time
 import smbus2 
 
 # --- Configuration ---
-I2C_ADD = 0x45  
+I2C_ADD = 0x45                  # It is not an accepted addres for the LTC2497. The posibilities are 0x14-0x17.
 bus = smbus2.SMBus(1)
 Voltage_ref = 3.3
 ADC_raw_factor = 65535.0
@@ -20,24 +20,27 @@ CH_DSUB3B = [0xB5, 0xBD]
 CH_POWER  = 0xBE
 
 def read_adc_safe(channel, divider, label):
- 
     try:
-        # Step 1: Tell ADC which channel to read next
+        # Tell ADC which channel to convert next
         bus.write_byte(I2C_ADD, channel)
-        time.sleep(0.03) # Slightly longer sleep for stability
-        
-        # Step 2: Read the 3 bytes from the conversion
-        output = bus.read_i2c_block_data(I2C_ADD, channel, 3)
-        
-        # Step 3: Extract 16-bit value from the 24-bit LTC output
-        # (Assuming standard LTC2497 3-byte format)
-        raw_val = ((output[0] & 0x3F) << 10) | (output[1] << 2) | (output[2] >> 6)
-        
-        voltage = (Voltage_ref * raw_val / ADC_raw_factor) / divider
+        time.sleep(0.18)  # LTC2497 conversions are typically ~150ms-ish depending on mode
+
+        # Read 3 bytes (no "register" concept)
+        output = bus.read_i2c_block_data(I2C_ADD, 0x00, 3)
+
+        code24 = (output[0] << 16) | (output[1] << 8) | output[2]
+
+        # Quick sanity: many LTC24xx parts put status in MSBs; mask off status bits cautiously.
+        # This mask may need adjustment based on your exact mode:
+        data = code24 & 0x3FFFFF  # keep lower 22 bits as a starting point
+
+        # Scale assuming unipolar-ish mapping into 22 bits (adjust if needed)
+        voltage_adc = (data / float(0x3FFFFF)) * Voltage_ref
+
+        voltage = voltage_adc / divider
         return round(voltage, 2)
-    
+
     except OSError:
-        # This triggers if the I2C bus doesn't see the device (wire unplugged)
         print(f"  [!] {label} Communication Error: Pin/Wire not detected.")
         return 0.0
 
