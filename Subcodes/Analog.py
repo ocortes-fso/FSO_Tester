@@ -91,7 +91,7 @@ def read_max_until_in_range(channel_cmd, divider, vmin, vmax, channel_type, labe
             # Treat as "no reading this time" — keep the max we already saw
             time.sleep(0.01)
 
-        value = round(vmax_seen, 2) if vmax_seen is not None else 0.0
+    value = round(vmax_seen, 2) if vmax_seen is not None else 0.0
     in_range = (vmin <= value <= vmax)
 
     return {
