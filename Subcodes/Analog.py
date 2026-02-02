@@ -29,7 +29,6 @@ CH_DSUB3B = [0xB5, 0xBD]
 CH_POWER  = 0xBE
 
 def _decode_voltage(output, divider):
-    # your original extraction (minimal change)
     raw_val = ((output[0] & 0x7F) << 16) | (output[1] << 8) | output[2]
     return (Voltage_ref * raw_val / (1 << 23)) / divider
 
@@ -53,7 +52,7 @@ def suppress_floating(voltage, vmin, vmax, channel_type):
 
     return voltage
 
-def read_max_until_in_range(channel_cmd, divider, vmin, vmax, channel_type, timeout=1.0, conv_wait=0.18):
+def read_max_until_in_range(channel_cmd, divider, vmin, vmax, channel_type, label, timeout=1.0, conv_wait=0.18):
     """
     Loop until voltage is within [vmin, vmax] OR timeout reached.
     Track and return the biggest successfully-read voltage during the timeout window.
@@ -77,41 +76,55 @@ def read_max_until_in_range(channel_cmd, divider, vmin, vmax, channel_type, time
 
             # Read result
             output = bus.read_i2c_block_data(I2C_ADD, 0x00, 3)
-            v = _decode_voltage(output, divider)
-            v = suppress_floating(voltage, vmin, vmax, channel_type)
+            voltage = _decode_voltage(output, divider)
+            voltage = suppress_floating(voltage, vmin, vmax, channel_type)
 
             # Track biggest value seen
-            if vmax_seen is None or v > vmax_seen:
-                vmax_seen = v
+            if vmax_seen is None or voltage > vmax_seen:
+                vmax_seen = voltage
 
             # Exit early if we're in-range
-            if vmin <= v <= vmax:
+            if vmin <= voltage <= vmax:
                 break
 
         except OSError:
             # Treat as "no reading this time" — keep the max we already saw
             time.sleep(0.01)
 
-    return round(vmax_seen, 2) if vmax_seen is not None else 0.0
+        value = round(vmax_seen, 2) if vmax_seen is not None else 0.0
+    in_range = (vmin <= value <= vmax)
+
+    return {
+        "label": label,
+        "value": value,
+        "pass": in_range,
+        "in_range": in_range
+    }
+
+##### Read all Voltages #####
+results = []
 
 
-# ---- Example usage: your channel groups & ranges ----
+# DSUB1
+results.append(read_max_until_in_range(CH_DSUB1[0], DIV_12V, 11.5, 12.5, "12V", "DSUB1-12V"))
+results.append(read_max_until_in_range(CH_DSUB1[1], DIV_5V,  4.5,  5.5,  "5V",  "DSUB1-5V"))
 
-# 12V channels: (DSUB1-12V, DSUB2-12V, DSUB3A-12V, DSUB3B-12V)
-v1 = read_max_until_in_range(CH_DSUB1[0], DIV_12V, 11.5, 12.5, "12V")
-v3 = read_max_until_in_range(CH_DSUB2[0], DIV_12V, 11.5, 12.5, "12V")
-v5 = read_max_until_in_range(CH_DSUB3A[0], DIV_12V, 11.5, 12.5, "12V")
-v7 = read_max_until_in_range(CH_DSUB3B[0], DIV_12V, 11.5, 12.5, "12V")
+# DSUB2
+results.append(read_max_until_in_range(CH_DSUB2[0], DIV_12V, 11.5, 12.5, "12V", "DSUB2-12V"))
+results.append(read_max_until_in_range(CH_DSUB2[1], DIV_5V,  4.5,  5.5,  "5V",  "DSUB2-5V"))
 
-# 5V channels: (DSUB1-5V, DSUB2-5V, DSUB3A-5V, DSUB3B-5V)
-v2 = read_max_until_in_range(CH_DSUB1[1], DIV_5V, 4.5, 5.5, "5V")
-v4 = read_max_until_in_range(CH_DSUB2[1], DIV_5V, 4.5, 5.5, "5V")
-v6 = read_max_until_in_range(CH_DSUB3A[1], DIV_5V, 4.5, 5.5, "5V")
-v8 = read_max_until_in_range(CH_DSUB3B[1], DIV_5V, 4.5, 5.5, "5V")
+# DSUB3A
+results.append(read_max_until_in_range(CH_DSUB3A[0], DIV_12V, 11.5, 12.5, "12V", "DSUB3A-12V"))
+results.append(read_max_until_in_range(CH_DSUB3A[1], DIV_5V,  4.5,  5.5,  "5V",  "DSUB3A-5V"))
 
-# 50V channel
-v9 = read_max_until_in_range(CH_POWER, DIV_50V, 48.5, 52.0, "50V")
+# DSUB3B
+results.append(read_max_until_in_range(CH_DSUB3B[0], DIV_12V, 11.5, 12.5, "12V", "DSUB3B-12V"))
+results.append(read_max_until_in_range(CH_DSUB3B[1], DIV_5V,  4.5,  5.5,  "5V",  "DSUB3B-5V"))
 
-print("12V:", v1, v3, v5, v7)
-print("5V :", v2, v4, v6, v8)
-print("50V:", v9)
+# Power
+results.append(read_max_until_in_range(CH_POWER, DIV_50V, 48.5, 52.0, "50V", "POWER-50V"))
+
+##### Print #####
+for r in results:
+    status = "PASS" if r["pass"] else "FAIL"
+    print(f'{r["label"]}: {r["value"]} V -> {status}')
