@@ -11,7 +11,7 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test
+from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test
 
 mag_after_id = None
 lidar_after_id = None
@@ -72,13 +72,15 @@ ls.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 l5 = ttk.Label(body_left_container, text="ANALOG PORT", bootstyle=SECONDARY)
 l5.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+la = ttk.Label(body_left_container, text="", bootstyle=SECONDARY, font=(None, 14))
+la.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 l6 = ttk.Label(body_left_container, text="CAN", bootstyle=SECONDARY)
 l6.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 l7 = ttk.Label(body_left_container, text="PWM", bootstyle=SECONDARY)
 l7.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
-lpwm = ttk.Label(body_left_container, text="Running PWM test", bootstyle=SECONDARY, font=(None, 14))
+lpwm = ttk.Label(body_left_container, text="", bootstyle=SECONDARY, font=(None, 14))
 lpwm.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 # labels voltage test
@@ -140,10 +142,8 @@ def home():
 def Eth():
     eth_stop.clear()
     body_f.pack_forget()
-    volt_f.pack_forget()
-    SBUS_f.pack_forget()
-    SBUS_f_INF.pack_forget()
     Eth_f.pack(fill=BOTH, expand=TRUE)
+    back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     threading.Thread(target=Eth_test, daemon=True).start()
 
 def lidar():
@@ -185,11 +185,13 @@ def SBUS_INF():
     body_f.pack_forget()
     create_sliders(SBUS_f_INF)
     SBUS_f_INF.pack(fill=BOTH, expand=TRUE)
+    back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
 
 def SBUS():
     sbus_stop.clear()
     body_f.pack_forget()
     SBUS_f.pack(fill=BOTH, expand=TRUE)
+    back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     threading.Thread(target=SBUS_run_test, daemon=True).start()
 
 
@@ -239,7 +241,7 @@ def Eth_test():
     result = Network_test.ping()
     if eth_stop.is_set():
         return
-    l3.after(0, lambda: l3.config(text="PASS! Network Test Passed" if result else "Network Test Failed"))
+    l3.after(0, lambda: l3.config(text="PASS! Network Test Passed" if result else "Network Test Failed", bootstyle=SUCCESS if result else DANGER))
 
 def arm_test():
     matrix = Arm_loom_test.arm_loom()
@@ -273,6 +275,20 @@ def body_test():
     time.sleep(0.5)
     if body_stop.is_set():
         return
+
+    #2. Analog port test
+    la.after(0, lambda: la.config(text="Running Analog Port test (Rebooting)...", bootstyle=INFO, font=(None, 14)))
+    analog_result = Analog_port_test.analog_port_run()
+    if body_stop.is_set():
+        return
+    
+    output = Analog_port_test.analog_port_run()
+    combined_output = f"Results: A1={output[0]:.2f} V, A2={output[1]:.2f} V"
+
+    if (1 <= output[0] <= 1.5) and (2.25 <= output[1] <= 2.75):
+        la.after(0, lambda: la.config(text=f"PASS -- {combined_output}", bootstyle=SUCCESS, font=(None, 14)))
+    else:
+        la.after(0, lambda: la.config(text=f"FAIL -- {combined_output}", bootstyle=DANGER, font=(None, 14)))
 
     # 4. PWM test
     lpwm.after(0, lambda: lpwm.config(text="Running PWM test (Rebooting)...", bootstyle=INFO, font=(None, 14)))
@@ -313,6 +329,16 @@ b6.pack(expand=TRUE)
 
 home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
 home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
+
+# Single Back button (used on SBUS, INF SBUS, Ethernet, and add to debug once tested that)
+back_b = ttk.Button(root, text="Back", bootstyle=OUTLINE, command=lambda: show_body_from_back(), width=10)
+
+def show_body_from_back():
+    back_b.pack_forget()
+    for f in [SBUS_f, SBUS_f_INF, Eth_f]:
+        f.pack_forget()
+    body_f.pack(fill=BOTH, expand=TRUE)
+
 
 # Body buttons
 eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
