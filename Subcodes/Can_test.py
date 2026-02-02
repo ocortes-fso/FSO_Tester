@@ -21,10 +21,21 @@ except can.CanError:
 
 #Listen for CAN messages
 print(f"Listening for CAN messages on {CAN_INTERFACE}...")
-msg_rx = canbus.recv(timeout=TIMEOUT)  # Wait up to 5 seconds for a message
+start_time = time.time()
+msg_rx = None
+
+while (time.time() - start_time) < TIMEOUT:
+    msg_rx = canbus.recv(timeout=0.5)
+    if msg_rx:
+        break
 
 #Check if any messages were received and print
 if msg_rx:
     print(f"CAN check PASS!! Received message: {msg_rx}")
 else:
     print("CAN check FAIL: No message received")
+    os.system(f"sudo ip link set {CAN_INTERFACE} down")  # Node down
+    exit(1)
+
+#Node down
+os.system(f"sudo ip link set {CAN_INTERFACE} down")
