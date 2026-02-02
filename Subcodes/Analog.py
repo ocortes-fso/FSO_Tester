@@ -23,6 +23,8 @@ def read_adc_safe(channel, divider, label, poll_delay=0.01, timeout=1.0):
     try:
         # Tell ADC which channel to convert next
         bus.write_byte(I2C_ADD, channel)
+
+        _ = bus.read_i2c_block_data(I2C_ADD, 0x00, 3)
         
         t0 = time.time()   
         while True:
