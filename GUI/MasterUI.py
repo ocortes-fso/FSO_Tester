@@ -11,7 +11,7 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test
+from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test
 
 mag_after_id = None
 lidar_after_id = None
@@ -72,6 +72,8 @@ ls.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 l5 = ttk.Label(body_left_container, text="ANALOG PORT", bootstyle=SECONDARY)
 l5.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+la = ttk.Label(body_left_container, text="Running Analog Port test", bootstyle=SECONDARY, font=(None, 14))
+la.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 l6 = ttk.Label(body_left_container, text="CAN", bootstyle=SECONDARY)
 l6.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
@@ -273,6 +275,20 @@ def body_test():
     time.sleep(0.5)
     if body_stop.is_set():
         return
+
+    #2. Analog port test
+    la.after(0, lambda: la.config(text="Running Analog Port test (Rebooting)...", bootstyle=INFO, font=(None, 14)))
+    analog_result = Analog_port_test.analog_port_run()
+    if body_stop.is_set():
+        return
+    
+    output = Analog_port_test.analog_port_run()
+    combined_output = f"Results: A1={output[0]:.2f} V, A2={output[1]:.2f} V"
+
+    if (1 <= output[0] <= 1.5) and (2.25 <= output[1] <= 2.75):
+        la.after(0, lambda: la.config(text=f"PASS -- {combined_output}", bootstyle=SUCCESS, font=(None, 14)))
+    else:
+        la.after(0, lambda: la.config(text=f"FAIL -- {combined_output}", bootstyle=DANGER, font=(None, 14)))
 
     # 4. PWM test
     lpwm.after(0, lambda: lpwm.config(text="Running PWM test (Rebooting)...", bootstyle=INFO, font=(None, 14)))
