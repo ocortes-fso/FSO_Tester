@@ -51,4 +51,20 @@ def decode_sbus_channels(frame):
     channels[2] = ((frame[3] >> 6 | frame[4] << 2 | frame[5] << 10) & 0x07FF)
     channels[3] = ((frame[5] >> 1 | frame[6] << 7) & 0x07FF)
     channels[4] = ((frame[6] >> 4 | frame[7] << 4) & 0x07FF)
-    channels[5] = ((
+    channels[5] = ((frame[7] >> 7 | frame[8] << 1 | frame[9] << 9) & 0x07FF)
+    channels[6] = ((frame[9] >> 2 | frame[10] << 6) & 0x07FF)
+    channels[7] = ((frame[10] >> 5 | frame[11] << 3) & 0x07FF)
+    return channels
+
+def main():
+    buf = bytearray()  # Buffer to hold SBUS data
+
+    while True:
+        byte = read_sbus_byte()
+        buf.append(byte)
+
+        if len(buf) >= SBUS_FRAME_LENGTH:
+            frame = buf[:SBUS_FRAME_LENGTH]
+            channels = decode_sbus_channels(frame)
+            pwm = [sbus_to_pwm(v) for v in channels]
+            return pwm
