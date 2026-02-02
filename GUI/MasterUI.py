@@ -3,7 +3,7 @@ from ttkbootstrap.constants import *
 import sys
 import os
 import numpy as np
-from tkinter import BOTH, TRUE, LEFT, TOP, W, SW, E
+from tkinter import BOTH, TRUE
 import threading
 import time
 
@@ -13,18 +13,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # import of codes used in GUI
 from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test
 
-
-# Initialize global tracking variables
 mag_after_id = None
 lidar_after_id = None
-sliders = []
-
 
 # Thread control events
 eth_stop = threading.Event()
 body_stop = threading.Event()
 sbus_stop = threading.Event()
-inf_sbus_stop = threading.Event()
 
 root = ttk.Window(themename="cyborg", size=[1280, 720], title="FSO Tester") 
 style = ttk.Style()
@@ -130,7 +125,6 @@ def home():
     eth_stop.set()
     body_stop.set()
     sbus_stop.set()
-    inf_sbus_stop.set()
     if mag_after_id is not None:
         root.after_cancel(mag_after_id)
         mag_after_id = None
@@ -188,54 +182,10 @@ def volt():
     volt_f.pack(fill=BOTH, expand=TRUE)
 
 def SBUS_INF():
-    import Subcodes.INF_SBUS as INF_SBUS
-
-    
-    inf_sbus_stop.clear() # Ensure the loop can start/restart
     body_f.pack_forget()
+    create_sliders(SBUS_f_INF)
     SBUS_f_INF.pack(fill=BOTH, expand=TRUE)
     back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
-
-    # Clear existing widgets
-    for widget in SBUS_f_INF.winfo_children():
-        widget.destroy()
-    sliders.clear()
-
-    # Create sliders and update them continuously as sticks input from h16 is moved
-    SBUS_f_INF.columnconfigure(0, weight=1)
-    SBUS_f_INF.columnconfigure(3, weight=1)
-    for i in range(8):
-        SBUS_f_INF.rowconfigure(i, weight=1)
-        lbl = ttk.Label(SBUS_f_INF, text=f"C{i+1}", bootstyle=PRIMARY)
-        lbl.grid(row=i, column=1, padx=(20, 10), sticky="e")
-        s = ttk.Scale(SBUS_f_INF, from_=1000, to=2000, bootstyle=PRIMARY, length=800)
-        s.set(1500)
-        s.grid(row=i, column=2, padx=10, sticky="w")
-        sliders.append(s)
-
-    # update loop
-    def update_sliders():
-        while not inf_sbus_stop.is_set():
-            try:
-                buf = bytearray()
-                # Reference the imported INF_SBUS module functions
-                for _ in range(25): 
-                    buf.append(INF_SBUS.read_sbus_byte())
-
-                channels = INF_SBUS.decode_sbus_channels(buf)
-                pwm_values = [INF_SBUS.sbus_to_pwm(v) for v in channels]
-
-                for i, val in enumerate(pwm_values):
-                    if i < len(sliders):
-                        root.after(0, sliders[i].set, val)
-            except Exception:
-                for s in sliders:
-                    root.after(0, s.set, 1500)
-            time.sleep(0.025)  # small delay between iterations 
-
-    threading.Thread(target=update_sliders, daemon=True).start()
-
-
 
 def SBUS():
     sbus_stop.clear()
@@ -270,6 +220,19 @@ def update_lidar():
     else:
         l2.config(text="Waiting for Lidar...")
     lidar_after_id = root.after(500, update_lidar)
+
+def create_sliders(parent):
+    for widget in parent.winfo_children():
+        widget.destroy()
+    parent.columnconfigure(0, weight=1)
+    parent.columnconfigure(3, weight=1)
+    for i in range(8):
+        parent.rowconfigure(i, weight=1)
+        lbl = ttk.Label(parent, text=f"C{i+1}", bootstyle=PRIMARY)
+        lbl.grid(row=i, column=1, padx=(20, 10), sticky="e")
+        c = ttk.Scale(parent, from_=1000, to=2000, bootstyle=PRIMARY, length=800)
+        c.set(1500)
+        c.grid(row=i, column=2, padx=10, sticky="w")
 
 def Eth_test():
     l3.after(0, lambda: l3.config(text="Pinging air unit..."))
@@ -315,7 +278,7 @@ def body_test():
 
     #2. Analog port test
     la.after(0, lambda: la.config(text="Running Analog Port test (Rebooting)...", bootstyle=INFO, font=(None, 14)))
-    
+    analog_result = Analog_port_test.analog_port_run()
     if body_stop.is_set():
         return
     
@@ -350,19 +313,32 @@ def SBUS_run_test():
     l_sbus.after(0, lambda: l_sbus.config(text="SBUS Signal Detected - PASS" if result else "No SBUS Signal - FAIL", bootstyle=SUCCESS if result else DANGER, font=(None, 24, 'bold')))
 
 
+# Main window buttons
+b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
+b1.pack(expand=TRUE, pady=(75,0))
+b2 = ttk.Button(main, text="Magnetometer Test", bootstyle=PRIMARY, width=30, command=mag) 
+b2.pack(expand=TRUE)
+b3 = ttk.Button(main, text="Rear Switch Plate Test", bootstyle=PRIMARY, width=30, command=switch_plate)
+b3.pack(expand=TRUE)
+b4 = ttk.Button(main, text="Arm Loom Test", bootstyle=PRIMARY, width=30, command=arm)
+b4.pack(expand=TRUE) 
+b5 = ttk.Button(main, text="Body Test", bootstyle=PRIMARY, width=30, command=body)
+b5.pack(expand=TRUE) 
+b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=volt)
+b6.pack(expand=TRUE) 
+
+home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
+home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
+
 # Single Back button (used on SBUS, INF SBUS, Ethernet, and add to debug once tested that)
 back_b = ttk.Button(root, text="Back", bootstyle=OUTLINE, command=lambda: show_body_from_back(), width=10)
 
 def show_body_from_back():
-    # Signal the background loops to stop of each below
-    inf_sbus_stop.set()
-    sbus_stop.set()
-    eth_stop.set()
-    
     back_b.pack_forget()
     for f in [SBUS_f, SBUS_f_INF, Eth_f]:
         f.pack_forget()
     body_f.pack(fill=BOTH, expand=TRUE)
+
 
 # Body buttons
 eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
