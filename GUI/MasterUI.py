@@ -11,10 +11,15 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Analog
+from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, Analog
 
 mag_after_id = None
 lidar_after_id = None
+
+# Thread control events
+eth_stop = threading.Event()
+body_stop = threading.Event()
+sbus_stop = threading.Event()
 
 root = ttk.Window(themename="cyborg", size=[1280, 720], title="FSO Tester") 
 style = ttk.Style()
@@ -44,6 +49,10 @@ Eth_f = ttk.Frame(root)
 l1 = ttk.Label(mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l1.pack(fill=BOTH, expand=TRUE)
 
+#labels SBUS
+l_sbus = ttk.Label(SBUS_f, text="Waiting for SBUS signal...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER, font=(None, 24, 'bold'))
+l_sbus.pack(fill=BOTH, expand=TRUE)
+
 # labels lidar
 l2 = ttk.Label(lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l2.pack(fill=BOTH, expand=TRUE)
@@ -55,15 +64,24 @@ l3.pack(fill=BOTH, expand=TRUE)
 body_left_container = ttk.Frame(body_f)
 body_left_container.pack(side=LEFT, fill=BOTH, expand=TRUE)
 
-# labels body test
+# header and labels labels body test
 l4 = ttk.Label(body_left_container, text="SERIAL", bootstyle=SECONDARY)
 l4.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+ls = ttk.Label(body_left_container, text="Waiting for heatbeat", bootstyle=SECONDARY, font=(None, 14))
+ls.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+
 l5 = ttk.Label(body_left_container, text="ANALOG PORT", bootstyle=SECONDARY)
 l5.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+la = ttk.Label(body_left_container, text="", bootstyle=SECONDARY, font=(None, 14))
+la.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+
 l6 = ttk.Label(body_left_container, text="CAN", bootstyle=SECONDARY)
 l6.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+
 l7 = ttk.Label(body_left_container, text="PWM", bootstyle=SECONDARY)
 l7.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+lpwm = ttk.Label(body_left_container, text="", bootstyle=SECONDARY, font=(None, 14))
+lpwm.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 # labels voltage test
 volt_container = ttk.Frame(volt_f)
@@ -104,6 +122,9 @@ l_sw.pack(fill=BOTH, expand=TRUE)
 
 def home():
     global mag_after_id, lidar_after_id
+    eth_stop.set()
+    body_stop.set()
+    sbus_stop.set()
     if mag_after_id is not None:
         root.after_cancel(mag_after_id)
         mag_after_id = None
@@ -119,12 +140,11 @@ def home():
     main.pack(fill=BOTH, expand=TRUE)
     
 def Eth():
+    eth_stop.clear()
     body_f.pack_forget()
-    volt_f.pack_forget()
-    SBUS_f.pack_forget()
-    SBUS_f_INF.pack_forget()
-    Eth_f.pack_forget()
-    main.pack(fill=BOTH, expand=TRUE)
+    Eth_f.pack(fill=BOTH, expand=TRUE)
+    back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
+    threading.Thread(target=Eth_test, daemon=True).start()
 
 def lidar():
     global lidar_after_id
@@ -152,8 +172,10 @@ def arm():
     arm_f.pack(fill=BOTH, expand=TRUE)
     
 def body():
+    body_stop.clear()
     main.pack_forget()
     body_f.pack(fill=BOTH, expand=TRUE)
+    threading.Thread(target=body_test, daemon=True).start()
 
 def volt():
     main.pack_forget()
@@ -164,6 +186,15 @@ def SBUS_INF():
     body_f.pack_forget()
     create_sliders(SBUS_f_INF)
     SBUS_f_INF.pack(fill=BOTH, expand=TRUE)
+    back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
+
+def SBUS():
+    sbus_stop.clear()
+    body_f.pack_forget()
+    SBUS_f.pack(fill=BOTH, expand=TRUE)
+    back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
+    threading.Thread(target=SBUS_run_test, daemon=True).start()
+
 
 ##### Functions #####
 
@@ -188,7 +219,7 @@ def update_lidar():
     if distance is not None:
         l2.config(text=f"Lidar Distance: {distance} m")
     else:
-        l2.config(text="Waiting for Lidar")
+        l2.config(text="Waiting for Lidar...")
     lidar_after_id = root.after(500, update_lidar)
 
 def create_sliders(parent):
@@ -204,18 +235,14 @@ def create_sliders(parent):
         c.set(1500)
         c.grid(row=i, column=2, padx=10, sticky="w")
 
-def Eth():
-    body_f.pack_forget()
-    Eth_f.pack(fill=BOTH, expand=TRUE)
-    threading.Thread(target=Eth_test, daemon=True).start()  # run in background thread
-
 def Eth_test():
     l3.after(0, lambda: l3.config(text="Pinging air unit..."))
+    if eth_stop.is_set():
+        return
     result = Network_test.ping()
-    if result:
-        l3.after(0, lambda: l3.config(text="PASS! Network Test Passed"))
-    else:
-        l3.after(0, lambda: l3.config(text="Network Test Failed"))
+    if eth_stop.is_set():
+        return
+    l3.after(0, lambda: l3.config(text="PASS! Network Test Passed" if result else "Network Test Failed", bootstyle=SUCCESS if result else DANGER))
 
 def arm_test():
     matrix = Arm_loom_test.arm_loom()
@@ -236,6 +263,56 @@ def arm_test():
     l21.config(font=("Courier", 18), justify=CENTER, text=f"{matrix}")  # center and monospaced font
     l20.config(text="Pass!" if np.array_equal(matrix, pass_matrix) else "Fail!",
                bootstyle=SUCCESS if np.array_equal(matrix, pass_matrix) else DANGER)
+    
+def body_test(): 
+    if body_stop.is_set():
+        return
+    # 1. Serial test
+    serial_result = Body_Serial_test.serial_test()
+    if body_stop.is_set():
+        return
+    ls.after(0, lambda: ls.config(text="Heartbeat received - PASS" if serial_result else "No Heartbeat - FAIL", bootstyle=SUCCESS if serial_result else DANGER, font=(None, 14)))
+    
+    time.sleep(0.5)
+    if body_stop.is_set():
+        return
+
+    #2. Analog port test
+    la.after(0, lambda: la.config(text="Running Analog Port test (Rebooting)...", bootstyle=INFO, font=(None, 14)))
+    analog_result = Analog_port_test.analog_port_run()
+    if body_stop.is_set():
+        return
+    
+    output = Analog_port_test.analog_port_run()
+    combined_output = f"Results: A1={output[0]:.2f} V, A2={output[1]:.2f} V"
+
+    if (1 <= output[0] <= 1.5) and (2.25 <= output[1] <= 2.75):
+        la.after(0, lambda: la.config(text=f"PASS -- {combined_output}", bootstyle=SUCCESS, font=(None, 14)))
+    else:
+        la.after(0, lambda: la.config(text=f"FAIL -- {combined_output}", bootstyle=DANGER, font=(None, 14)))
+
+    # 4. PWM test
+    lpwm.after(0, lambda: lpwm.config(text="Running PWM test (Rebooting)...", bootstyle=INFO, font=(None, 14)))
+    pwm_result = PWM_test.run_pwm_test()
+    
+    if body_stop.is_set():
+        return
+        
+    status_str = "PASS" if pwm_result[1] else "FAIL"
+    combined_text = f"{status_str}!  Results: {pwm_result[0]}"
+    
+    lpwm.after(0, lambda: lpwm.config(text=combined_text, bootstyle=SUCCESS if pwm_result[1] else DANGER, font=(None, 14)))
+
+def SBUS_run_test():
+    # Update UI to show scanning started
+    l_sbus.after(0, lambda: l_sbus.config(text="Scanning for SBUS signal...", bootstyle=INFO, font=(None, 24, 'bold')))
+    if sbus_stop.is_set():
+        return
+    result = SBUS_test.test_sbus()
+    if sbus_stop.is_set():
+        return
+    l_sbus.after(0, lambda: l_sbus.config(text="SBUS Signal Detected - PASS" if result else "No SBUS Signal - FAIL", bootstyle=SUCCESS if result else DANGER, font=(None, 24, 'bold')))
+
 
 def ADC_test():
     labels_map = {
@@ -290,12 +367,22 @@ b6.pack(expand=TRUE)
 home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
 home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
 
+# Single Back button (used on SBUS, INF SBUS, Ethernet, and add to debug once tested that)
+back_b = ttk.Button(root, text="Back", bootstyle=OUTLINE, command=lambda: show_body_from_back(), width=10)
+
+def show_body_from_back():
+    back_b.pack_forget()
+    for f in [SBUS_f, SBUS_f_INF, Eth_f]:
+        f.pack_forget()
+    body_f.pack(fill=BOTH, expand=TRUE)
+
+
 # Body buttons
 eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth)
 eth1.pack(expand=TRUE, anchor=E, padx=75)
 SB1 = ttk.Button(body_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=20, command=SBUS_INF)
 SB1.pack(expand=TRUE, anchor=E, padx=75)
-SB2 = ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20)
+SB2 = ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20, command=SBUS)
 SB2.pack(expand=TRUE, anchor=E, padx=75)
 Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20)
 Debug.pack(expand=TRUE, anchor=E, padx=75)

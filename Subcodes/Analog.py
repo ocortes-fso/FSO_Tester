@@ -29,7 +29,6 @@ CH_DSUB3B = [0xB5, 0xBD]
 CH_POWER  = 0xBE
 
 def _decode_voltage(output, divider):
-    # your original extraction (minimal change)
     raw_val = ((output[0] & 0x7F) << 16) | (output[1] << 8) | output[2]
     return (Voltage_ref * raw_val / (1 << 23)) / divider
 
@@ -81,11 +80,11 @@ def read_max_until_in_range(channel_cmd, divider, vmin, vmax, channel_type, labe
             v = suppress_floating(v, vmin, vmax, channel_type)
 
             # Track biggest value seen
-            if vmax_seen is None or v > vmax_seen:
-                vmax_seen = v
+            if vmax_seen is None or voltage > vmax_seen:
+                vmax_seen = voltage
 
             # Exit early if we're in-range
-            if vmin <= v <= vmax:
+            if vmin <= voltage <= vmax:
                 break
 
         except OSError:
