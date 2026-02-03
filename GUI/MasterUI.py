@@ -11,7 +11,7 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test
+from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Analog
 
 mag_after_id = None
 lidar_after_id = None
@@ -158,6 +158,7 @@ def body():
 def volt():
     main.pack_forget()
     volt_f.pack(fill=BOTH, expand=TRUE)
+    threading.Thread(target=ADC_test, daemon=True).start()
 
 def SBUS_INF():
     body_f.pack_forget()
@@ -235,6 +236,42 @@ def arm_test():
     l21.config(font=("Courier", 18), justify=CENTER, text=f"{matrix}")  # center and monospaced font
     l20.config(text="Pass!" if np.array_equal(matrix, pass_matrix) else "Fail!",
                bootstyle=SUCCESS if np.array_equal(matrix, pass_matrix) else DANGER)
+
+def ADC_test():
+    labels_map = {
+        "STD SERIAL-12V": l9,
+        "STD SERIAL-5V":  l10,
+        "IV SERIAL-12V":  l11,
+        "IV SERIAL-5V":   l12,
+        "CAN/SBUS-12V":   l14,
+        "CAN/SBUS-5V":    l15,
+        "RC OUT-12V":     l17,
+        "RC OUT-5V":      l18,
+        "PAYLOAD":        l22,
+    }
+    for name, w in labels_map.items():
+        w.after(0, lambda w=w, name=name: w.config(text=f"{name}: Reading...", bootstyle=INFO))
+    
+    try:
+        results = Analog.read_all_channels(timeout = 1.0)
+    except Exception as e:
+        for name, w in labels_map.itmes():
+            w.after(0, lambda w=w, name=name: w.config(text=f"{name}: ERR -> FAIL", bootstyle=DANGER))
+            print(f"[ADC_test] Error {e}")
+            return
+        
+    for r in results:
+        label = r["label"]
+        value = r["value"]
+        ok    = r["pass"]
+
+        if label in labels_map:
+            w = labels_map[label]
+            status = "PASS" if ok else "FAIL"
+            boot = SUCCESS if ok else DANGER
+            w.after(0, lambda w=w, label=label, value=value, status=status, boot=boot:
+                    w.config(text=f"{label}: {value:.2f} V --> {status}", bootstyle=boot))
+
 
 # Main window buttons
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar)
