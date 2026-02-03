@@ -250,7 +250,7 @@ def ADC_test():
         "PAYLOAD":        l22,
     }
     for name, w in labels_map.items():
-        w.after(0, lambda w=w, name=name: w.config(text=f"{name}: Reading...", bootstyle=INFO))
+        w.after(0, lambda w=w, name=name: w.config(text=f"{name}: Reading...", bootstyle=INFO, font=('none', 18)))
     
     try:
         results = Analog.read_all_channels(timeout = 1.0)

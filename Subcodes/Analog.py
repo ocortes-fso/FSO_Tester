@@ -53,7 +53,7 @@ def suppress_floating(voltage, vmin, vmax, channel_type):
 
     return voltage
 
-def read_max_until_in_range(channel_cmd, divider, vmin, vmax, channel_type, timeout=1.0, conv_wait=0.18):
+def read_max_until_in_range(channel_cmd, divider, vmin, vmax, channel_type, label, timeout=1.0, conv_wait=0.18):
     """
     Loop until voltage is within [vmin, vmax] OR timeout reached.
     Track and return the biggest successfully-read voltage during the timeout window.
@@ -124,6 +124,8 @@ def read_all_channels(timeout=1.0, conv_wait=0.18):
 
     # Power
     results.append(read_max_until_in_range(CH_POWER, DIV_50V, 48.5, 52.0, "50V", "PAYLOAD", timeout, conv_wait))
+
+    return results
 
 ##### Print #####
 # for r in results:
