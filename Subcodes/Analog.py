@@ -80,11 +80,11 @@ def read_max_until_in_range(channel_cmd, divider, vmin, vmax, channel_type, labe
             v = suppress_floating(v, vmin, vmax, channel_type)
 
             # Track biggest value seen
-            if vmax_seen is None or voltage > vmax_seen:
-                vmax_seen = voltage
+            if vmax_seen is None or v > vmax_seen:
+                vmax_seen = v
 
             # Exit early if we're in-range
-            if vmin <= voltage <= vmax:
+            if vmin <= v <= vmax:
                 break
 
         except OSError:
