@@ -11,7 +11,7 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test
+from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, Analog
 
 mag_after_id = None
 lidar_after_id = None
@@ -89,29 +89,29 @@ volt_container.pack(expand=TRUE)
 
 l8 = ttk.Label(volt_container, text="3. SERIAL", bootstyle=SECONDARY, style='Header.TLabel')
 l8.pack(pady=(10, 3))
-l9 = ttk.Label(volt_container, text="A1:", bootstyle=SECONDARY, style='Sub.TLabel')
+l9 = ttk.Label(volt_container, text="V1:", bootstyle=SECONDARY, style='Sub.TLabel')
 l9.pack()
-l10 = ttk.Label(volt_container, text="A2:", bootstyle=SECONDARY, style='Sub.TLabel')
+l10 = ttk.Label(volt_container, text="V2:", bootstyle=SECONDARY, style='Sub.TLabel')
 l10.pack()
-l11 = ttk.Label(volt_container, text="A3:", bootstyle=SECONDARY, style='Sub.TLabel')
+l11 = ttk.Label(volt_container, text="V3:", bootstyle=SECONDARY, style='Sub.TLabel')
 l11.pack()
-l12 = ttk.Label(volt_container, text="A4:", bootstyle=SECONDARY, style='Sub.TLabel')
+l12 = ttk.Label(volt_container, text="V4:", bootstyle=SECONDARY, style='Sub.TLabel')
 l12.pack()
 l13 = ttk.Label(volt_container, text="4. CAN/SBUS", bootstyle=SECONDARY, style='Header.TLabel')
 l13.pack(pady=(10, 3))
-l14 = ttk.Label(volt_container, text="A5:", bootstyle=SECONDARY, style='Sub.TLabel')
+l14 = ttk.Label(volt_container, text="V5:", bootstyle=SECONDARY, style='Sub.TLabel')
 l14.pack()
-l15 = ttk.Label(volt_container, text="A6:", bootstyle=SECONDARY, style='Sub.TLabel')
+l15 = ttk.Label(volt_container, text="V6:", bootstyle=SECONDARY, style='Sub.TLabel')
 l15.pack()
 l16 = ttk.Label(volt_container, text="5. RC-OUT", bootstyle=SECONDARY, style='Header.TLabel')
 l16.pack(pady=(10, 3))
-l17 = ttk.Label(volt_container, text="A7:", bootstyle=SECONDARY, style='Sub.TLabel')
+l17 = ttk.Label(volt_container, text="V7:", bootstyle=SECONDARY, style='Sub.TLabel')
 l17.pack()
-l18 = ttk.Label(volt_container, text="A8:", bootstyle=SECONDARY, style='Sub.TLabel')
+l18 = ttk.Label(volt_container, text="V8:", bootstyle=SECONDARY, style='Sub.TLabel')
 l18.pack()
 l19 = ttk.Label(volt_container, text="6. PAYLOAD", bootstyle=SECONDARY, style='Header.TLabel')
 l19.pack(pady=(10, 3))
-l22 = ttk.Label(volt_container, text="A9:", bootstyle=SECONDARY, style='Sub.TLabel')
+l22 = ttk.Label(volt_container, text="V9:", bootstyle=SECONDARY, style='Sub.TLabel')
 l22.pack()
 
 # labels switch plate
@@ -180,6 +180,7 @@ def body():
 def volt():
     main.pack_forget()
     volt_f.pack(fill=BOTH, expand=TRUE)
+    threading.Thread(target=ADC_test, daemon=True).start()
 
 def SBUS_INF():
     body_f.pack_forget()
@@ -311,6 +312,42 @@ def SBUS_run_test():
     if sbus_stop.is_set():
         return
     l_sbus.after(0, lambda: l_sbus.config(text="SBUS Signal Detected - PASS" if result else "No SBUS Signal - FAIL", bootstyle=SUCCESS if result else DANGER, font=(None, 24, 'bold')))
+
+
+def ADC_test():
+    labels_map = {
+        "STD SERIAL-12V": l9,
+        "STD SERIAL-5V":  l10,
+        "IV SERIAL-12V":  l11,
+        "IV SERIAL-5V":   l12,
+        "CAN/SBUS-12V":   l14,
+        "CAN/SBUS-5V":    l15,
+        "RC OUT-12V":     l17,
+        "RC OUT-5V":      l18,
+        "PAYLOAD":        l22,
+    }
+    for name, w in labels_map.items():
+        w.after(0, lambda w=w, name=name: w.config(text=f"{name}: Reading...", bootstyle=INFO, font=('none', 18)))
+    
+    try:
+        results = Analog.read_all_channels(timeout = 1.0)
+    except Exception as e:
+        for name, w in labels_map.itmes():
+            w.after(0, lambda w=w, name=name: w.config(text=f"{name}: ERR -> FAIL", bootstyle=DANGER))
+            print(f"[ADC_test] Error {e}")
+            return
+        
+    for r in results:
+        label = r["label"]
+        value = r["value"]
+        ok    = r["pass"]
+
+        if label in labels_map:
+            w = labels_map[label]
+            status = "PASS" if ok else "FAIL"
+            boot = SUCCESS if ok else DANGER
+            w.after(0, lambda w=w, label=label, value=value, status=status, boot=boot:
+                    w.config(text=f"{label}: {value:.2f} V --> {status}", bootstyle=boot))
 
 
 # Main window buttons
