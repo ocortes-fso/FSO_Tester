@@ -2,12 +2,7 @@
 # GUI-safe: nothing runs or touches GPIO unless sbus_inf() is CALLED
 
 def sbus_inf():
-    """
-    Blocking SBUS reader.
-    MUST be run in a thread (GUI already does this).
-    Returns one list of 8 PWM values, or None on failure.
-    """
-
+ 
     import time
     import lgpio
 
