@@ -1,3 +1,4 @@
+from unittest import result
 import ttkbootstrap as ttk 
 from ttkbootstrap.constants import *
 import sys
@@ -242,7 +243,11 @@ def Eth_test():
     result = Network_test.ping()
     if eth_stop.is_set():
         return
-    l3.after(0, lambda: l3.config(text="PASS! Network Test Passed" if result else "Network Test Failed", bootstyle=SUCCESS, font=(None, 25, 'bold') if result else DANGER, font=(None, 24, 'bold')))
+    l3.after(0, lambda: l3.config(
+    text="PASS! Network Test Passed" if result else "Network Test Failed", 
+    bootstyle=SUCCESS if result else DANGER, 
+    font=(None, 24, 'bold') if result else (None, 24, 'bold')
+))
 
 def arm_test():
     matrix = Arm_loom_test.arm_loom()
