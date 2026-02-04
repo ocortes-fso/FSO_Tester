@@ -29,7 +29,7 @@ style.configure('primary.TLabel', font=(None, 24, 'bold'))
 style.configure('secondary.TButton', font=(None, 20, 'bold'))
 style.configure('secondary.TLabel', font=(None, 18, 'bold'))
 style.configure('Header.TLabel', font=(None, 20, 'bold'))
-style.configure('Sub.TLabel', font=(None, 16))
+style.configure('Sub.TLabel', font=(None, 18))
 
 # Main window/home page
 main = ttk.Frame(root) 
@@ -242,7 +242,7 @@ def Eth_test():
     result = Network_test.ping()
     if eth_stop.is_set():
         return
-    l3.after(0, lambda: l3.config(text="PASS! Network Test Passed" if result else "Network Test Failed", bootstyle=SUCCESS if result else DANGER))
+    l3.after(0, lambda: l3.config(text="PASS! Network Test Passed" if result else "Network Test Failed", bootstyle=SUCCESS, font=(None, 25, 'bold') if result else DANGER, font=(None, 24, 'bold')))
 
 def arm_test():
     matrix = Arm_loom_test.arm_loom()
