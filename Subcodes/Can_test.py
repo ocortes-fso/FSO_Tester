@@ -28,3 +28,7 @@ if msg_rx:
     print(f"CAN check PASS!! Received message: {msg_rx}")
 else:
     print("CAN check FAIL: No message received")
+    
+# Shut down bus 
+os.system(f"sudo ip link set {CAN_INTERFACE} down")  # Bring CAN interface down
+canbus.shutdown()
