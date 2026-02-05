@@ -12,7 +12,7 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, Analog, Can_test, INF_SBUS
+from Subcodes import reset, Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, Analog, Can_test, INF_SBUS
 
 mag_after_id = None
 lidar_after_id = None
@@ -35,6 +35,7 @@ style.configure('Sub.TLabel', font=(None, 18))
 
 # Main window/home page
 main = ttk.Frame(root) 
+root.attributes('-fullscreen', True) # fullscreen
 
 # Frames for different test pages
 lidar_f = ttk.Frame(root) 
@@ -340,6 +341,9 @@ def body_test():
     
     lpwm.after(0, lambda: lpwm.config(text=combined_text, bootstyle=SUCCESS if pwm_result[1] else DANGER, font=(None, 14)))
 
+    #reset
+    reset.run_reset()
+    
 def SBUS_run_test():
     # Update UI to show scanning started
     l_sbus.after(0, lambda: l_sbus.config(text="Scanning for SBUS signal...", bootstyle=INFO, font=(None, 24, 'bold')))
