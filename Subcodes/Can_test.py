@@ -3,7 +3,7 @@ import time
 import os
 
 CAN_INTERFACE = 'can0'  # Interface name (adjust if needed)
-BITRATE = 500000  # Ensure this matches the flight controller's CAN bitrate
+BITRATE = 1000000  # Ensure this matches the flight controller's CAN bitrate
 TIMEOUT = 5  # Time in seconds to wait for a response
 
 #Set up the CAN interface (ensure CAN bus is running)
