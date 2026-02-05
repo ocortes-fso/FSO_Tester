@@ -16,11 +16,9 @@ _bus = None
 ### Show distance read by the LIDAR, below changed from older commit to allow for GUI use --removed while true and return distance value
 def _get_bus():
     global _bus
-    if _bus is not None:
-        try:
-            _bus.close()
-        finally:
-            _bus = None
+    if _bus is None:
+        _bus = SMBus(I2C_BUS)
+    return _bus
 
 def read_lidar_distance():
     try:
@@ -29,7 +27,7 @@ def read_lidar_distance():
 
         # Big-endian (most common)
         dist_mm = (data[0] << 8) | data[1] # mm output 
-        return dist_mm / 1000.0
+        return dist_mm / 100.0
 
     except OSError:
         close()
