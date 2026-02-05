@@ -1,8 +1,11 @@
 import time
 import lgpio
 
-def sbus_inf():
+# Handle moved outside to prevent re-opening every call
+h = None
 
+def sbus_inf():
+    global h
     # ---------------- CONFIG ---------------- #
 
     SBUS_GPIO = 15
@@ -17,11 +20,12 @@ def sbus_inf():
 
     # -------------- GPIO INIT -------------- #
 
-    try:
-        h = lgpio.gpiochip_open(SBUS_CHIP)
-        lgpio.gpio_claim_input(h, SBUS_GPIO)
-    except Exception:
-        return None
+    if h is None:
+        try:
+            h = lgpio.gpiochip_open(SBUS_CHIP)
+            lgpio.gpio_claim_input(h, SBUS_GPIO)
+        except Exception:
+            return None
 
     # -------------- HELPERS ---------------- #
 
@@ -67,19 +71,17 @@ def sbus_inf():
     buf = bytearray()
     start = time.time()
 
-    try:
-        while time.time() - start < 0.5:
-            byte = read_sbus_byte()
-            if byte is None:
-                continue
+    # Reduced search window to 0.1s to prevent long GUI hangs
+    while time.time() - start < 0.1:
+        byte = read_sbus_byte()
+        if byte is None:
+            continue
 
-            buf.append(byte)
+        buf.append(byte)
 
-            if len(buf) >= SBUS_FRAME_LENGTH:
-                frame = buf[:SBUS_FRAME_LENGTH]
-                pwm = [sbus_to_pwm(v) for v in decode(frame)]
-                return pwm
-    finally:
-        lgpio.gpiochip_close(h)
+        if len(buf) >= SBUS_FRAME_LENGTH:
+            frame = buf[:SBUS_FRAME_LENGTH]
+            pwm = [sbus_to_pwm(v) for v in decode(frame)]
+            return pwm
 
     return None
