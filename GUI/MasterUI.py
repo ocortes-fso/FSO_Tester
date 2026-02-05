@@ -12,7 +12,7 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, Analog, Can_test
+from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, Analog, Can_test, INF_SBUS
 
 mag_after_id = None
 lidar_after_id = None
@@ -21,6 +21,7 @@ lidar_after_id = None
 eth_stop = threading.Event()
 body_stop = threading.Event()
 sbus_stop = threading.Event()
+INF_sbus_stop = threading.Event()
 
 root = ttk.Window(themename="cyborg", size=[1280, 720], title="FSO Tester") 
 style = ttk.Style()
@@ -128,6 +129,7 @@ def home():
     eth_stop.set()
     body_stop.set()
     sbus_stop.set()
+    INF_sbus_stop.set()
     if mag_after_id is not None:
         root.after_cancel(mag_after_id)
         mag_after_id = None
@@ -190,7 +192,9 @@ def SBUS_INF():
     create_sliders(SBUS_f_INF)
     SBUS_f_INF.pack(fill=BOTH, expand=TRUE)
     back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
-
+    root.update()
+    update_sliders(SBUS_f_INF)
+    
 def SBUS():
     sbus_stop.clear()
     body_f.pack_forget()
@@ -237,6 +241,20 @@ def create_sliders(parent):
         c = ttk.Scale(parent, from_=1000, to=2000, bootstyle=PRIMARY, length=800)
         c.set(1500)
         c.grid(row=i, column=2, padx=10, sticky="w")
+
+def update_sliders(parent):      
+    if not parent.winfo_exists() or INF_sbus_stop.is_set():
+        return
+    vals = INF_SBUS.sbus_inf()
+    if vals is not None:
+        for i in range(8):
+            parent.grid_slaves(row=i, column=2)[0].set(vals[i])
+    else:
+        for i in range(8):
+            parent.grid_slaves(row=i, column=2)[0].set(1500) #set to midpoint if no values read 
+    
+    parent.after(100, lambda: update_sliders(parent))  # update every 100 ms
+           
 
 def Eth_test():
     l3.after(0, lambda: l3.config(text="Pinging air unit..."))
@@ -331,7 +349,6 @@ def SBUS_run_test():
     if sbus_stop.is_set():
         return
     l_sbus.after(0, lambda: l_sbus.config(text="SBUS Signal Detected - PASS" if result else "No SBUS Signal - FAIL", bootstyle=SUCCESS if result else DANGER, font=(None, 24, 'bold')))
-
 
 def ADC_test():
     labels_map = {
