@@ -12,7 +12,7 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # import of codes used in GUI
-from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, Analog
+from Subcodes import Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, Analog, Can_test
 
 mag_after_id = None
 lidar_after_id = None
@@ -78,6 +78,8 @@ la.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 l6 = ttk.Label(body_left_container, text="CAN", bootstyle=SECONDARY)
 l6.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
+lcan = ttk.Label(body_left_container, text="", bootstyle=SECONDARY, font=(None, 14))
+lcan.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 l7 = ttk.Label(body_left_container, text="PWM", bootstyle=SECONDARY)
 l7.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
@@ -296,6 +298,18 @@ def body_test():
     else:
         la.after(0, lambda: la.config(text=f"FAIL -- {combined_output}", bootstyle=DANGER, font=(None, 14)))
 
+    #3. CAN test
+    if body_stop.is_set():
+        return
+    lcan.after(0, lambda: lcan.config(text="Running CAN test ...", bootstyle=INFO, font=(None, 14)))
+    Can_status = Can_test.run_can()
+    if Can_status == True:
+        lcan.after(0, lambda: lcan.config(text="CAN Test PASS!", bootstyle=SUCCESS, font=(None, 14)))
+    elif Can_status == False:
+        lcan.after(0, lambda: lcan.config(text="CAN Test FAIL!", bootstyle=DANGER, font=(None, 14)))
+    else:
+        lcan.after(0, lambda: lcan.config(text="CAN Test ERROR!", bootstyle=DANGER, font=(None, 14)))
+    
     # 4. PWM test
     lpwm.after(0, lambda: lpwm.config(text="Running PWM test (Rebooting)...", bootstyle=INFO, font=(None, 14)))
     pwm_result = PWM_test.run_pwm_test()
