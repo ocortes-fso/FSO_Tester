@@ -13,7 +13,7 @@ def run_can():
 
     #Initialize CAN bus interface (debugging can remove this when all wokring)
 
-    canbus = can.interface.Bus(channel=CAN_INTERFACE, bustype='socketcan')
+    canbus = can.interface.Bus(channel=CAN_INTERFACE, interface='socketcan')
 
     msg_rx = canbus.recv(timeout=TIMEOUT)  # Wait up to 5 seconds for a message
 
