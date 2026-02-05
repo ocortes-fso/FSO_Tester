@@ -2,16 +2,16 @@
 Repository of all the codes used for the testing boxes.
 
 ## Setup
-1. Disable CE1_SPIO (GPIO07)
-2. Add add to "/boot/firmware/config.txt" the following strings: 
-    - "under all dtoverlay=mcp2515-can0, oscillator=16000000, interrupt=4, spimaxfrequency=10000000" (to confirm frequency)
+1. Add add to "/boot/firmware/config.txt" the following strings: 
+    - "under all dtoverlay=mcp2515-can0, oscillator=16000000, interrupt=4, spimaxfrequency=10000000"
     - "enable_uart=1"
-3. Remove the following string from "/boot/firmware/cmdline.txt":
+    - "dtoverlay=spi0-1cs"
+2. Remove the following string from "/boot/firmware/cmdline.txt":
     - "console=serial0,115200 "
-4. Enable I2C
-5. Enable SPI
-6. Enable Serial Port
-7. Static IP has to be set on 144 gateway
+3. Enable I2C
+4. Enable SPI
+5. Enable Serial Port
+6. Static IP has to be set on 144 gateway
 
 ## Pins and Connections
 - Plug in the HAT with a 40Pin 20mm header.
