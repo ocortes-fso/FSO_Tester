@@ -126,6 +126,7 @@ l_sw.pack(fill=BOTH, expand=TRUE)
 
 def home():
     global mag_after_id, lidar_after_id
+    home_b.pack_forget()
     eth_stop.set()
     body_stop.set()
     sbus_stop.set()
@@ -147,6 +148,7 @@ def home():
 def Eth():
     eth_stop.clear()
     body_f.pack_forget()
+    home_b.pack_forget()
     Eth_f.pack(fill=BOTH, expand=TRUE)
     back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     threading.Thread(target=Eth_test, daemon=True).start()
@@ -154,6 +156,7 @@ def Eth():
 def lidar():
     global lidar_after_id
     main.pack_forget()
+    home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     lidar_f.pack(fill=BOTH, expand=TRUE)
     root.update()
     if lidar_after_id is None:
@@ -162,6 +165,7 @@ def lidar():
 def mag():
     global mag_after_id
     main.pack_forget()
+    home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     mag_f.pack(fill=BOTH, expand=TRUE)
     root.update()
     if mag_after_id is None:
@@ -169,26 +173,32 @@ def mag():
 
 def switch_plate():
     main.pack_forget()
+    home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     switch_plate_f.pack(fill=BOTH, expand=TRUE)
     Rear_switch_plate_test.start()
    
 def arm():
     main.pack_forget()
+    home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     arm_f.pack(fill=BOTH, expand=TRUE)
     
 def body():
     body_stop.clear()
     main.pack_forget()
+    back_b.pack_forget()
+    home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     body_f.pack(fill=BOTH, expand=TRUE)
     threading.Thread(target=body_test, daemon=True).start()
 
 def volt():
     main.pack_forget()
+    home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     volt_f.pack(fill=BOTH, expand=TRUE)
     threading.Thread(target=ADC_test, daemon=True).start()
 
 def SBUS_INF():
     body_f.pack_forget()
+    home_b.pack_forget()
     create_sliders(SBUS_f_INF)
     SBUS_f_INF.pack(fill=BOTH, expand=TRUE)
     back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
@@ -197,6 +207,7 @@ def SBUS_INF():
     
 def SBUS():
     sbus_stop.clear()
+    home_b.pack_forget()    
     body_f.pack_forget()
     SBUS_f.pack(fill=BOTH, expand=TRUE)
     back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
@@ -401,15 +412,17 @@ b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=
 b6.pack(expand=TRUE) 
 
 home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
-home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
 
 # Single Back button (used on SBUS, INF SBUS, Ethernet, and add to debug once tested that)
 back_b = ttk.Button(root, text="Back", bootstyle=OUTLINE, command=lambda: show_body_from_back(), width=10)
 
 def show_body_from_back():
     back_b.pack_forget()
+    
     for f in [SBUS_f, SBUS_f_INF, Eth_f]:
         f.pack_forget()
+        
+    home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     body_f.pack(fill=BOTH, expand=TRUE)
 
 
