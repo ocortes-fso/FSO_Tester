@@ -323,7 +323,7 @@ def body_test():
     output = Analog_port_test.analog_port_run()
     combined_output = f"Results: A1={output[0]:.2f} V, A2={output[1]:.2f} V"
 
-    if (1 <= output[0] <= 1.5) and (2.25 <= output[1] <= 2.75):
+    if (0.7 <= output[0] <= 0.9) and (1.5 <= output[1] <= 1.7):
         la.after(0, lambda: la.config(text=f"PASS -- {combined_output}", bootstyle=SUCCESS, font=(None, 14)))
     else:
         la.after(0, lambda: la.config(text=f"FAIL -- {combined_output}", bootstyle=DANGER, font=(None, 14)))
