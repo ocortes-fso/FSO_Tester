@@ -413,7 +413,7 @@ b4.pack(expand=TRUE)
 b5 = ttk.Button(main, text="Body Test", bootstyle=PRIMARY, width=30, command=body)
 b5.pack(expand=TRUE) 
 b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=volt)
-b6.pack(expand=TRUE) 
+b6.pack(expand=TRUE, pady=(0,75)) 
 
 home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
 
