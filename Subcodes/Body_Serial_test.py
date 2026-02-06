@@ -4,7 +4,7 @@ from pymavlink import mavutil
 #establish seral connection to autopilot via DSUB 
 
 serial_port = "/dev/ttyAMA10" #GPIO pin serial port may need to config boot config file to enable
-baud_rate = 115200 #again confirm this is correct serial 5 baud rate
+baud_rate = 57600 #again confirm this is correct serial 5 baud rate
 
 #test for serial receive changed to function for GUI
 
