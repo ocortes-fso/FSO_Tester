@@ -5,7 +5,7 @@ from pymavlink import mavutil
 
 def analog_port_run():
     serial_port = "/dev/ttyAMA10" #debug port
-    baud_rate = 115200
+    baud_rate = 57600
 
     Param_set = {
         "BATT8_OPTIONS": 1,
