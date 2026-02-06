@@ -4,7 +4,7 @@ from pymavlink import mavutil
 
 def run_pwm_test():
     serial_port = "/dev/ttyAMA10"
-    baud_rate = 115200
+    baud_rate = 57600
     master = mavutil.mavlink_connection(serial_port, baud_rate)
     master.wait_heartbeat()
 
