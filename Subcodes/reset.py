@@ -24,4 +24,4 @@ def run_reset():
             value,
             mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
         )
-        time.sleep(0.02)
+        time.sleep(0.1)

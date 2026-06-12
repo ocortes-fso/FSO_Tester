@@ -30,7 +30,7 @@ def analog_port_run():
             value,
             mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
         )
-        time.sleep(0.02)
+        time.sleep(0.1)
 
     master.mav.command_long_send(
         master.target_system,
@@ -69,7 +69,15 @@ def analog_port_run():
                 voltage9 = msg.voltages[0]/1000
                 received_batt9 = True
 
+            else:
+                received_batt8 = True
+                received_batt9 = True
+                voltage8 = -1
+                voltage9 = -1
+
         if received_batt9 and received_batt8:
             break
+
+
 
     return [voltage8, voltage9]

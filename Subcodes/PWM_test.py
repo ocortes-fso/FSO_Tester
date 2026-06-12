@@ -24,7 +24,7 @@ def run_pwm_test():
             value,
             mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
         )
-        time.sleep(0.02)
+        time.sleep(0.1)
 
     master.mav.command_long_send(
         master.target_system,
