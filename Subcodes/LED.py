@@ -10,7 +10,7 @@ CHIP = 4
 
 def LED_ON():
     try:
-        h = lgpio.gpiochip_open(0)
+        h = lgpio.gpiochip_open(CHIP)
         lgpio.gpio_claim_output(h, LED_GPIO)
 
 
