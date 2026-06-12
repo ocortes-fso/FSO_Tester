@@ -33,11 +33,9 @@ def SPIN():
             lgpio.gpio_claim_output(h, pin)
 
         manual_sweep(h, LOW, INIT, pins)
-        set_pwm(h, INIT, pins)
         time.sleep(1.0)
 
         manual_sweep(h, INIT, HIGH, pins)
-        set_pwm(h, HIGH, pins)
         time.sleep(5.0)
 
         manual_sweep(h, HIGH, LOW, pins)
@@ -59,11 +57,9 @@ def SPIN_TOP():
         lgpio.gpio_claim_output(h, PWM1)
 
         manual_sweep(h, LOW, INIT, pins)
-        set_pwm(h, INIT, pins)
         time.sleep(1.0)
 
         manual_sweep(h, INIT, HIGH, pins)
-        set_pwm(h, HIGH, pins)
         time.sleep(5.0)
 
         manual_sweep(h, HIGH, LOW, pins)
@@ -84,11 +80,9 @@ def SPIN_BOT():
         lgpio.gpio_claim_output(h, PWM2)
 
         manual_sweep(h, LOW, INIT, pins)
-        set_pwm(h, INIT, pins)
         time.sleep(1.0)
 
         manual_sweep(h, INIT, HIGH, pins)
-        set_pwm(h, HIGH, pins)
         time.sleep(5.0)
 
         manual_sweep(h, HIGH, LOW, pins)
