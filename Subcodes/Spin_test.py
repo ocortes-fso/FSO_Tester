@@ -12,15 +12,15 @@ LOW = 1000
 SWEEP_DELAY = 0.0005
 
 
-def set_pwm(h, freq, target_pins):
+def set_pwm(h, us, target_pins):
     for pin in target_pins:
-        lgpio.tx_pwm(h, pin, freq, 500000)
+        lgpio.tx_servo(h, pin, us)
 
 
-def manual_sweep(h, start_freq, end_freq, target_pins, custom_delay=SWEEP_DELAY):
-    step = 1 if end_freq > start_freq else -1
-    for freq in range(start_freq, end_freq + step, step):
-        set_pwm(h, freq, target_pins)
+def manual_sweep(h, start_us, end_us, target_pins, custom_delay=SWEEP_DELAY):
+    step = 1 if end_us > start_us else -1
+    for us in range(start_us, end_us + step, step):
+        set_pwm(h, us, target_pins)
         time.sleep(custom_delay)
 
 #call for normal spin test NO PROPS!!
@@ -44,8 +44,8 @@ def SPIN():
         pass
     finally:
         if "h" in locals():
-            lgpio.tx_pwm(h, PWM1, 0, 0)
-            lgpio.tx_pwm(h, PWM2, 0, 0)
+            lgpio.tx_servo(h, PWM1, 0)
+            lgpio.tx_servo(h, PWM2, 0)
             lgpio.gpiochip_close(h)
 
 #call for Spin test PWM1 / TOP
@@ -68,7 +68,7 @@ def SPIN_TOP():
         pass
     finally:
         if "h" in locals():
-            lgpio.tx_pwm(h, PWM1, 0, 0)
+            lgpio.tx_servo(h, PWM1, 0)
             lgpio.gpiochip_close(h)
 
 #call for Spin test PWM2 / BOT
@@ -91,7 +91,7 @@ def SPIN_BOT():
         pass
     finally:
         if "h" in locals():
-            lgpio.tx_pwm(h, PWM2, 0, 0)
+            lgpio.tx_servo(h, PWM2, 0)
             lgpio.gpiochip_close(h)
 
 
@@ -130,6 +130,6 @@ def SPIN_PROP():
         pass
     finally:
         if "h" in locals():
-            lgpio.tx_pwm(h, PWM1, 0, 0)
-            lgpio.tx_pwm(h, PWM2, 0, 0)
+            lgpio.tx_servo(h, PWM1, 0)
+            lgpio.tx_servo(h, PWM2, 0)
             lgpio.gpiochip_close(h)
