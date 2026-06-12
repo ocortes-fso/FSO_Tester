@@ -46,7 +46,7 @@ def SPIN():
         if "h" in locals():
             lgpio.tx_servo(h, PWM1, 0)
             lgpio.tx_servo(h, PWM2, 0)
-            lgpio.gpiochip_close(h)
+
 
 #call for Spin test PWM1 / TOP
 
@@ -69,7 +69,7 @@ def SPIN_TOP():
     finally:
         if "h" in locals():
             lgpio.tx_servo(h, PWM1, 0)
-            lgpio.gpiochip_close(h)
+
 
 #call for Spin test PWM2 / BOT
 
@@ -92,7 +92,6 @@ def SPIN_BOT():
     finally:
         if "h" in locals():
             lgpio.tx_servo(h, PWM2, 0)
-            lgpio.gpiochip_close(h)
 
 
 #call for vibration/prop spin test WITH PROPS!!
@@ -132,4 +131,3 @@ def SPIN_PROP():
         if "h" in locals():
             lgpio.tx_servo(h, PWM1, 0)
             lgpio.tx_servo(h, PWM2, 0)
-            lgpio.gpiochip_close(h)

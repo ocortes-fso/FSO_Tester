@@ -27,6 +27,3 @@ def LED_OFF():
         lgpio.gpio_write(h, LED_GPIO, 0)
     except Exception as e:
         pass
-    finally:
-        if "h" in locals():
-            lgpio.gpiochip_close(h)
