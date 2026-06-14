@@ -36,7 +36,11 @@ def arm_loom():
             # Toggle back to Input
             lgpio.gpio_free(h, currentPin)
             lgpio.gpio_claim_input(h, currentPin, lgpio.SET_PULL_DOWN)
-        return output_matrix
+
+        #convert to clean string for GUI output
+        gui_string = '\n'.join(' '.join(map(str, row)) for row in output_matrix)
+
+        return output_matrix, gui_string
         
 
     finally:
