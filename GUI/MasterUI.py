@@ -148,10 +148,10 @@ def home():
 
 
 def arm():
+    global batt_after_id
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Arm_f.pack(fill=BOTH, expand=TRUE)
-    global batt_after_id
     root.update()
     if batt_after_id is None:
         update_batt()
@@ -261,43 +261,38 @@ def update_mag():
 
 def PWR_ON():
     Precharge.INITIALIZE_SYSTEM()
-    PRECHARGE_VOLT = Precharge.START_PRECHARGE()
+    Precharge.START_PRECHARGE()
+    PWR.config(text = "PreCharging...")
+    time.sleep(5)
+    PRECHARGE_VOLT = Batt_monitor.read_battery_voltage()
     if PRECHARGE_VOLT <= 20:
         Precharge.OPEN_FET()
         time.sleep(2)   #not sure if enough or too long to keep precharge on... SF to check
         Precharge.TURN_OFF_PRECHARGE()
-        PWR.config(bootstyle=SUCCESS, width=24)
     else:
-        PWR.config(text = "Check batteries", bootstyle=DANGER, width=24)  #maybe have text here eg precharge fail
+        PWR.config(text = "Precharge FAIL")  #maybe have text here eg precharge fail
         
 def SPIN():
     Spin_test.SPIN_START()
-    SPIN_ALL.config(bootstyle=SUCCESS, width=24)
-    SPIN_ALL.after(2500, lambda: SPIN_ALL.config(bootstyle=SECONDARY, width=24))
+
 
 def TOP_SPIN():
     Spin_test.SPIN_TOP
-    SPIN_TOP.config(bootstyle=SUCCESS, width=24)
-    SPIN_TOP.after(2500, lambda: SPIN_TOP.config(bootstyle=SECONDARY, width=24))
+
 
 def BOT_SPIN():
     Spin_test.SPIN_BOT
-    SPIN_BOT.config(bootstyle=SUCCESS, width=24)
-    SPIN_BOT.after(2500, lambda: SPIN_BOT.config(bootstyle=SECONDARY, width=24))
 
 def PROP_SPIN():
     Spin_test.SPIN_PROP
-    PROP.config(bootstyle=SUCCESS, width=24)
-    PROP.after(2500, lambda: PROP.config(bootstyle=SECONDARY, width=24))
-
 
 def TOGGLE_LED():
-    if LED.cget("text") == "Turn LED On":
+    if LED_btn.cget("text") == "Turn LED On":
         LED.LED_ON
-        LED.config(text="Turn LED Off", bootstyle=SUCCESS, width=24)
+        LED_btn.config(text="Turn LED Off")
     else:
         LED.LED_OFF()
-        LED.config(text="Turn LED On", bootstyle=SECONDARY, width=24)
+        LED_btn.config(text="Turn LED On")
 
 def STOP():
     PWM1 = 7
@@ -474,7 +469,7 @@ SB2 = ttk.Button(Body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, widt
 Debug = ttk.Button(Body_f, text="Debug Mode", bootstyle=SECONDARY, width=20); #Debug.pack(expand=TRUE, anchor=E, padx=75)   #hidden for now until we work this out
 
 # Arm buttons
-PWR = ttk.Button(Arm_f, text="Power On", bootstyle=PRIMARY, width=24, command=PWR_ON)
+PWR = ttk.Button(Arm_f, text="POWER ON", bootstyle=PRIMARY, width=24, command=PWR_ON)
 PWR.pack(expand=TRUE, pady=(25, 15))
 SPIN_ALL = ttk.Button(Arm_f, text="Spin ALL", bootstyle=SECONDARY, width=24, command=SPIN)
 SPIN_ALL.pack(expand=TRUE, pady=5)
@@ -482,11 +477,11 @@ SPIN_TOP = ttk.Button(Arm_f, text="Spin TOP", bootstyle=SECONDARY, width=24, com
 SPIN_TOP.pack(expand=TRUE, pady=5)
 SPIN_BOT = ttk.Button(Arm_f, text="Spin BOT", bootstyle=SECONDARY, width=24, command=BOT_SPIN)
 SPIN_BOT.pack(expand=TRUE, pady=5)
-LED = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, command=TOGGLE_LED)
-LED.pack(expand=TRUE, pady=5)
+LED_btn = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, command=TOGGLE_LED)
+LED_btn.pack(expand=TRUE, pady=5)
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, width=24, command=PROP_SPIN)
 PROP.pack(expand=TRUE, pady=(5, 15))
-STOP = ttk.Button(Arm_f, text="POWER OFF", bootstyle=PRIMARY, width=32, command=STOP)
+STOP = ttk.Button(Arm_f, text="POWER OFF", bootstyle=DANGER, width=24, command=STOP)
 STOP.pack(expand=TRUE, pady=(15, 25))
 
 
