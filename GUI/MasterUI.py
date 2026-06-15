@@ -113,9 +113,9 @@ l_sw.pack(fill=BOTH, expand=TRUE)
 batt_container = ttk.Frame(Arm_f)
 batt_container.pack(side=RIGHT, anchor=NE, padx=15, pady=15)
 
-lv = ttk.Label(batt_container, text="", bootstyle=SECONDARY, style='Sub.TLabel'); lv.pack()
-li = ttk.Label(batt_container, text="", bootstyle=SECONDARY, style='Sub.TLabel'); li.pack()
-lt = ttk.Label(batt_container, text="", bootstyle=SECONDARY, style='Sub.TLabel'); lt.pack()
+lv = ttk.Label(batt_container, text="Voltage:", bootstyle=SECONDARY, style='Sub.TLabel'); lv.pack()
+li = ttk.Label(batt_container, text="Current:", bootstyle=SECONDARY, style='Sub.TLabel'); li.pack()
+lt = ttk.Label(batt_container, text="Temperature:", bootstyle=SECONDARY, style='Sub.TLabel'); lt.pack()
 
 
 # --- SCREENS ---
@@ -155,7 +155,6 @@ def arm():
     root.update()
     if batt_after_id is None:
         update_batt()
-
 
 def lidar():
     global lidar_after_id
