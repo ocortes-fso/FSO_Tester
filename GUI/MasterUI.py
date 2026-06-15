@@ -266,39 +266,38 @@ def PWR_ON():
         Precharge.OPEN_FET()
         time.sleep(2)   #not sure if enough or too long to keep precharge on... SF to check
         Precharge.TURN_OFF_PRECHARGE()
-        PWR.config(bootstyle=SUCCESS)
+        PWR.config(background="green")
     else:
-        PWR.config(text = "Check batteries", bootstyle=DANGER)  #maybe have text here eg precharge fail
+        PWR.config(text = "Check batteries", background="red")  #maybe have text here eg precharge fail
         
 def SPIN():
     Spin_test.SPIN_START()
-    SPIN_ALL.config(bootstyle=SUCCESS)
+    SPIN_ALL.config(background="green")
     SPIN_ALL.after(2500, lambda: SPIN_ALL.config(bootstyle=SECONDARY))
 
 def TOP_SPIN():
     Spin_test.SPIN_TOP
-    SPIN_TOP.config(bootstyle=SUCCESS)
+    SPIN_TOP.config(background="green")
     SPIN_TOP.after(2500, lambda: SPIN_TOP.config(bootstyle=SECONDARY))
 
 def BOT_SPIN():
     Spin_test.SPIN_BOT
-    SPIN_BOT.config(bootstyle=SUCCESS)
+    SPIN_BOT.config(background="green")
     SPIN_BOT.after(2500, lambda: SPIN_BOT.config(bootstyle=SECONDARY))
 
 def PROP_SPIN():
     Spin_test.SPIN_PROP
-    PROP.config(bootstyle=SUCCESS)
+    PROP.config(background="green")
     PROP.after(2500, lambda: PROP.config(bootstyle=SECONDARY))
 
 
 def TOGGLE_LED():
     if LED.cget("text") == "Turn LED On":
         LED.LED_ON
-        LED.config(text="Turn LED Off", bootstyle=SUCCESS)
+        LED.config(text="Turn LED Off", background="green")
     else:
         LED.LED_OFF()
         LED.config(text="Turn LED On", bootstyle=SECONDARY)
-
 
 def STOP():
     PWM1 = 7
@@ -354,7 +353,7 @@ def Eth_test():
 ))
 
 def loom_test():
-    matrix = Arm_loom_test.arm_loom()
+    matrix, gui_string = Arm_loom_test.arm_loom()
     pass_matrix = np.array([
         [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
         [0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0],
@@ -487,7 +486,7 @@ LED = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, comma
 LED.pack(expand=TRUE, pady=5)
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, width=24, command=PROP_SPIN)
 PROP.pack(expand=TRUE, pady=(5, 15))
-STOP = ttk.Button(Arm_f, text="POWER OFF", bootstyle=DANGER, width=32, command=STOP)
+STOP = ttk.Button(Arm_f, text="POWER OFF", bootstyle=PRIMARY, background="red", width=32, command=STOP)
 STOP.pack(expand=TRUE, pady=(15, 25))
 
 
