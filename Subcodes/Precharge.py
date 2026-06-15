@@ -22,6 +22,7 @@ def INITIALIZE_SYSTEM():
 
 
 def START_PRECHARGE():
+    global h
     try:
         lgpio.gpio_write(h, PRECHARGE, 1)
     except Exception as e:
@@ -29,6 +30,7 @@ def START_PRECHARGE():
 
 
 def OPEN_FET():
+    global h
     try:
         lgpio.gpio_write(h, FET_CTL, 1)
     except Exception as e:
@@ -36,6 +38,7 @@ def OPEN_FET():
 
 
 def TURN_OFF_PRECHARGE():
+    global h
     try:
         lgpio.gpio_write(h, PRECHARGE, 0)
     except Exception as e:
