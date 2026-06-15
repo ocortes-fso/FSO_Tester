@@ -34,7 +34,7 @@ style.configure('Sub.TLabel', font=(None, 18))
 
 style.configure(
     "Stop.TButton",
-    font=(None, 24, "bold"),
+    font=(None, 20, "bold"),
     padding=15
 )
 
@@ -505,7 +505,6 @@ PROP.pack(expand=TRUE, pady=(5, 15))
 STOP = ttk.Button(
     Arm_f,
     text="POWER OFF",
-    bootstyle=DANGER,
     style="Stop.TButton",
     command=STOP
 )
