@@ -12,8 +12,8 @@ CHIP = 4
 #chip left open since remains high, then closed when hitting off button.. work into GUI 
 
 def LED_ON():
+    global h
     try:
-        h = lgpio.gpiochip_open(CHIP)
         lgpio.gpio_claim_output(h, LED_GPIO)
         lgpio.gpio_write(h, LED_GPIO, 1)
     except Exception as e:
@@ -21,9 +21,10 @@ def LED_ON():
 
 
 def LED_OFF():
+    global h
     try:
-        h = lgpio.gpiochip_open(CHIP)
         lgpio.gpio_claim_output(h, LED_GPIO)
         lgpio.gpio_write(h, LED_GPIO, 0)
+        
     except Exception as e:
         pass
