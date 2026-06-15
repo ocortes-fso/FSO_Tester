@@ -134,6 +134,7 @@ def home():
     body_stop.set()
     sbus_stop.set()
     INF_sbus_stop.set()
+    PWR.config(text="POWER ON")
     if mag_after_id is not None:
         root.after_cancel(mag_after_id)
         mag_after_id = None
@@ -155,6 +156,7 @@ def home():
     for f in [Lidar_f, Mag_f, Switch_plate_f, loom_f, Body_f, Volt_f, SBUS_f, SBUS_f_INF, Eth_f, Arm_f]:
         f.pack_forget()
     main.pack(fill=BOTH, expand=TRUE)
+    root.update()
 
 
 def arm():
@@ -321,6 +323,7 @@ def STOP():
     time.sleep(0.02)   #see if needed or enough
     Precharge.CLOSE_FET()
     PWR.config(text="POWER ON")
+    root.update()
 
 
 
