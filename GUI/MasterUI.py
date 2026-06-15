@@ -326,21 +326,25 @@ def STOP():
 
 def update_batt():
     global batt_after_id
+
     if not Arm_f.winfo_viewable():
         batt_after_id = None
         return
+
     V = Batt_monitor.read_battery_voltage()
     I = Batt_monitor.read_battery_current()
     T = Batt_monitor.read_battery_temperature()
-    if V:
-        lv.config(text=f"Voltage: {V} V")
-    if I:
-        li.config(text=f"Current: {I} A")
-    if T:
-        lt.config(text=f"Temperature: {T} C")
-    else:
-        lv.config(text=""), li.config(text=""), lt.config(text="")
-        batt_after_id = root.after(500, update_batt)
+
+    if V is not None:
+        lv.config(text=f"Voltage: {V:.2f} V")
+
+    if I is not None:
+        li.config(text=f"Current: {I:.2f} A")
+
+    if T is not None:
+        lt.config(text=f"Temperature: {T:.2f} C")
+
+    batt_after_id = root.after(500, update_batt)
         
 
 def update_lidar():
