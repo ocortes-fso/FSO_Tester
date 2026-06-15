@@ -8,51 +8,13 @@ import numpy as np
 from tkinter import BOTH, TRUE
 import threading
 
-# --- SBUS INF Logic ---
-def test_sbus():
-    SBUS_GPIO = 14
-    SBUS_CHIP = 4
-    BIT_TIME_US = 10
-    SBUS_FRAME_LENGTH = 25
-    SBUS_HEADER = 0x0F
-
-    h = lgpio.gpiochip_open(SBUS_CHIP)
-    lgpio.gpio_claim_input(h, SBUS_GPIO)
-
-    def read_sbus_byte():
-        t_wait = time.time()
-        while lgpio.gpio_read(h, SBUS_GPIO) == 1:
-            if time.time() - t_wait > 0.5: 
-                return None
-        
-        time.sleep(1.5 * BIT_TIME_US / 1_000_000)
-        
-        value = 0
-        for i in range(8):
-            bit = lgpio.gpio_read(h, SBUS_GPIO)
-            value |= (bit << i)
-            time.sleep(BIT_TIME_US / 1_000_000)
-        
-        return value ^ 0xFF
-
-    _sbus_read = False
-    t0 = time.time()
-    
-    while time.time() - t0 < 5:  
-        byte = read_sbus_byte()
-        if byte == SBUS_HEADER:
-            _sbus_read = True
-            break 
-        
-    lgpio.gpiochip_close(h)
-    return _sbus_read
-
 # --- GUI Setup ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from Subcodes import reset, Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, Analog, Can_test, INF_SBUS
+from Subcodes import reset, Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, Analog, Can_test, INF_SBUS, Spin_test, LED, Precharge, Batt_monitor
 
 mag_after_id = None
 lidar_after_id = None
+batt_after_id = None
 
 eth_stop = threading.Event()
 body_stop = threading.Event()
@@ -72,18 +34,19 @@ style.configure('Sub.TLabel', font=(None, 18))
 main = ttk.Frame(root) 
 root.attributes('-fullscreen', True)
 
-lidar_f = ttk.Frame(root) 
-mag_f = ttk.Frame(root)
-switch_plate_f = ttk.Frame(root)
-arm_f = ttk.Frame(root)
-body_f = ttk.Frame(root)
-volt_f = ttk.Frame(root)
+Lidar_f = ttk.Frame(root) 
+Mag_f = ttk.Frame(root)
+Switch_plate_f = ttk.Frame(root)
+loom_f = ttk.Frame(root)
+Body_f = ttk.Frame(root)
+Volt_f = ttk.Frame(root)
 SBUS_f = ttk.Frame(root)
 SBUS_f_INF = ttk.Frame(root)
 Eth_f = ttk.Frame(root)
+Arm_f = ttk.Frame(root)
 
 # Labels
-l1 = ttk.Label(mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
+l1 = ttk.Label(Mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l1.pack(fill=BOTH, expand=TRUE)
 
 l_sbus = ttk.Label(SBUS_f, text="Waiting for SBUS signal...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER, font=(None, 24, 'bold'))
@@ -93,13 +56,13 @@ l_sbus.pack(fill=BOTH, expand=TRUE)
 l_sbus_inf = ttk.Label(SBUS_f_INF, text="Waiting for INF SBUS signal...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER, font=(None, 24, 'bold'))
 l_sbus_inf.pack(fill=BOTH, expand=TRUE)
 
-l2 = ttk.Label(lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
+l2 = ttk.Label(Lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l2.pack(fill=BOTH, expand=TRUE)
 
 l3 = ttk.Label(Eth_f, text="Pinging air unit...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER) 
 l3.pack(fill=BOTH, expand=TRUE)
 
-body_left_container = ttk.Frame(body_f)
+body_left_container = ttk.Frame(Body_f)
 body_left_container.pack(side=LEFT, fill=BOTH, expand=TRUE)
 
 l4 = ttk.Label(body_left_container, text="SERIAL", bootstyle=SECONDARY)
@@ -122,7 +85,7 @@ l7.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 lpwm = ttk.Label(body_left_container, text="", bootstyle=SECONDARY, font=(None, 14))
 lpwm.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
-volt_container = ttk.Frame(volt_f)
+volt_container = ttk.Frame(Volt_f)
 volt_container.pack(expand=TRUE)
 
 l8 = ttk.Label(volt_container, text="3. SERIAL", bootstyle=SECONDARY, style='Header.TLabel')
@@ -143,13 +106,22 @@ l19 = ttk.Label(volt_container, text="6. PAYLOAD", bootstyle=SECONDARY, style='H
 l19.pack(pady=(10, 3))
 l22 = ttk.Label(volt_container, text="V9:", bootstyle=SECONDARY, style='Sub.TLabel'); l22.pack()
 
-l_sw = ttk.Label(switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
+l_sw = ttk.Label(Switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l_sw.pack(fill=BOTH, expand=TRUE)
+
+
+batt_container = ttk.Frame(Arm_f)
+batt_container.pack(side=RIGHT, anchor=NE, padx=15, pady=15)
+
+lv = ttk.Label(batt_container, text="", bootstyle=SECONDARY, style='Sub.TLabel'); lv.pack()
+li = ttk.Label(batt_container, text="", bootstyle=SECONDARY, style='Sub.TLabel'); li.pack()
+lt = ttk.Label(batt_container, text="", bootstyle=SECONDARY, style='Sub.TLabel'); lt.pack()
+
 
 # --- SCREENS ---
 
 def home():
-    global mag_after_id, lidar_after_id
+    global mag_after_id, lidar_after_id, batt_after_id
     home_b.pack_forget()
     eth_stop.set()
     body_stop.set()
@@ -161,19 +133,35 @@ def home():
     if lidar_after_id is not None:
         root.after_cancel(lidar_after_id)
         lidar_after_id = None
+    if batt_after_id is not None:
+        root.after_cancel(batt_after_id)
+        batt_after_id = None
     Magnetometer.close()
     Lidar.close()
     Rear_switch_plate_test.close()
+    Batt_monitor.close()
+    Precharge.CLOSE_FET()
 
-    for f in [lidar_f, mag_f, switch_plate_f, arm_f, body_f, volt_f, SBUS_f, SBUS_f_INF, Eth_f]:
+    for f in [Lidar_f, Mag_f, Switch_plate_f, loom_f, Body_f, Volt_f, SBUS_f, SBUS_f_INF, Eth_f, Arm_f]:
         f.pack_forget()
     main.pack(fill=BOTH, expand=TRUE)
+
+
+def arm():
+    main.pack_forget()
+    home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
+    Arm_f.pack(fill=BOTH, expand=TRUE)
+    global batt_after_id
+    root.update()
+    if batt_after_id is None:
+        update_batt()
+
 
 def lidar():
     global lidar_after_id
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
-    lidar_f.pack(fill=BOTH, expand=TRUE)
+    Lidar_f.pack(fill=BOTH, expand=TRUE)
     root.update()
     if lidar_after_id is None:
         update_lidar()
@@ -182,7 +170,7 @@ def mag():
     global mag_after_id
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
-    mag_f.pack(fill=BOTH, expand=TRUE)
+    Mag_f.pack(fill=BOTH, expand=TRUE)
     root.update()
     if mag_after_id is None:
         update_mag()
@@ -190,31 +178,31 @@ def mag():
 def switch_plate():
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
-    switch_plate_f.pack(fill=BOTH, expand=TRUE)
+    Switch_plate_f.pack(fill=BOTH, expand=TRUE)
     Rear_switch_plate_test.start()
    
-def arm():
+def loom():
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
-    arm_f.pack(fill=BOTH, expand=TRUE)
+    loom_f.pack(fill=BOTH, expand=TRUE)
     
 def body():
     body_stop.clear()
     main.pack_forget()
     back_b.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
-    body_f.pack(fill=BOTH, expand=TRUE)
+    Body_f.pack(fill=BOTH, expand=TRUE)
     threading.Thread(target=body_test, daemon=True).start()
 
 def volt():
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
-    volt_f.pack(fill=BOTH, expand=TRUE)
+    Volt_f.pack(fill=BOTH, expand=TRUE)
     threading.Thread(target=ADC_test, daemon=True).start()
 
 def SBUS_INF():
     INF_sbus_stop.clear()
-    body_f.pack_forget()
+    Body_f.pack_forget()
     home_b.pack_forget()
     SBUS_f_INF.pack(fill=BOTH, expand=TRUE)
     back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
@@ -223,14 +211,14 @@ def SBUS_INF():
 def SBUS():
     sbus_stop.clear()
     home_b.pack_forget()    
-    body_f.pack_forget()
+    Body_f.pack_forget()
     SBUS_f.pack(fill=BOTH, expand=TRUE)
     back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     threading.Thread(target=SBUS_run_test, daemon=True).start()
 
 def Eth():
     eth_stop.clear()
-    body_f.pack_forget()
+    Body_f.pack_forget()
     home_b.pack_forget()
     Eth_f.pack(fill=BOTH, expand=TRUE)
     back_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
@@ -261,7 +249,7 @@ def SBUS_run_test():
 
 def update_mag():
     global mag_after_id
-    if not mag_f.winfo_viewable():
+    if not Mag_f.winfo_viewable():
         mag_after_id = None
         return
     val = Magnetometer.read_once()
@@ -271,9 +259,79 @@ def update_mag():
         l1.config(text="Waiting for Magnetometer...")
     mag_after_id = root.after(500, update_mag)
 
+
+def PWR_ON():
+    Precharge.INITIALIZE_SYSTEM()
+    PRECHARGE_VOLT = Precharge.START_PRECHARGE()
+    if PRECHARGE_VOLT <= 20:
+        Precharge.OPEN_FET()
+        time.sleep(2)   #not sure if enough or too long to keep precharge on... SF to check
+        Precharge.TURN_OFF_PRECHARGE()
+        PWR.config(bootstyle=SUCCESS)
+    else:
+        PWR.config(text = "Check batteries", bootstyle=DANGER)  #maybe have text here eg precharge fail
+        
+def SPIN():
+    Spin_test.SPIN_START()
+    SPIN_ALL.config(bootstyle=SUCCESS)
+    SPIN_ALL.after(2500, lambda: SPIN_ALL.config(bootstyle=SECONDARY))
+
+def TOP_SPIN():
+    Spin_test.SPIN_TOP
+    SPIN_TOP.config(bootstyle=SUCCESS)
+    SPIN_TOP.after(2500, lambda: SPIN_TOP.config(bootstyle=SECONDARY))
+
+def BOT_SPIN():
+    Spin_test.SPIN_BOT
+    SPIN_BOT.config(bootstyle=SUCCESS)
+    SPIN_BOT.after(2500, lambda: SPIN_BOT.config(bootstyle=SECONDARY))
+
+def PROP_SPIN():
+    Spin_test.SPIN_PROP
+    PROP.config(bootstyle=SUCCESS)
+    PROP.after(2500, lambda: PROP.config(bootstyle=SECONDARY))
+
+
+def TOGGLE_LED():
+    if LED.cget("text") == "Turn LED On":
+        LED.LED_ON
+        LED.config(text="Turn LED Off", bootstyle=SUCCESS)
+    else:
+        LED.LED_OFF()
+        LED.config(text="Turn LED On", bootstyle=SECONDARY)
+
+
+def STOP():
+    PWM1 = 7
+    PWM2 = 5
+    lgpio.tx_servo(h, PWM1, 0)  ##set PWMS to low as extra safety
+    lgpio.tx_servo(h, PWM2, 0)
+    time.sleep(0.02)   #see if needed or enough
+    Precharge.CLOSE_FET()
+
+
+def update_batt():
+    global batt_after_id
+    if not Arm_f.winfo_viewable():
+        batt_after_id = None
+        return
+    V = Batt_monitor.read_battery_voltage()
+    I = Batt_monitor.read_battery_current()
+    T = Batt_monitor.read_battery_temperature()
+    if V:
+        lv.config(text=f"Voltage: {V} V")
+    if I:
+        li.config(text=f"Current: {I} A")
+    if T:
+        lt.config(text=f"Temperature: {T} C")
+    else:
+        lv.config(text=""), li.config(text=""), lt.config(text="")
+        batt_after_id = root.after(500, update_batt)
+        
+
 def update_lidar():
     global lidar_after_id
-    if not lidar_f.winfo_viewable():
+    if not Lidar_f.winfo_viewable():
         lidar_after_id = None
         return
     distance = Lidar.read_lidar_distance()
@@ -296,7 +354,7 @@ def Eth_test():
     font=(None, 24, 'bold') if result else (None, 24, 'bold')
 ))
 
-def arm_test():
+def loom_test():
     matrix = Arm_loom_test.arm_loom()
     pass_matrix = np.array([
         [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
@@ -312,7 +370,7 @@ def arm_test():
         [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
         [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
     ])
-    l21.config(font=("Courier", 18), justify=CENTER, text=f"{matrix}")
+    l21.config(font=("Courier", 20), justify=CENTER, text=gui_string)
     l20.config(text="Pass!" if np.array_equal(matrix, pass_matrix) else "Fail!",
                bootstyle=SUCCESS if np.array_equal(matrix, pass_matrix) else DANGER)
     
@@ -337,7 +395,7 @@ def body_test():
     if (0.7 <= output[0] <= 0.9) and (1.5 <= output[1] <= 1.7):
         la.after(0, lambda: la.config(text=f"PASS -- {combined_output}", bootstyle=SUCCESS, font=(None, 14)))
     if (output[0] == -1) or (output[1] == -1):
-        la.after(0, lambda: la.config(text=f"FAIL -- COULDNT WRITE PARMS - CHECK CFG", bootstyle=SUCCESS, font=(None, 14)))
+        la.after(0, lambda: la.config(text=f"FAIL -- COULDNT WRITE PARAMS - CHECK CFG", bootstyle=SUCCESS, font=(None, 14)))
     else:
         la.after(0, lambda: la.config(text=f"FAIL -- {combined_output}", bootstyle=DANGER, font=(None, 14)))
 
@@ -397,29 +455,47 @@ def show_body_from_back():
     for f in [SBUS_f, SBUS_f_INF, Eth_f]:
         f.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
-    body_f.pack(fill=BOTH, expand=TRUE)
+    Body_f.pack(fill=BOTH, expand=TRUE)
 
 # Main window buttons
-b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar); b1.pack(expand=TRUE, pady=(75,0))
+b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar); b1.pack(expand=TRUE, pady=(50,0))
 b2 = ttk.Button(main, text="Magnetometer Test", bootstyle=PRIMARY, width=30, command=mag); b2.pack(expand=TRUE)
 b3 = ttk.Button(main, text="Rear Switch Plate Test", bootstyle=PRIMARY, width=30, command=switch_plate); b3.pack(expand=TRUE)
-b4 = ttk.Button(main, text="Arm Loom Test", bootstyle=PRIMARY, width=30, command=arm); b4.pack(expand=TRUE) 
+b4 = ttk.Button(main, text="Loom Test", bootstyle=PRIMARY, width=30, command=loom); b4.pack(expand=TRUE) 
 b5 = ttk.Button(main, text="Body Test", bootstyle=PRIMARY, width=30, command=body); b5.pack(expand=TRUE) 
-b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=volt); b6.pack(expand=TRUE, pady=(0,75)) 
+b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=volt); b6.pack(expand=TRUE) 
+b7 = ttk.Button(main, text="Arm Test", bootstyle=PRIMARY, width=30, command=arm); b7.pack(expand=TRUE, pady=(0,50)) 
 
 home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
 back_b = ttk.Button(root, text="Back", bootstyle=OUTLINE, command=show_body_from_back, width=10)
 
 # Body buttons
-eth1 = ttk.Button(body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth); eth1.pack(expand=TRUE, anchor=E, padx=75)
-SB1 = ttk.Button(body_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=20, command=SBUS_INF); SB1.pack(expand=TRUE, anchor=E, padx=75)
-SB2 = ttk.Button(body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20, command=SBUS); SB2.pack(expand=TRUE, anchor=E, padx=75)
-Debug = ttk.Button(body_f, text="Debug Mode", bootstyle=SECONDARY, width=20); Debug.pack(expand=TRUE, anchor=E, padx=75)
+eth1 = ttk.Button(Body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth); eth1.pack(expand=TRUE, anchor=E, padx=75)
+SB1 = ttk.Button(Body_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=20, command=SBUS_INF); SB1.pack(expand=TRUE, anchor=E, padx=75)
+SB2 = ttk.Button(Body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20, command=SBUS); SB2.pack(expand=TRUE, anchor=E, padx=75)
+Debug = ttk.Button(Body_f, text="Debug Mode", bootstyle=SECONDARY, width=20); #Debug.pack(expand=TRUE, anchor=E, padx=75)   #hidden for now until we work this out
 
-# Arm test page
-l20 = ttk.Label(arm_f, text="Ready to test", bootstyle=PRIMARY, font=(None, 24)); l20.pack(pady=20)
-l21 = ttk.Label(arm_f, text="", bootstyle=PRIMARY); l21.pack(expand=TRUE)
-ttk.Button(arm_f, text="Run Test", bootstyle=SECONDARY, width=15, command=arm_test).pack(pady=25)
+# Arm buttons
+PWR = ttk.Button(Arm_f, text="Power On", bootstyle=PRIMARY, width=24, command=PWR_ON)
+PWR.pack(expand=TRUE, pady=(25, 15))
+SPIN_ALL = ttk.Button(Arm_f, text="Spin ALL", bootstyle=SECONDARY, width=24, command=SPIN)
+SPIN_ALL.pack(expand=TRUE, pady=5)
+SPIN_TOP = ttk.Button(Arm_f, text="Spin TOP", bootstyle=SECONDARY, width=24, command=TOP_SPIN)
+SPIN_TOP.pack(expand=TRUE, pady=5)
+SPIN_BOT = ttk.Button(Arm_f, text="Spin BOT", bootstyle=SECONDARY, width=24, command=BOT_SPIN)
+SPIN_BOT.pack(expand=TRUE, pady=5)
+LED = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, command=TOGGLE_LED)
+LED.pack(expand=TRUE, pady=5)
+PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, width=24, command=PROP_SPIN)
+PROP.pack(expand=TRUE, pady=(5, 15))
+STOP = ttk.Button(Arm_f, text="POWER OFF", bootstyle=DANGER, width=32, command=STOP)
+STOP.pack(expand=TRUE, pady=(15, 25))
+
+
+# Loom test page
+l20 = ttk.Label(loom_f, text="Ready to test", bootstyle=PRIMARY, font=(None, 24)); l20.pack(pady=20)
+l21 = ttk.Label(loom_f, text="", bootstyle=PRIMARY); l21.pack(expand=TRUE)
+ttk.Button(loom_f, text="Run Test", bootstyle=SECONDARY, width=15, command=loom_test).pack(pady=25)
 
 main.pack(fill=BOTH, expand=True)
 root.mainloop()
