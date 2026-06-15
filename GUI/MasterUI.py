@@ -32,6 +32,12 @@ style.configure('secondary.TLabel', font=(None, 18, 'bold'))
 style.configure('Header.TLabel', font=(None, 20, 'bold'))
 style.configure('Sub.TLabel', font=(None, 18))
 
+style.configure(
+    "Stop.TButton",
+    font=(None, 24, "bold"),
+    padding=15
+)
+
 main = ttk.Frame(root) 
 root.attributes('-fullscreen', True)
 
@@ -281,7 +287,7 @@ def PWR_CHECK():
         Precharge.OPEN_FET()
         Precharge.TURN_OFF_PRECHARGE()
 
-        PWR.config(text="Power ON")
+        PWR.config(text="POWER ON")
     else:
         PWR.config(text="Precharge FAIL")
         
@@ -314,6 +320,8 @@ def STOP():
     lgpio.tx_servo(h, PWM2, 0)
     time.sleep(0.02)   #see if needed or enough
     Precharge.CLOSE_FET()
+    PWR.config(text="POWER ON")
+
 
 
 def update_batt():
@@ -494,7 +502,13 @@ LED_btn = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, c
 LED_btn.pack(expand=TRUE, pady=5)
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, width=24, command=PROP_SPIN)
 PROP.pack(expand=TRUE, pady=(5, 15))
-STOP = ttk.Button(Arm_f, text="POWER OFF", bootstyle=DANGER, width=32, command=STOP)
+STOP = ttk.Button(
+    Arm_f,
+    text="POWER OFF",
+    bootstyle=DANGER,
+    style="Stop.TButton",
+    command=STOP
+)
 STOP.pack(expand=TRUE, pady=(15, 25))
 
 
