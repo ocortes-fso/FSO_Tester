@@ -266,38 +266,38 @@ def PWR_ON():
         Precharge.OPEN_FET()
         time.sleep(2)   #not sure if enough or too long to keep precharge on... SF to check
         Precharge.TURN_OFF_PRECHARGE()
-        PWR.config(background="green")
+        PWR.config(bootstyle=SUCCESS, width=24)
     else:
-        PWR.config(text = "Check batteries", background="red")  #maybe have text here eg precharge fail
+        PWR.config(text = "Check batteries", bootstyle=DANGER, width=24)  #maybe have text here eg precharge fail
         
 def SPIN():
     Spin_test.SPIN_START()
-    SPIN_ALL.config(background="green")
-    SPIN_ALL.after(2500, lambda: SPIN_ALL.config(bootstyle=SECONDARY))
+    SPIN_ALL.config(bootstyle=SUCCESS, width=24)
+    SPIN_ALL.after(2500, lambda: SPIN_ALL.config(bootstyle=SECONDARY, width=24))
 
 def TOP_SPIN():
     Spin_test.SPIN_TOP
-    SPIN_TOP.config(background="green")
-    SPIN_TOP.after(2500, lambda: SPIN_TOP.config(bootstyle=SECONDARY))
+    SPIN_TOP.config(bootstyle=SUCCESS, width=24)
+    SPIN_TOP.after(2500, lambda: SPIN_TOP.config(bootstyle=SECONDARY, width=24))
 
 def BOT_SPIN():
     Spin_test.SPIN_BOT
-    SPIN_BOT.config(background="green")
-    SPIN_BOT.after(2500, lambda: SPIN_BOT.config(bootstyle=SECONDARY))
+    SPIN_BOT.config(bootstyle=SUCCESS, width=24)
+    SPIN_BOT.after(2500, lambda: SPIN_BOT.config(bootstyle=SECONDARY, width=24))
 
 def PROP_SPIN():
     Spin_test.SPIN_PROP
-    PROP.config(background="green")
-    PROP.after(2500, lambda: PROP.config(bootstyle=SECONDARY))
+    PROP.config(bootstyle=SUCCESS, width=24)
+    PROP.after(2500, lambda: PROP.config(bootstyle=SECONDARY, width=24))
 
 
 def TOGGLE_LED():
     if LED.cget("text") == "Turn LED On":
         LED.LED_ON
-        LED.config(text="Turn LED Off", background="green")
+        LED.config(text="Turn LED Off", bootstyle=SUCCESS, width=24)
     else:
         LED.LED_OFF()
-        LED.config(text="Turn LED On", bootstyle=SECONDARY)
+        LED.config(text="Turn LED On", bootstyle=SECONDARY, width=24)
 
 def STOP():
     PWM1 = 7
@@ -486,7 +486,7 @@ LED = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, comma
 LED.pack(expand=TRUE, pady=5)
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, width=24, command=PROP_SPIN)
 PROP.pack(expand=TRUE, pady=(5, 15))
-STOP = ttk.Button(Arm_f, text="POWER OFF", bootstyle=PRIMARY, background="red", width=32, command=STOP)
+STOP = ttk.Button(Arm_f, text="POWER OFF", bootstyle=PRIMARY, width=32, command=STOP)
 STOP.pack(expand=TRUE, pady=(15, 25))
 
 
