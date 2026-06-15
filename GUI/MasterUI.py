@@ -15,6 +15,7 @@ from Subcodes import reset, Magnetometer, Lidar, Network_test, Arm_loom_test, Re
 mag_after_id = None
 lidar_after_id = None
 batt_after_id = None
+pwr_after_id = None
 
 eth_stop = threading.Event()
 body_stop = threading.Event()
@@ -121,7 +122,7 @@ lt = ttk.Label(batt_container, text="Temperature:", bootstyle=SECONDARY, style='
 # --- SCREENS ---
 
 def home():
-    global mag_after_id, lidar_after_id, batt_after_id
+    global mag_after_id, lidar_after_id, batt_after_id, pwr_after_id
     home_b.pack_forget()
     eth_stop.set()
     body_stop.set()
@@ -141,6 +142,9 @@ def home():
     Rear_switch_plate_test.close()
     Batt_monitor.close()
     Precharge.CLOSE_FET()
+    if pwr_after_id is not None:
+        root.after_cancel(pwr_after_id)
+        pwr_after_id = None
 
     for f in [Lidar_f, Mag_f, Switch_plate_f, loom_f, Body_f, Volt_f, SBUS_f, SBUS_f_INF, Eth_f, Arm_f]:
         f.pack_forget()
@@ -260,17 +264,26 @@ def update_mag():
 
 
 def PWR_ON():
+    global pwr_after_id
     Precharge.INITIALIZE_SYSTEM()
     Precharge.START_PRECHARGE()
-    PWR.config(text = "PreCharging...")
-    time.sleep(5)
+    PWR.config(text="PreCharging...")
+    pwr_after_id = PWR.after(5000, PWR_CHECK)
+
+
+def PWR_CHECK():
+    global pwr_after_id
+    pwr_after_id = None
+
     PRECHARGE_VOLT = Batt_monitor.read_battery_voltage()
-    if PRECHARGE_VOLT <= 20:
+
+    if PRECHARGE_VOLT is not None and PRECHARGE_VOLT <= 20:
         Precharge.OPEN_FET()
-        time.sleep(2)   #not sure if enough or too long to keep precharge on... SF to check
         Precharge.TURN_OFF_PRECHARGE()
+
+        PWR.config(text="Power ON")
     else:
-        PWR.config(text = "Precharge FAIL")  #maybe have text here eg precharge fail
+        PWR.config(text="Precharge FAIL")
         
 def SPIN():
     Spin_test.SPIN_START()
@@ -481,7 +494,7 @@ LED_btn = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, c
 LED_btn.pack(expand=TRUE, pady=5)
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, width=24, command=PROP_SPIN)
 PROP.pack(expand=TRUE, pady=(5, 15))
-STOP = ttk.Button(Arm_f, text="POWER OFF", bootstyle=DANGER, width=24, command=STOP)
+STOP = ttk.Button(Arm_f, text="POWER OFF", bootstyle=DANGER, width=32, command=STOP)
 STOP.pack(expand=TRUE, pady=(15, 25))
 
 
