@@ -279,6 +279,7 @@ def PWR_ON():
         return
 
     Precharge.INITIALIZE_SYSTEM()
+    time.sleep(0.05)
     Precharge.START_PRECHARGE()
 
     PWR.config(text="PreCharging...")
