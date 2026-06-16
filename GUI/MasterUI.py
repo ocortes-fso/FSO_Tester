@@ -309,7 +309,7 @@ def PROP_SPIN():
 
 def TOGGLE_LED():
     if LED_btn.cget("text") == "Turn LED On":
-        LED.LED_ON
+        LED.LED_ON()
         LED_btn.config(text="Turn LED Off")
     else:
         LED.LED_OFF()
