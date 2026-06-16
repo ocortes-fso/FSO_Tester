@@ -274,27 +274,51 @@ def update_mag():
 def PWR_ON():
     global pwr_after_id
 
-    if Precharge.h is not None:
-        return  # already initialized
+    # prevent double trigger
+    if Precharge.h is not None and pwr_after_id is not None:
+        return
 
     Precharge.INITIALIZE_SYSTEM()
     Precharge.START_PRECHARGE()
-    PWR.config(text="PreCharging...")
+
+    PWR.config(text="PreCharging...", bootstyle=INFO)
+
+    # wait 5 seconds then check
     pwr_after_id = PWR.after(5000, PWR_CHECK)
 
 def PWR_CHECK():
     global pwr_after_id
     pwr_after_id = None
 
-    PRECHARGE_VOLT = Batt_monitor.read_battery_voltage()
+    # read multiple samples for stability
+    v1 = Batt_monitor.read_battery_voltage()
+    time.sleep(0.2)
+    v2 = Batt_monitor.read_battery_voltage()
 
-    if PRECHARGE_VOLT is not None and PRECHARGE_VOLT <= 20:
-        Precharge.OPEN_FET()
+    PRECHARGE_VOLT = None
+    if v1 is not None and v2 is not None:
+        PRECHARGE_VOLT = (v1 + v2) / 2
+    else:
+        PRECHARGE_VOLT = v1 or v2
+
+    print(f"[PWR CHECK] Voltage = {PRECHARGE_VOLT}")
+
+    if PRECHARGE_VOLT is None or PRECHARGE_VOLT < 20.0:
         Precharge.TURN_OFF_PRECHARGE()
 
-        PWR.config(text="POWER ON")
-    else:
-        PWR.config(text="Precharge FAIL")
+        PWR.config(
+            text=f"PRECHARGE FAIL ({PRECHARGE_VOLT:.2f}V)",
+            bootstyle=DANGER
+        )
+        return  
+
+    Precharge.OPEN_FET()
+    Precharge.TURN_OFF_PRECHARGE()
+
+    PWR.config(
+        text=f"PRECHARGE OK ({PRECHARGE_VOLT:.2f}V)",
+        bootstyle=SUCCESS
+    )
         
 def SPIN():
     Spin_test.SPIN_START()
