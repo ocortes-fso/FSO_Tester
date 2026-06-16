@@ -273,11 +273,14 @@ def update_mag():
 
 def PWR_ON():
     global pwr_after_id
+
+    if Precharge.h is not None:
+        return  # already initialized
+
     Precharge.INITIALIZE_SYSTEM()
     Precharge.START_PRECHARGE()
     PWR.config(text="PreCharging...")
     pwr_after_id = PWR.after(5000, PWR_CHECK)
-
 
 def PWR_CHECK():
     global pwr_after_id
@@ -315,7 +318,7 @@ def TOGGLE_LED():
         LED.LED_OFF()
         LED_btn.config(text="Turn LED On")
 
-def STOP():
+def power_off():
     PWM1 = 7
     PWM2 = 5
 
@@ -327,7 +330,6 @@ def STOP():
     Precharge.CLOSE_FET()
     PWR.config(text="POWER ON")
     root.update()
-
 
 def update_batt():
     global batt_after_id
@@ -511,13 +513,13 @@ LED_btn = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, c
 LED_btn.pack(expand=TRUE, pady=5)
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, width=24, command=PROP_SPIN)
 PROP.pack(expand=TRUE, pady=(5, 15))
-STOP = ttk.Button(
+STOP_btn = ttk.Button(
     Arm_f,
     text="POWER OFF",
     style="Stop.TButton",
-    command=STOP
+    command=power_off
 )
-STOP.pack(expand=TRUE, pady=(15, 25))
+STOP_btn.pack(expand=TRUE, pady=(15, 25))
 
 
 # Loom test page
