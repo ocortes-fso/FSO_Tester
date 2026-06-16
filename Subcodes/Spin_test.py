@@ -9,10 +9,11 @@ INIT = 1140
 HIGH = 1250
 HIGHER = 1370
 LOW = 1000
-SWEEP_DELAY = 0.0005
+SWEEP_DELAY = 0.005
 
 
 def set_pwm(h, us, target_pins):
+    print(f"PWM {us}")
     for pin in target_pins:
         lgpio.tx_servo(h, pin, us)
 
@@ -29,8 +30,6 @@ def SPIN_START():
     global h
     try:
         pins = [PWM1, PWM2]
-        for pin in pins:
-            lgpio.gpio_claim_output(h, pin)
 
         manual_sweep(h, LOW, INIT, pins)
         time.sleep(1.0)
@@ -41,9 +40,10 @@ def SPIN_START():
         manual_sweep(h, HIGH, LOW, pins)
 
     except Exception as e:
-        pass
+        print(f"EXCEPTION: {e}")
+        raise
     finally:
-        if "h" in locals():
+        if h is not None:
             lgpio.tx_servo(h, PWM1, 0)
             lgpio.tx_servo(h, PWM2, 0)
 
@@ -54,7 +54,6 @@ def SPIN_TOP():
     global h
     try:
         pins = [PWM1]
-        lgpio.gpio_claim_output(h, PWM1)
 
         manual_sweep(h, LOW, INIT, pins)
         time.sleep(1.0)
@@ -65,7 +64,8 @@ def SPIN_TOP():
         manual_sweep(h, HIGH, LOW, pins)
 
     except Exception as e:
-        pass
+        print(f"EXCEPTION: {e}")
+        raise
     finally:
         if h is not None:
             lgpio.tx_servo(h, PWM1, 0)
@@ -77,7 +77,6 @@ def SPIN_BOT():
     global h
     try:
         pins = [PWM2]
-        lgpio.gpio_claim_output(h, PWM2)
 
         manual_sweep(h, LOW, INIT, pins)
         time.sleep(1.0)
@@ -88,15 +87,16 @@ def SPIN_BOT():
         manual_sweep(h, HIGH, LOW, pins)
 
     except Exception as e:
-        pass
+        print(f"EXCEPTION: {e}")
+        raise
     finally:
         if h is not None:
             lgpio.tx_servo(h, PWM2, 0)
 
 
 #call for vibration/prop spin test WITH PROPS!!
-    #adjust delays if needed for ramp up 
-    # 1350-1140 = 210, 210x0.2 = 42 seconds 
+    #adjust delays if needed for ramp up
+    # 1350-1140 = 210, 210x0.2 = 42 seconds
 
     #expected bahviour.. go to INIT, hold, ramp up to higher with slower ramp speed than other tests, hold, perform 3 pulses, ramp down at sweep speed
 
@@ -105,8 +105,6 @@ def SPIN_PROP():
     global h
     try:
         pins = [PWM1, PWM2]
-        for pin in pins:
-            lgpio.gpio_claim_output(h, pin)
 
         manual_sweep(h, LOW, INIT, pins)
         time.sleep(1.0)
@@ -124,9 +122,9 @@ def SPIN_PROP():
 
         manual_sweep(h, HIGHER, LOW, pins)
 
-
     except Exception as e:
-        pass
+        print(f"EXCEPTION: {e}")
+        raise
     finally:
         if h is not None:
             lgpio.tx_servo(h, PWM1, 0)
