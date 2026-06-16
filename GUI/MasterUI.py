@@ -161,6 +161,7 @@ def home():
 
 def arm():
     global batt_after_id
+    LED.INIT()
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Arm_f.pack(fill=BOTH, expand=TRUE)
