@@ -161,7 +161,6 @@ def home():
 
 def arm():
     global batt_after_id
-    LED.INIT()
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Arm_f.pack(fill=BOTH, expand=TRUE)
@@ -336,6 +335,7 @@ def PROP_SPIN():
     Spin_test.SPIN_PROP()
 
 def TOGGLE_LED():
+    LED.INIT()
     if LED_btn.cget("text") == "Turn LED On":
         LED.LED_ON()
         LED_btn.config(text="Turn LED Off")
