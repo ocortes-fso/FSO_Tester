@@ -6,6 +6,9 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from Subcodes import Precharge
 
+DRIVE_12MA = 12 << 4   
+SLEW_FAST = 1 << 8
+
 PWM1 = 7
 PWM2 = 5
 
