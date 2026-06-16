@@ -13,7 +13,7 @@ INIT = 1100
 HIGH = 1250
 HIGHER = 1370
 LOW = 1000
-SWEEP_DELAY = 0.005
+SWEEP_DELAY = 0.2
 
 
 def set_pwm(us, target_pins):
@@ -148,10 +148,10 @@ def SPIN_PROP():
         PULSE_MAX = HIGHER + 30
 
         for _ in range(3):
-            manual_sweep(HIGHER, PULSE_MAX, pins, custom_delay=0.02)
+            manual_sweep(HIGHER, PULSE_MAX, pins, custom_delay=0.2)
             time.sleep(3.0)
 
-            manual_sweep(PULSE_MAX, HIGHER, pins, custom_delay=0.02)
+            manual_sweep(PULSE_MAX, HIGHER, pins, custom_delay=0.2)
             time.sleep(5.0)
 
         manual_sweep(HIGHER, LOW, pins)
