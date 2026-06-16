@@ -298,14 +298,14 @@ def SPIN():
 
 
 def TOP_SPIN():
-    Spin_test.SPIN_TOP
+    Spin_test.SPIN_TOP()
 
 
 def BOT_SPIN():
-    Spin_test.SPIN_BOT
+    Spin_test.SPIN_BOT()
 
 def PROP_SPIN():
-    Spin_test.SPIN_PROP
+    Spin_test.SPIN_PROP()
 
 def TOGGLE_LED():
     if LED_btn.cget("text") == "Turn LED On":

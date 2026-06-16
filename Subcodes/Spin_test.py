@@ -115,9 +115,9 @@ def SPIN_PROP():
 
         PULSE_MAX = HIGHER + 30
         for _ in range(3):
-            manual_sweep(h, HIGHER, PULSE_MAX, pins, custom_delay=0.002)
+            manual_sweep(h, HIGHER, PULSE_MAX, pins, custom_delay=0.02)
             time.sleep(3.0)
-            manual_sweep(h, PULSE_MAX, HIGHER, pins, custom_delay=0.002)
+            manual_sweep(h, PULSE_MAX, HIGHER, pins, custom_delay=0.02)
             time.sleep(5.0)
 
         manual_sweep(h, HIGHER, LOW, pins)
