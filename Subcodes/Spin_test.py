@@ -15,7 +15,7 @@ PWM2 = 5
 
 INIT = 1100
 HIGH = 1250
-HIGHER = 1370
+HIGHER = 1360
 LOW = 1000
 SWEEP_DELAY = 0.05
 
@@ -49,7 +49,7 @@ def set_pwm(us, target_pins):
             )
 
 
-def manual_sweep(start_us, end_us, target_pins, custom_delay=SWEEP_DELAY, step_size=5):
+def manual_sweep(start_us, end_us, target_pins, custom_delay=SWEEP_DELAY, step_size=2):
     if start_us == end_us:
         set_pwm(end_us, target_pins)
         return
@@ -134,7 +134,7 @@ def SPIN_TOP():
         time.sleep(1.5)
 
         manual_sweep(INIT, HIGH, pins, custom_delay=0.05, step_size=10)
-        time.sleep(10)
+        time.sleep(5.0)
 
         manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=10)
 
@@ -174,7 +174,7 @@ def SPIN_BOT():
         time.sleep(1.5)
 
         manual_sweep(INIT, HIGH, pins, custom_delay=0.05, step_size=10)
-        time.sleep(10.0)
+        time.sleep(5.0)
 
         manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=10)
 
