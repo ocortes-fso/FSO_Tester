@@ -287,14 +287,26 @@ def PWR_CHECK():
     global pwr_after_id
     pwr_after_id = None
 
-    samples = []
-    for _ in range(3):
-        v = Batt_monitor.read_battery_voltage()
-        if v is not None:
-            samples.append(v)
-        time.sleep(0.2)
+    time.sleep(0.5)
 
-    PRECHARGE_VOLT = sum(samples) / len(samples) if samples else None
+    samples = []
+    last_valid = None
+
+    for _ in range(5):
+        v = Batt_monitor.read_battery_voltage()
+
+        if v is not None and v > 1.0:
+            last_valid = v
+            samples.append(v)
+
+        time.sleep(0.1)
+
+    PRECHARGE_VOLT = None
+
+    if samples:
+        PRECHARGE_VOLT = sum(samples) / len(samples)
+    else:
+        PRECHARGE_VOLT = last_valid
 
     print(f"[PWR CHECK] Voltage = {PRECHARGE_VOLT}")
 
@@ -302,10 +314,12 @@ def PWR_CHECK():
         Precharge.TURN_OFF_PRECHARGE()
         Precharge.CLOSE_FET()
 
-        PWR.config(text=f"PRECHARGE FAIL ({PRECHARGE_VOLT:.2f})")
+        PWR.config(text=f"PRECHARGE FAIL ({PRECHARGE_VOLT})")
         return
 
     try:
+        time.sleep(0.2)
+
         Precharge.OPEN_FET()
         time.sleep(0.3)
 
@@ -313,7 +327,7 @@ def PWR_CHECK():
 
         LED.INIT()
 
-        PWR.config(text=f"PRECHARGE OK ({PRECHARGE_VOLT:.2f}V)")
+        PWR.config(text=f"PRECHARGE OK ({PRECHARGE_VOLT}V)")
 
     except Exception as e:
         print("[PWR CHECK ERROR]", e)
