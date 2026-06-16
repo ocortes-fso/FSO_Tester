@@ -135,4 +135,4 @@ def SPIN_PROP():
     finally:
         if Precharge.h is not None:
             lgpio.tx_servo(Precharge.h, PWM1, 0)
-            lgpio.tx_servo(Precharge.h, PWM2, 0)
+            lgpio.tx_servo(Precharge.h, PWM2, 0) 
