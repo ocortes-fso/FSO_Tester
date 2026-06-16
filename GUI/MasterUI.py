@@ -281,7 +281,7 @@ def PWR_ON():
     Precharge.INITIALIZE_SYSTEM()
     Precharge.START_PRECHARGE()
 
-    PWR.config(text="PreCharging...", bootstyle=INFO)
+    PWR.config(text="PreCharging...")
 
     # wait 5 seconds then check
     pwr_after_id = PWR.after(5000, PWR_CHECK)
@@ -306,7 +306,6 @@ def PWR_CHECK():
 
         PWR.config(
             text=f"PRECHARGE FAIL ({PRECHARGE_VOLT})",
-            bootstyle=DANGER
         )
         return
 
@@ -320,12 +319,11 @@ def PWR_CHECK():
 
         PWR.config(
             text=f"PRECHARGE OK ({PRECHARGE_VOLT:.2f}V)",
-            bootstyle=SUCCESS
         )
 
     except Exception as e:
         print("[PWR CHECK ERROR]", e)
-        PWR.config(text="PWR ERROR", bootstyle=DANGER)
+        PWR.config(text="PWR ERROR")
         
 def SPIN():
     Spin_test.SPIN_START()
