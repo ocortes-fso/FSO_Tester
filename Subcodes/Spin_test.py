@@ -9,7 +9,7 @@ from Subcodes import Precharge
 PWM1 = 7
 PWM2 = 5
 
-INIT = 1140
+INIT = 1100
 HIGH = 1250
 HIGHER = 1370
 LOW = 1000
@@ -41,8 +41,11 @@ def SPIN_START():
 
         pins = [PWM1, PWM2]
 
-        manual_sweep(LOW, INIT, pins)
+        set_pwm(LOW, pins)
         time.sleep(1.0)
+
+        manual_sweep(LOW, INIT, pins)
+        time.sleep(3.0)
 
         manual_sweep(INIT, HIGH, pins)
         time.sleep(5.0)
@@ -70,8 +73,11 @@ def SPIN_TOP():
 
         pins = [PWM1]
 
-        manual_sweep(LOW, INIT, pins)
+        set_pwm(LOW, pins)
         time.sleep(1.0)
+
+        manual_sweep(LOW, INIT, pins)
+        time.sleep(3.0)
 
         manual_sweep(INIT, HIGH, pins)
         time.sleep(5.0)
@@ -98,8 +104,11 @@ def SPIN_BOT():
 
         pins = [PWM2]
 
-        manual_sweep(LOW, INIT, pins)
+        set_pwm(LOW, pins)
         time.sleep(1.0)
+
+        manual_sweep(LOW, INIT, pins)
+        time.sleep(3.0)
 
         manual_sweep(INIT, HIGH, pins)
         time.sleep(5.0)
@@ -126,8 +135,11 @@ def SPIN_PROP():
 
         pins = [PWM1, PWM2]
 
-        manual_sweep(LOW, INIT, pins)
+        set_pwm(LOW, pins)
         time.sleep(1.0)
+
+        manual_sweep(LOW, INIT, pins)
+        time.sleep(3.0)
 
         manual_sweep(INIT, HIGHER, pins, custom_delay=0.2)
 
