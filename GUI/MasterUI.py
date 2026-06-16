@@ -296,7 +296,7 @@ def PWR_CHECK():
 
         PWR.config(text="FET ON...")
 
-        PWR.after(300, lambda: (
+        PWR.after(500, lambda: (
             Precharge.TURN_OFF_PRECHARGE(),
             LED.INIT(),
             PWR.config(text="PRECHARGE OK")
