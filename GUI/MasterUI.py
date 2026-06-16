@@ -274,18 +274,14 @@ def update_mag():
 def PWR_ON():
     global pwr_after_id
 
-    # prevent double trigger
-    if Precharge.h is not None and pwr_after_id is not None:
-        return
-
     Precharge.INITIALIZE_SYSTEM()
     time.sleep(0.05)
     Precharge.START_PRECHARGE()
 
     PWR.config(text="PreCharging...")
 
-    # wait 5 seconds then check
     pwr_after_id = PWR.after(5000, PWR_CHECK)
+
 
 def PWR_CHECK():
     global pwr_after_id
@@ -298,33 +294,31 @@ def PWR_CHECK():
             samples.append(v)
         time.sleep(0.2)
 
-    PRECHARGE_VOLT = sum(samples) / len(samples) if samples else None   #take avergae of the samples for better reading..
+    PRECHARGE_VOLT = sum(samples) / len(samples) if samples else None
 
     print(f"[PWR CHECK] Voltage = {PRECHARGE_VOLT}")
 
     if PRECHARGE_VOLT is None or PRECHARGE_VOLT < 20.0:
         Precharge.TURN_OFF_PRECHARGE()
+        Precharge.CLOSE_FET()
 
-        PWR.config(
-            text=f"PRECHARGE FAIL ({PRECHARGE_VOLT})",
-        )
+        PWR.config(text=f"PRECHARGE FAIL ({PRECHARGE_VOLT:.2f})")
         return
 
     try:
         Precharge.OPEN_FET()
-        time.sleep(0.3)   # small stabilization delay before turing of precahrge path
+        time.sleep(0.3)
 
         Precharge.TURN_OFF_PRECHARGE()
 
-        LED.INIT()        # LED init and set to low
+        LED.INIT()
 
-        PWR.config(
-            text=f"PRECHARGE OK ({PRECHARGE_VOLT:.2f}V)",
-        )
+        PWR.config(text=f"PRECHARGE OK ({PRECHARGE_VOLT:.2f}V)")
 
     except Exception as e:
         print("[PWR CHECK ERROR]", e)
         PWR.config(text="PWR ERROR")
+        Precharge.CLOSE_FET()
         
 def SPIN():
     Spin_test.SPIN_START()

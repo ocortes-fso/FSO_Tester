@@ -10,15 +10,16 @@ h = None
 def INITIALIZE_SYSTEM():
     global h
     try:
-        h = lgpio.gpiochip_open(CHIP)
+        if h is None:
+            h = lgpio.gpiochip_open(CHIP)
 
-        lgpio.gpio_claim_output(h, PRECHARGE)
-        lgpio.gpio_claim_output(h, FET_CTL)
+            lgpio.gpio_claim_output(h, PRECHARGE, level=0)
+            lgpio.gpio_claim_output(h, FET_CTL, level=0)
+            print("Precharge Pins successfully claimed LOW.")
 
     except Exception as e:
         print(f"PRECHARGE INIT ERROR: {e}")
         raise
-
 
 def START_PRECHARGE():
     global h
