@@ -2,11 +2,12 @@ import time
 import lgpio
 import os
 import sys
+import threading
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from Subcodes import Precharge
 
-DRIVE_12MA = 12 << 4   
+DRIVE_12MA = 12 << 4
 SLEW_FAST = 1 << 8
 
 PWM1 = 7
@@ -19,13 +20,33 @@ LOW = 1000
 SWEEP_DELAY = 0.05
 
 
+def claim_pwm_pins():
+    try:
+        lgpio.gpio_claim_output(Precharge.h, PWM1, level=0)
+        print(f"CLAIM OK GPIO{PWM1}")
+    except Exception as e:
+        print(f"CLAIM FAIL GPIO{PWM1}: {e}")
+
+    try:
+        lgpio.gpio_claim_output(Precharge.h, PWM2, level=0)
+        print(f"CLAIM OK GPIO{PWM2}")
+    except Exception as e:
+        print(f"CLAIM FAIL GPIO{PWM2}: {e}")
+
+
 def set_pwm(us, target_pins):
     for pin in target_pins:
         try:
-            lgpio.tx_servo(Precharge.h, pin, us)
-            print(f"PWM OK: pin={pin} us={us}")
+            ret = lgpio.tx_servo(Precharge.h, pin, us)
+            print(
+                f"PWM OK thread={threading.get_ident()} "
+                f"handle={Precharge.h} pin={pin} us={us} ret={ret}"
+            )
         except Exception as e:
-            print(f"PWM ERROR: pin={pin} us={us} err={e}")
+            print(
+                f"PWM ERROR thread={threading.get_ident()} "
+                f"handle={Precharge.h} pin={pin} us={us} err={e}"
+            )
 
 
 def manual_sweep(start_us, end_us, target_pins, custom_delay=SWEEP_DELAY, step_size=10):
@@ -38,12 +59,13 @@ def manual_sweep(start_us, end_us, target_pins, custom_delay=SWEEP_DELAY, step_s
 
     while True:
         set_pwm(current_us, target_pins)
-        
+
         actual_delay = max(custom_delay, 0.02)
         time.sleep(actual_delay)
-        
+
         if (step > 0 and current_us + step >= end_us) or (step < 0 and current_us + step <= end_us):
             break
+
         current_us += step
 
     set_pwm(end_us, target_pins)
@@ -51,9 +73,13 @@ def manual_sweep(start_us, end_us, target_pins, custom_delay=SWEEP_DELAY, step_s
 
 def SPIN_START():
     try:
+        print(f"SPIN_START BEGIN thread={threading.get_ident()} handle={Precharge.h}")
+
         if Precharge.h is None:
             print("SPIN_START ERROR: GPIO handle is None")
             return
+
+        claim_pwm_pins()
 
         pins = [PWM1, PWM2]
 
@@ -68,6 +94,8 @@ def SPIN_START():
 
         manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=10)
 
+        print("SPIN_START COMPLETE")
+
     except Exception as e:
         print(f"SPIN_START EXCEPTION: {e}")
         raise
@@ -75,17 +103,27 @@ def SPIN_START():
     finally:
         if Precharge.h is not None:
             try:
-                lgpio.tx_servo(Precharge.h, PWM1, 0)
-                lgpio.tx_servo(Precharge.h, PWM2, 0)
+                print("STOP PWM1")
+                ret1 = lgpio.tx_servo(Precharge.h, PWM1, 0)
+                print(f"STOP GPIO{PWM1} ret={ret1}")
+
+                print("STOP PWM2")
+                ret2 = lgpio.tx_servo(Precharge.h, PWM2, 0)
+                print(f"STOP GPIO{PWM2} ret={ret2}")
+
             except Exception as e:
                 print(f"PWM STOP ERROR: {e}")
 
 
 def SPIN_TOP():
     try:
+        print(f"SPIN_TOP BEGIN thread={threading.get_ident()} handle={Precharge.h}")
+
         if Precharge.h is None:
             print("SPIN_TOP ERROR: GPIO handle is None")
             return
+
+        claim_pwm_pins()
 
         pins = [PWM1]
 
@@ -100,6 +138,8 @@ def SPIN_TOP():
 
         manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=10)
 
+        print("SPIN_TOP COMPLETE")
+
     except Exception as e:
         print(f"SPIN_TOP EXCEPTION: {e}")
         raise
@@ -107,16 +147,23 @@ def SPIN_TOP():
     finally:
         if Precharge.h is not None:
             try:
-                lgpio.tx_servo(Precharge.h, PWM1, 0)
+                print("STOP PWM1")
+                ret = lgpio.tx_servo(Precharge.h, PWM1, 0)
+                print(f"STOP GPIO{PWM1} ret={ret}")
+
             except Exception as e:
                 print(f"PWM STOP ERROR: {e}")
 
 
 def SPIN_BOT():
     try:
+        print(f"SPIN_BOT BEGIN thread={threading.get_ident()} handle={Precharge.h}")
+
         if Precharge.h is None:
             print("SPIN_BOT ERROR: GPIO handle is None")
             return
+
+        claim_pwm_pins()
 
         pins = [PWM2]
 
@@ -131,6 +178,8 @@ def SPIN_BOT():
 
         manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=10)
 
+        print("SPIN_BOT COMPLETE")
+
     except Exception as e:
         print(f"SPIN_BOT EXCEPTION: {e}")
         raise
@@ -138,16 +187,23 @@ def SPIN_BOT():
     finally:
         if Precharge.h is not None:
             try:
-                lgpio.tx_servo(Precharge.h, PWM2, 0)
+                print("STOP PWM2")
+                ret = lgpio.tx_servo(Precharge.h, PWM2, 0)
+                print(f"STOP GPIO{PWM2} ret={ret}")
+
             except Exception as e:
                 print(f"PWM STOP ERROR: {e}")
 
 
 def SPIN_PROP():
     try:
+        print(f"SPIN_PROP BEGIN thread={threading.get_ident()} handle={Precharge.h}")
+
         if Precharge.h is None:
             print("SPIN_PROP ERROR: GPIO handle is None")
             return
+
+        claim_pwm_pins()
 
         pins = [PWM1, PWM2]
 
@@ -172,6 +228,8 @@ def SPIN_PROP():
 
         manual_sweep(HIGHER, LOW, pins, custom_delay=0.05, step_size=10)
 
+        print("SPIN_PROP COMPLETE")
+
     except Exception as e:
         print(f"SPIN_PROP EXCEPTION: {e}")
         raise
@@ -179,7 +237,13 @@ def SPIN_PROP():
     finally:
         if Precharge.h is not None:
             try:
-                lgpio.tx_servo(Precharge.h, PWM1, 0)
-                lgpio.tx_servo(Precharge.h, PWM2, 0)
+                print("STOP PWM1")
+                ret1 = lgpio.tx_servo(Precharge.h, PWM1, 0)
+                print(f"STOP GPIO{PWM1} ret={ret1}")
+
+                print("STOP PWM2")
+                ret2 = lgpio.tx_servo(Precharge.h, PWM2, 0)
+                print(f"STOP GPIO{PWM2} ret={ret2}")
+
             except Exception as e:
                 print(f"PWM STOP ERROR: {e}")

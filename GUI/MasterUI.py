@@ -299,6 +299,7 @@ def PWR_CHECK():
         PWR.after(500, lambda: (
             Precharge.TURN_OFF_PRECHARGE(),
             LED.INIT(),
+            Spin_test.claim_pwm_pins(),
             PWR.config(text="PRECHARGE OK")
         ))
         
