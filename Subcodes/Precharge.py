@@ -1,8 +1,4 @@
-#coinditions for the mosfet turning on to be handled in the GUI using the batteyr monitor data. Precharge happens first and the mosfet turns on. Need to consider naming for button in GUI maybe just call POWER ON ect..
-#Close of global h by calling close fet should be last thing done. which will be the case as LED driver also needs that on to work.
-
 import lgpio
-import time
 
 FET_CTL = 0
 PRECHARGE = 12
@@ -15,46 +11,68 @@ def INITIALIZE_SYSTEM():
     global h
     try:
         h = lgpio.gpiochip_open(CHIP)
+
         lgpio.gpio_claim_output(h, PRECHARGE)
         lgpio.gpio_claim_output(h, FET_CTL)
+
     except Exception as e:
-        pass
+        print(f"PRECHARGE INIT ERROR: {e}")
+        raise
 
 
 def START_PRECHARGE():
     global h
     try:
+        if h is None:
+            raise RuntimeError("GPIO chip not initialized")
+
         lgpio.gpio_write(h, PRECHARGE, 1)
+
     except Exception as e:
-        pass
+        print(f"PRECHARGE START ERROR: {e}")
+        raise
 
 
 def OPEN_FET():
     global h
     try:
+        if h is None:
+            raise RuntimeError("GPIO chip not initialized")
+
         lgpio.gpio_write(h, FET_CTL, 1)
+
     except Exception as e:
-        pass
+        print(f"FET OPEN ERROR: {e}")
+        raise
 
 
 def TURN_OFF_PRECHARGE():
     global h
     try:
+        if h is None:
+            raise RuntimeError("GPIO chip not initialized")
+
         lgpio.gpio_write(h, PRECHARGE, 0)
+
     except Exception as e:
-        pass
+        print(f"PRECHARGE OFF ERROR: {e}")
+        raise
 
 
 def CLOSE_FET():
     global h
     try:
-        lgpio.gpio_write(h, FET_CTL, 0)
-    except Exception as e:
-        pass
-    finally:
         if h is not None:
-            try:
+            lgpio.gpio_write(h, FET_CTL, 0)
+
+    except Exception as e:
+        print(f"FET CLOSE ERROR: {e}")
+
+    finally:
+        try:
+            if h is not None:
                 lgpio.gpiochip_close(h)
                 h = None
-            except Exception:
-                pass
+        except Exception as e:
+            print(f"GPIO CLOSE ERROR: {e}")
+            h = None

@@ -318,13 +318,15 @@ def TOGGLE_LED():
 def STOP():
     PWM1 = 7
     PWM2 = 5
-    lgpio.tx_servo(h, PWM1, 0)  ##set PWMS to low as extra safety
-    lgpio.tx_servo(h, PWM2, 0)
-    time.sleep(0.02)   #see if needed or enough
+
+    if Precharge.h is not None:
+        lgpio.tx_servo(Precharge.h, PWM1, 0)
+        lgpio.tx_servo(Precharge.h, PWM2, 0)
+
+    time.sleep(0.02)
     Precharge.CLOSE_FET()
     PWR.config(text="POWER ON")
     root.update()
-
 
 
 def update_batt():
