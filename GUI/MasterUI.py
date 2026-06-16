@@ -329,17 +329,21 @@ def TOGGLE_LED():
         LED_btn.config(text="Turn LED On")
 
 def power_off():
-    PWM1 = 7
-    PWM2 = 5
+    try:
+        Precharge.TURN_OFF_PRECHARGE()
+        Precharge.OPEN_FET()
 
-    if Precharge.h is not None:
-        lgpio.tx_servo(Precharge.h, PWM1, 0)
-        lgpio.tx_servo(Precharge.h, PWM2, 0)
+        time.sleep(0.05)
 
-    time.sleep(0.02)
-    Precharge.CLOSE_FET()
-    PWR.config(text="POWER ON")
-    root.update()
+        Precharge.CLOSE_FET()
+
+        print("POWER OFF")
+
+        PWR.config(text="POWER ON")
+        root.update()
+
+    except Exception as e:
+        print("[POWER OFF ERROR]", e)
 
 def update_batt():
     global batt_after_id
