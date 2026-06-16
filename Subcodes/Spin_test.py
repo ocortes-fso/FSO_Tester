@@ -17,9 +17,12 @@ SWEEP_DELAY = 0.005
 
 
 def set_pwm(us, target_pins):
-    print(f"PWM {us}")
     for pin in target_pins:
-        lgpio.tx_servo(Precharge.h, pin, us)
+        try:
+            lgpio.tx_servo(Precharge.h, pin, us)
+            print(f"PWM OK: pin={pin} us={us}")
+        except Exception as e:
+            print(f"PWM ERROR: pin={pin} us={us} err={e}")
 
 
 def manual_sweep(start_us, end_us, target_pins, custom_delay=SWEEP_DELAY):
@@ -30,10 +33,12 @@ def manual_sweep(start_us, end_us, target_pins, custom_delay=SWEEP_DELAY):
         time.sleep(custom_delay)
 
 
-#call for normal spin test NO PROPS!!
-
 def SPIN_START():
     try:
+        if Precharge.h is None:
+            print("SPIN_START ERROR: GPIO handle is None")
+            return
+
         pins = [PWM1, PWM2]
 
         manual_sweep(LOW, INIT, pins)
@@ -45,19 +50,24 @@ def SPIN_START():
         manual_sweep(HIGH, LOW, pins)
 
     except Exception as e:
-        print(f"EXCEPTION: {e}")
+        print(f"SPIN_START EXCEPTION: {e}")
         raise
 
     finally:
         if Precharge.h is not None:
-            lgpio.tx_servo(Precharge.h, PWM1, 0)
-            lgpio.tx_servo(Precharge.h, PWM2, 0)
+            try:
+                lgpio.tx_servo(Precharge.h, PWM1, 0)
+                lgpio.tx_servo(Precharge.h, PWM2, 0)
+            except Exception as e:
+                print(f"PWM STOP ERROR: {e}")
 
-
-#call for Spin test PWM1 / TOP
 
 def SPIN_TOP():
     try:
+        if Precharge.h is None:
+            print("SPIN_TOP ERROR: GPIO handle is None")
+            return
+
         pins = [PWM1]
 
         manual_sweep(LOW, INIT, pins)
@@ -69,18 +79,23 @@ def SPIN_TOP():
         manual_sweep(HIGH, LOW, pins)
 
     except Exception as e:
-        print(f"EXCEPTION: {e}")
+        print(f"SPIN_TOP EXCEPTION: {e}")
         raise
 
     finally:
         if Precharge.h is not None:
-            lgpio.tx_servo(Precharge.h, PWM1, 0)
+            try:
+                lgpio.tx_servo(Precharge.h, PWM1, 0)
+            except Exception as e:
+                print(f"PWM STOP ERROR: {e}")
 
-
-#call for Spin test PWM2 / BOT
 
 def SPIN_BOT():
     try:
+        if Precharge.h is None:
+            print("SPIN_BOT ERROR: GPIO handle is None")
+            return
+
         pins = [PWM2]
 
         manual_sweep(LOW, INIT, pins)
@@ -92,22 +107,23 @@ def SPIN_BOT():
         manual_sweep(HIGH, LOW, pins)
 
     except Exception as e:
-        print(f"EXCEPTION: {e}")
+        print(f"SPIN_BOT EXCEPTION: {e}")
         raise
 
     finally:
         if Precharge.h is not None:
-            lgpio.tx_servo(Precharge.h, PWM2, 0)
+            try:
+                lgpio.tx_servo(Precharge.h, PWM2, 0)
+            except Exception as e:
+                print(f"PWM STOP ERROR: {e}")
 
-
-#call for vibration/prop spin test WITH PROPS!!
-#adjust delays if needed for ramp up
-#1350-1140 = 210, 210x0.2 = 42 seconds
-
-#expected behaviour.. go to INIT, hold, ramp up to higher with slower ramp speed than other tests, hold, perform 3 pulses, ramp down at sweep speed
 
 def SPIN_PROP():
     try:
+        if Precharge.h is None:
+            print("SPIN_PROP ERROR: GPIO handle is None")
+            return
+
         pins = [PWM1, PWM2]
 
         manual_sweep(LOW, INIT, pins)
@@ -129,10 +145,13 @@ def SPIN_PROP():
         manual_sweep(HIGHER, LOW, pins)
 
     except Exception as e:
-        print(f"EXCEPTION: {e}")
+        print(f"SPIN_PROP EXCEPTION: {e}")
         raise
 
     finally:
         if Precharge.h is not None:
-            lgpio.tx_servo(Precharge.h, PWM1, 0)
-            lgpio.tx_servo(Precharge.h, PWM2, 0) 
+            try:
+                lgpio.tx_servo(Precharge.h, PWM1, 0)
+                lgpio.tx_servo(Precharge.h, PWM2, 0)
+            except Exception as e:
+                print(f"PWM STOP ERROR: {e}")
