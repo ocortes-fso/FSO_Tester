@@ -49,7 +49,7 @@ def set_pwm(us, target_pins):
             )
 
 
-def manual_sweep(start_us, end_us, target_pins, custom_delay=SWEEP_DELAY, step_size=10):
+def manual_sweep(start_us, end_us, target_pins, custom_delay=SWEEP_DELAY, step_size=5):
     if start_us == end_us:
         set_pwm(end_us, target_pins)
         return
@@ -84,13 +84,13 @@ def SPIN_START():
         pins = [PWM1, PWM2]
 
         set_pwm(LOW, pins)
-        time.sleep(1.0)
+        time.sleep(0.5)
 
         manual_sweep(LOW, INIT, pins, custom_delay=0.05, step_size=10)
-        time.sleep(3.0)
+        time.sleep(1.5)
 
         manual_sweep(INIT, HIGH, pins, custom_delay=0.05, step_size=10)
-        time.sleep(5.0)
+        time.sleep(10.0)
 
         manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=10)
 
@@ -128,13 +128,13 @@ def SPIN_TOP():
         pins = [PWM1]
 
         set_pwm(LOW, pins)
-        time.sleep(1.0)
+        time.sleep(0.5)
 
         manual_sweep(LOW, INIT, pins, custom_delay=0.05, step_size=10)
-        time.sleep(3.0)
+        time.sleep(1.5)
 
         manual_sweep(INIT, HIGH, pins, custom_delay=0.05, step_size=10)
-        time.sleep(5.0)
+        time.sleep(10)
 
         manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=10)
 
@@ -168,13 +168,13 @@ def SPIN_BOT():
         pins = [PWM2]
 
         set_pwm(LOW, pins)
-        time.sleep(1.0)
+        time.sleep(0.5)
 
         manual_sweep(LOW, INIT, pins, custom_delay=0.05, step_size=10)
-        time.sleep(3.0)
+        time.sleep(1.5)
 
         manual_sweep(INIT, HIGH, pins, custom_delay=0.05, step_size=10)
-        time.sleep(5.0)
+        time.sleep(10.0)
 
         manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=10)
 
@@ -208,10 +208,10 @@ def SPIN_PROP():
         pins = [PWM1, PWM2]
 
         set_pwm(LOW, pins)
-        time.sleep(1.0)
+        time.sleep(0.5)
 
         manual_sweep(LOW, INIT, pins, custom_delay=0.05, step_size=10)
-        time.sleep(3.0)
+        time.sleep(1.5)
 
         manual_sweep(INIT, HIGHER, pins, custom_delay=0.05, step_size=10)
 
