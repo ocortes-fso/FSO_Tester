@@ -275,64 +275,36 @@ def PWR_ON():
     global pwr_after_id
 
     Precharge.INITIALIZE_SYSTEM()
-    time.sleep(0.05)
     Precharge.START_PRECHARGE()
 
     PWR.config(text="PreCharging...")
 
     pwr_after_id = PWR.after(5000, PWR_CHECK)
 
-
 def PWR_CHECK():
     global pwr_after_id
     pwr_after_id = None
 
-    time.sleep(0.5)
-
-    samples = []
-    last_valid = None
-
-    for _ in range(5):
-        v = Batt_monitor.read_battery_voltage()
-
-        if v is not None and v > 1.0:
-            last_valid = v
-            samples.append(v)
-
-        time.sleep(0.1)
-
-    PRECHARGE_VOLT = None
-
-    if samples:
-        PRECHARGE_VOLT = sum(samples) / len(samples)
-    else:
-        PRECHARGE_VOLT = last_valid
+    PRECHARGE_VOLT = Batt_monitor.read_battery_voltage()
 
     print(f"[PWR CHECK] Voltage = {PRECHARGE_VOLT}")
 
-    if PRECHARGE_VOLT is None or PRECHARGE_VOLT < 20.0:
+    if PRECHARGE_VOLT is None or PRECHARGE_VOLT > 20:
         Precharge.TURN_OFF_PRECHARGE()
         Precharge.CLOSE_FET()
 
-        PWR.config(text=f"PRECHARGE FAIL ({PRECHARGE_VOLT})")
+        PWR.config(text="Precharge FAIL")
         return
 
-    try:
-        time.sleep(0.2)
+    Precharge.OPEN_FET()
 
-        Precharge.OPEN_FET()
-        time.sleep(0.3)
+    PWR.config(text="FET ON...")
 
-        Precharge.TURN_OFF_PRECHARGE()
-
-        LED.INIT()
-
-        PWR.config(text=f"PRECHARGE OK ({PRECHARGE_VOLT}V)")
-
-    except Exception as e:
-        print("[PWR CHECK ERROR]", e)
-        PWR.config(text="PWR ERROR")
-        Precharge.CLOSE_FET()
+    PWR.after(300, lambda: (
+        Precharge.TURN_OFF_PRECHARGE(),
+        LED.INIT(),
+        PWR.config(text=f"PRECHARGE OK")
+    ))
         
 def SPIN():
     Spin_test.SPIN_START()
