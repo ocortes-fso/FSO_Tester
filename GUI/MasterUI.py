@@ -307,18 +307,18 @@ def PWR_CHECK():
     ))
         
 def SPIN():
-    Spin_test.SPIN_START()
+    threading.Thread(target=Spin_test.SPIN_START, daemon=True).start()
 
 
 def TOP_SPIN():
-    Spin_test.SPIN_TOP()
+    threading.Thread(target=Spin_test.SPIN_TOP, daemon=True).start()
 
 
 def BOT_SPIN():
-    Spin_test.SPIN_BOT()
+    threading.Thread(target=Spin_test.SPIN_BOT, daemon=True).start()
 
 def PROP_SPIN():
-    Spin_test.SPIN_PROP()
+    threading.Thread(target=Spin_test.SPIN_PROP, daemon=True).start()
 
 def TOGGLE_LED():
     if LED_btn.cget("text") == "Turn LED On":
