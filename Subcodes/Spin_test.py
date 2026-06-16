@@ -35,7 +35,9 @@ def manual_sweep(start_us, end_us, target_pins, custom_delay=SWEEP_DELAY, step_s
 
     while True:
         set_pwm(current_us, target_pins)
-        time.sleep(custom_delay)
+        
+        actual_delay = max(custom_delay, 0.02)
+        time.sleep(actual_delay)
         
         if (step > 0 and current_us + step >= end_us) or (step < 0 and current_us + step <= end_us):
             break
