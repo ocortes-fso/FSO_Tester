@@ -290,16 +290,14 @@ def PWR_CHECK():
     global pwr_after_id
     pwr_after_id = None
 
-    # read multiple samples for stability
-    v1 = Batt_monitor.read_battery_voltage()
-    time.sleep(0.2)
-    v2 = Batt_monitor.read_battery_voltage()
+    samples = []
+    for _ in range(3):
+        v = Batt_monitor.read_battery_voltage()
+        if v is not None:
+            samples.append(v)
+        time.sleep(0.2)
 
-    PRECHARGE_VOLT = None
-    if v1 is not None and v2 is not None:
-        PRECHARGE_VOLT = (v1 + v2) / 2
-    else:
-        PRECHARGE_VOLT = v1 or v2
+    PRECHARGE_VOLT = sum(samples) / len(samples) if samples else None   #take avergae of the samples for better reading..
 
     print(f"[PWR CHECK] Voltage = {PRECHARGE_VOLT}")
 
@@ -307,18 +305,27 @@ def PWR_CHECK():
         Precharge.TURN_OFF_PRECHARGE()
 
         PWR.config(
-            text=f"PRECHARGE FAIL ({PRECHARGE_VOLT:.2f}V)",
+            text=f"PRECHARGE FAIL ({PRECHARGE_VOLT})",
             bootstyle=DANGER
         )
-        return  
+        return
 
-    Precharge.OPEN_FET()
-    Precharge.TURN_OFF_PRECHARGE()
+    try:
+        Precharge.OPEN_FET()
+        time.sleep(0.3)   # small stabilization delay before turing of precahrge path
 
-    PWR.config(
-        text=f"PRECHARGE OK ({PRECHARGE_VOLT:.2f}V)",
-        bootstyle=SUCCESS
-    )
+        Precharge.TURN_OFF_PRECHARGE()
+
+        LED.INIT()        # LED init and set to low
+
+        PWR.config(
+            text=f"PRECHARGE OK ({PRECHARGE_VOLT:.2f}V)",
+            bootstyle=SUCCESS
+        )
+
+    except Exception as e:
+        print("[PWR CHECK ERROR]", e)
+        PWR.config(text="PWR ERROR", bootstyle=DANGER)
         
 def SPIN():
     Spin_test.SPIN_START()
@@ -335,7 +342,6 @@ def PROP_SPIN():
     Spin_test.SPIN_PROP()
 
 def TOGGLE_LED():
-    LED.INIT()
     if LED_btn.cget("text") == "Turn LED On":
         LED.LED_ON()
         LED_btn.config(text="Turn LED Off")
