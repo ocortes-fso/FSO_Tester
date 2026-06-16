@@ -274,37 +274,38 @@ def update_mag():
 def PWR_ON():
     global pwr_after_id
 
-    Precharge.INITIALIZE_SYSTEM()
-    Precharge.START_PRECHARGE()
+    try:
+        Precharge.INITIALIZE_SYSTEM()
+        Precharge.START_PRECHARGE()
 
-    PWR.config(text="PreCharging...")
+        PWR.config(text="PreCharging...")
 
-    pwr_after_id = PWR.after(5000, PWR_CHECK)
+        pwr_after_id = PWR.after(5000, PWR_CHECK)
+        
+    except Exception as e:
+        print(f"[PWR ON ERROR] Cannot start precharge: {e}")
+        Precharge.CLOSE_FET()
+        PWR.config(text="Precharge FAIL")
 
 def PWR_CHECK():
     global pwr_after_id
     pwr_after_id = None
 
-    PRECHARGE_VOLT = Batt_monitor.read_battery_voltage()
+    try:
+        Precharge.OPEN_FET()
 
-    print(f"[PWR CHECK] Voltage = {PRECHARGE_VOLT}")
+        PWR.config(text="FET ON...")
 
-    if PRECHARGE_VOLT is None or PRECHARGE_VOLT > 20:
-        Precharge.TURN_OFF_PRECHARGE()
+        PWR.after(300, lambda: (
+            Precharge.TURN_OFF_PRECHARGE(),
+            LED.INIT(),
+            PWR.config(text="PRECHARGE OK")
+        ))
+        
+    except Exception as e:
+        print(f"[PWR CHECK ERROR] Failure during activation: {e}")
         Precharge.CLOSE_FET()
-
-        PWR.config(text="Precharge FAIL")
-        return
-
-    Precharge.OPEN_FET()
-
-    PWR.config(text="FET ON...")
-
-    PWR.after(300, lambda: (
-        Precharge.TURN_OFF_PRECHARGE(),
-        LED.INIT(),
-        PWR.config(text=f"PRECHARGE OK")
-    ))
+        PWR.config(text="Power ERROR")
         
 def SPIN():
     threading.Thread(target=Spin_test.SPIN_START, daemon=True).start()
