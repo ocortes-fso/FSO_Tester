@@ -43,17 +43,18 @@ def set_pwm(us, target_pins):
         except:
             pass
 
-def manual_sweep(start_us, end_us, target_pins, custom_delay=SWEEP_DELAY, step_size=5):
+def manual_sweep(start_us, end_us, target_pins, custom_delay=None, step_size=5):
     if start_us == end_us:
         set_pwm(end_us, target_pins)
         return
 
+    delay = SWEEP_DELAY if custom_delay is None else custom_delay
     step = step_size if end_us > start_us else -step_size
     current_us = start_us
 
     while True:
         set_pwm(current_us, target_pins)
-        time.sleep(max(custom_delay, 0.08))
+        time.sleep(delay)
 
         if (step > 0 and current_us + step >= end_us) or (step < 0 and current_us + step <= end_us):
             break
@@ -73,13 +74,13 @@ def SPIN_START():
         set_pwm(LOW, pins)
         time.sleep(0.5)
 
-        manual_sweep(LOW, INIT, pins, custom_delay=0.08, step_size=5)
+        manual_sweep(LOW, INIT, pins, step_size=5)
         time.sleep(1.5)
 
-        manual_sweep(INIT, HIGH, pins, custom_delay=0.08, step_size=5)
+        manual_sweep(INIT, HIGH, pins, step_size=5)
         time.sleep(10.0)
 
-        manual_sweep(HIGH, LOW, pins, custom_delay=0.08, step_size=5)
+        manual_sweep(HIGH, LOW, pins, step_size=5)
 
     finally:
         try:
@@ -99,13 +100,13 @@ def SPIN_TOP():
         set_pwm(LOW, pins)
         time.sleep(0.5)
 
-        manual_sweep(LOW, INIT, pins, custom_delay=0.08, step_size=5)
+        manual_sweep(LOW, INIT, pins, step_size=5)
         time.sleep(1.5)
 
-        manual_sweep(INIT, HIGH, pins, custom_delay=0.08, step_size=5)
+        manual_sweep(INIT, HIGH, pins, step_size=5)
         time.sleep(3.0)
 
-        manual_sweep(HIGH, LOW, pins, custom_delay=0.08, step_size=5)
+        manual_sweep(HIGH, LOW, pins, step_size=5)
 
     finally:
         try:
@@ -124,13 +125,13 @@ def SPIN_BOT():
         set_pwm(LOW, pins)
         time.sleep(0.5)
 
-        manual_sweep(LOW, INIT, pins, custom_delay=0.08, step_size=5)
+        manual_sweep(LOW, INIT, pins, step_size=5)
         time.sleep(1.5)
 
-        manual_sweep(INIT, HIGH, pins, custom_delay=0.08, step_size=5)
+        manual_sweep(INIT, HIGH, pins, step_size=5)
         time.sleep(3.0)
 
-        manual_sweep(HIGH, LOW, pins, custom_delay=0.08, step_size=5)
+        manual_sweep(HIGH, LOW, pins, step_size=5)
 
     finally:
         try:
@@ -149,21 +150,22 @@ def SPIN_PROP():
         set_pwm(LOW, pins)
         time.sleep(0.5)
 
-        manual_sweep(LOW, INIT, pins, custom_delay=0.08, step_size=5)
+        manual_sweep(LOW, INIT, pins, step_size=5)
         time.sleep(1.5)
 
-        manual_sweep(INIT, HIGHER, pins, custom_delay=0.08, step_size=5)
+        manual_sweep(INIT, HIGHER, pins, step_size=5)
 
         time.sleep(30.0)
+
+        manual_sweep(HIGHER, INIT, pins, step_size=5)
 
         PULSE_MAX = HIGHER + 50
 
         for _ in range(4):
-            manual_sweep(HIGHER, PULSE_MAX, pins, custom_delay=0.005, step_size=5)
-            time.sleep(5)
+            manual_sweep(INIT, PULSE_MAX, pins, custom_delay=0.005, step_size=5)
+            time.sleep(5.0)
 
-            manual_sweep(PULSE_MAX, LOW, pins, custom_delay=0.005, step_size=5)
-
+            manual_sweep(PULSE_MAX, INIT, pins, custom_delay=0.005, step_size=5)
 
     finally:
         try:
