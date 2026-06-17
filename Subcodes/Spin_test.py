@@ -103,7 +103,7 @@ def SPIN_TOP():
         time.sleep(1.5)
 
         manual_sweep(INIT, HIGH, pins, custom_delay=0.08, step_size=5)
-        time.sleep(5.0)
+        time.sleep(3.0)
 
         manual_sweep(HIGH, LOW, pins, custom_delay=0.08, step_size=5)
 
@@ -128,7 +128,7 @@ def SPIN_BOT():
         time.sleep(1.5)
 
         manual_sweep(INIT, HIGH, pins, custom_delay=0.08, step_size=5)
-        time.sleep(5.0)
+        time.sleep(3.0)
 
         manual_sweep(HIGH, LOW, pins, custom_delay=0.08, step_size=5)
 
@@ -156,16 +156,14 @@ def SPIN_PROP():
 
         time.sleep(30.0)
 
-        PULSE_MAX = HIGHER + 30
+        PULSE_MAX = HIGHER + 50
 
         for _ in range(4):
-            manual_sweep(HIGHER, PULSE_MAX, pins, custom_delay=0.03, step_size=5)
+            manual_sweep(HIGHER, PULSE_MAX, pins, custom_delay=0.005, step_size=5)
             time.sleep(5)
 
-            manual_sweep(PULSE_MAX, LOW, pins, custom_delay=0.03, step_size=5)
-            time.sleep(1.0)
+            manual_sweep(PULSE_MAX, LOW, pins, custom_delay=0.005, step_size=5)
 
-        manual_sweep(HIGHER, LOW, pins, custom_delay=0.08, step_size=5)
 
     finally:
         try:
