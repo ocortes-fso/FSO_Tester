@@ -60,7 +60,7 @@ def manual_sweep(start_us, end_us, target_pins, custom_delay=SWEEP_DELAY, step_s
     while True:
         set_pwm(current_us, target_pins)
 
-        actual_delay = max(custom_delay, 0.02)
+        actual_delay = max(custom_delay, 0.05)
         time.sleep(actual_delay)
 
         if (step > 0 and current_us + step >= end_us) or (step < 0 and current_us + step <= end_us):
@@ -217,14 +217,14 @@ def SPIN_PROP():
 
         time.sleep(30.0)
 
-        PULSE_MAX = HIGHER + 40
+        PULSE_MAX = HIGHER + 30
 
         for _ in range(3):
-            manual_sweep(HIGHER, PULSE_MAX, pins, custom_delay=0.002, step_size=2)
+            manual_sweep(HIGHER, PULSE_MAX, pins, custom_delay=0.02, step_size=2)
             time.sleep(3.0)
 
-            manual_sweep(PULSE_MAX, HIGHER, pins, custom_delay=0.002, step_size=2)
-            time.sleep(5.0)
+            manual_sweep(PULSE_MAX, LOW, pins, custom_delay=0.02, step_size=2)
+            time.sleep(3.0)
 
         manual_sweep(HIGHER, LOW, pins, custom_delay=0.05, step_size=2)
 
