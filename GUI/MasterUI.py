@@ -293,15 +293,24 @@ def PWR_CHECK():
 
     try:
         Precharge.OPEN_FET()
-
         PWR.config(text="FET ON...")
+        root.update()
 
-        PWR.after(500, lambda: (
-            Precharge.TURN_OFF_PRECHARGE(),
-            LED.INIT(),
-            Spin_test.claim_pwm_pins(),
-            PWR.config(text="PRECHARGE OK")
-        ))
+        # Brief pause to allow the voltage to settle/register after FET activation
+        time.sleep(0.2)
+
+        # Check if battery voltage is present and above 18V
+        v_check = Batt_monitor.read_battery_voltage()
+        if v_check is None or v_check < 18.0:
+            print(f"[PWR CHECK] Low or no voltage detected: {v_check}V")
+            Precharge.CLOSE_FET()
+            PWR.config(text="Check Battery")
+            return
+
+        Precharge.TURN_OFF_PRECHARGE()
+        LED.INIT()
+        Spin_test.claim_pwm_pins()
+        PWR.config(text="PRECHARGE OK")
         
     except Exception as e:
         print(f"[PWR CHECK ERROR] Failure during activation: {e}")
