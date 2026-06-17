@@ -14,8 +14,8 @@ PWM1 = 7
 PWM2 = 5
 
 INIT = 1100
-HIGH = 1250
-HIGHER = 1360
+HIGH = 1280
+HIGHER = 1390
 LOW = 1000
 SWEEP_DELAY = 0.05
 
@@ -86,13 +86,13 @@ def SPIN_START():
         set_pwm(LOW, pins)
         time.sleep(0.5)
 
-        manual_sweep(LOW, INIT, pins, custom_delay=0.05, step_size=10)
+        manual_sweep(LOW, INIT, pins, custom_delay=0.05, step_size=2)
         time.sleep(1.5)
 
-        manual_sweep(INIT, HIGH, pins, custom_delay=0.05, step_size=10)
+        manual_sweep(INIT, HIGH, pins, custom_delay=0.05, step_size=2)
         time.sleep(10.0)
 
-        manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=10)
+        manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=2)
 
         print("SPIN_START COMPLETE")
 
@@ -130,13 +130,13 @@ def SPIN_TOP():
         set_pwm(LOW, pins)
         time.sleep(0.5)
 
-        manual_sweep(LOW, INIT, pins, custom_delay=0.05, step_size=10)
+        manual_sweep(LOW, INIT, pins, custom_delay=0.05, step_size=2)
         time.sleep(1.5)
 
-        manual_sweep(INIT, HIGH, pins, custom_delay=0.05, step_size=10)
+        manual_sweep(INIT, HIGH, pins, custom_delay=0.05, step_size=2)
         time.sleep(5.0)
 
-        manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=10)
+        manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=2)
 
         print("SPIN_TOP COMPLETE")
 
@@ -170,13 +170,13 @@ def SPIN_BOT():
         set_pwm(LOW, pins)
         time.sleep(0.5)
 
-        manual_sweep(LOW, INIT, pins, custom_delay=0.05, step_size=10)
+        manual_sweep(LOW, INIT, pins, custom_delay=0.05, step_size=2)
         time.sleep(1.5)
 
-        manual_sweep(INIT, HIGH, pins, custom_delay=0.05, step_size=10)
+        manual_sweep(INIT, HIGH, pins, custom_delay=0.05, step_size=2)
         time.sleep(5.0)
 
-        manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=10)
+        manual_sweep(HIGH, LOW, pins, custom_delay=0.05, step_size=2)
 
         print("SPIN_BOT COMPLETE")
 
@@ -210,23 +210,23 @@ def SPIN_PROP():
         set_pwm(LOW, pins)
         time.sleep(0.5)
 
-        manual_sweep(LOW, INIT, pins, custom_delay=0.05, step_size=10)
+        manual_sweep(LOW, INIT, pins, custom_delay=0.05, step_size=2)
         time.sleep(1.5)
 
-        manual_sweep(INIT, HIGHER, pins, custom_delay=0.05, step_size=10)
+        manual_sweep(INIT, HIGHER, pins, custom_delay=0.05, step_size=2)
 
         time.sleep(30.0)
 
-        PULSE_MAX = HIGHER + 30
+        PULSE_MAX = HIGHER + 40
 
         for _ in range(3):
-            manual_sweep(HIGHER, PULSE_MAX, pins, custom_delay=0.02, step_size=5)
+            manual_sweep(HIGHER, PULSE_MAX, pins, custom_delay=0.002, step_size=2)
             time.sleep(3.0)
 
-            manual_sweep(PULSE_MAX, HIGHER, pins, custom_delay=0.02, step_size=5)
+            manual_sweep(PULSE_MAX, HIGHER, pins, custom_delay=0.002, step_size=2)
             time.sleep(5.0)
 
-        manual_sweep(HIGHER, LOW, pins, custom_delay=0.05, step_size=10)
+        manual_sweep(HIGHER, LOW, pins, custom_delay=0.05, step_size=2)
 
         print("SPIN_PROP COMPLETE")
 
