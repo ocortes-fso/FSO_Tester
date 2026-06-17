@@ -304,6 +304,7 @@ def PWR_CHECK():
         if v_check is None or v_check < 18.0:
             print(f"[PWR CHECK] Low or no voltage detected: {v_check}V")
             Precharge.CLOSE_FET()
+            Precharge.TURN_OFF_PRECHARGE()
             PWR.config(text="Check Battery")
             return
 
