@@ -306,6 +306,8 @@ def PWR_CHECK():
             Precharge.CLOSE_FET()
             Precharge.TURN_OFF_PRECHARGE()
             PWR.config(text="Check Battery")
+            time.sleep(5)
+            PWR.config(text="POWER ON")
             return
 
         Precharge.TURN_OFF_PRECHARGE()
@@ -421,7 +423,7 @@ def loom_test():
         [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
         [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
     ])
-    l21.config(font=("Courier", 20), justify=CENTER, text=gui_string)
+    l21.config(font=("Courier", 22), justify=CENTER, text=gui_string)
     l20.config(text="Pass!" if np.array_equal(matrix, pass_matrix) else "Fail!",
                bootstyle=SUCCESS if np.array_equal(matrix, pass_matrix) else DANGER)
     
