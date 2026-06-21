@@ -293,7 +293,7 @@ def set_arm_state(state):
 
     elif state == "PRECHARGE":
         status_dot.config(foreground="yellow")
-        status_text.config(text="PRECHARGING")
+        status_text.config(text="PRECHARGE")
 
     elif state == "LIVE":
         status_dot.config(foreground="green")
