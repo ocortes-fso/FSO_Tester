@@ -366,36 +366,52 @@ def PWR_CHECK():
         
 def SPIN():
     def run():
-        set_arm_state("SPINNING")
-        Spin_test.SPIN_START()
-        set_arm_state("LIVE")
+        try:
+            set_arm_state("SPINNING")
+            Spin_test.SPIN_START()
+            set_arm_state("LIVE")
+        except Exception as e:
+            print(f"[SPIN ERROR] Spin failed: {e}")
+            set_arm_state("FAULT")
 
     threading.Thread(target=run, daemon=True).start()
 
 
 def TOP_SPIN():
     def run():
-        set_arm_state("SPINNING")
-        Spin_test.SPIN_TOP()
-        set_arm_state("LIVE")
+        try:
+            set_arm_state("SPINNING")
+            Spin_test.SPIN_TOP()
+            set_arm_state("LIVE")
+        except Exception as e:
+            print(f"[TOP SPIN ERROR] Spin failed: {e}")
+            set_arm_state("FAULT")
 
     threading.Thread(target=run, daemon=True).start()
 
 
 def BOT_SPIN():
     def run():
-        set_arm_state("SPINNING")
-        Spin_test.SPIN_BOT()
-        set_arm_state("LIVE")
+        try:
+            set_arm_state("SPINNING")
+            Spin_test.SPIN_BOT()
+            set_arm_state("LIVE")
+        except Exception as e:
+            print(f"[BOT SPIN ERROR] Spin failed: {e}")
+            set_arm_state("FAULT")
 
     threading.Thread(target=run, daemon=True).start()
 
 
 def PROP_SPIN():
     def run():
-        set_arm_state("SPINNING")
-        Spin_test.SPIN_PROP()
-        set_arm_state("LIVE")
+        try:
+            set_arm_state("SPINNING")
+            Spin_test.SPIN_PROP()
+            set_arm_state("LIVE")
+        except Exception as e:
+            print(f"[PROP SPIN ERROR] Spin failed: {e}")
+            set_arm_state("FAULT")
 
     threading.Thread(target=run, daemon=True).start()
 
