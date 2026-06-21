@@ -29,8 +29,6 @@ def LED_ON():
         if h is None:
             print("[LED] ERROR: Precharge not initialized")
             return
-
-        INIT()
         lgpio.gpio_write(h, LED_GPIO, 1)
         print("[LED] ON")
 
@@ -44,8 +42,6 @@ def LED_OFF():
         if h is None:
             print("[LED] ERROR: Precharge not initialized")
             return
-
-        INIT()
         lgpio.gpio_write(h, LED_GPIO, 0)
         print("[LED] OFF")
 

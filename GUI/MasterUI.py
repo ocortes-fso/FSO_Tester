@@ -116,13 +116,28 @@ l22 = ttk.Label(volt_container, text="V9:", bootstyle=SECONDARY, style='Sub.TLab
 l_sw = ttk.Label(Switch_plate_f, text="Plug in Switch Plate to test...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l_sw.pack(fill=BOTH, expand=TRUE)
 
-
+#battery monitor container
 batt_container = ttk.Frame(Arm_f)
 batt_container.pack(side=RIGHT, anchor=NE, padx=15, pady=15)
+
+#status indicator packed container
+status_container = ttk.Frame(Arm_f)
+status_container.pack(side=LEFT, anchor=NW, padx=15, pady=15)
 
 lv = ttk.Label(batt_container, text="Voltage:", bootstyle=SECONDARY, style='Sub.TLabel'); lv.pack()
 li = ttk.Label(batt_container, text="Current:", bootstyle=SECONDARY, style='Sub.TLabel'); li.pack()
 lt = ttk.Label(batt_container, text="Temperature:", bootstyle=SECONDARY, style='Sub.TLabel'); lt.pack()
+
+status_dot = ttk.Label(status_container, text="●", font=("Arial", 28, "bold"))
+status_dot.pack(anchor="w")
+
+status_text = ttk.Label(
+    status_container,
+    text="STATE: IDLE SAFE",
+    bootstyle=SECONDARY,
+    style='Sub.TLabel'
+)
+status_text.pack(anchor="w")
 
 
 # --- SCREENS ---
@@ -164,6 +179,7 @@ def arm():
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Arm_f.pack(fill=BOTH, expand=TRUE)
+    set_arm_state("IDLE")
     root.update()
     if batt_after_id is None:
         update_batt()
@@ -270,6 +286,26 @@ def update_mag():
         l1.config(text="Waiting for Magnetometer...")
     mag_after_id = root.after(500, update_mag)
 
+def set_arm_state(state):
+    if state == "IDLE":
+        status_dot.config(foreground="white")
+        status_text.config(text="SAFE")
+
+    elif state == "PRECHARGE":
+        status_dot.config(foreground="yellow")
+        status_text.config(text="PRECHARGING")
+
+    elif state == "LIVE":
+        status_dot.config(foreground="green")
+        status_text.config(text="LIVE")
+
+    elif state == "FAULT":
+        status_dot.config(foreground="red")
+        status_text.config(text="FAULT")
+
+    elif state == "SPINNING":
+        status_dot.config(foreground="blue")
+        status_text.config(text="SPINNING")
 
 def PWR_ON():
     global pwr_after_id
@@ -277,6 +313,7 @@ def PWR_ON():
     try:
         Precharge.INITIALIZE_SYSTEM()
         Precharge.START_PRECHARGE()
+        set_arm_state("PRECHARGE")
 
         PWR.config(text="PreCharging...")
 
@@ -284,6 +321,7 @@ def PWR_ON():
         
     except Exception as e:
         print(f"[PWR ON ERROR] Cannot start precharge: {e}")
+        set_arm_state("FAULT")
         Precharge.CLOSE_FET()
         PWR.config(text="Precharge FAIL")
 
@@ -292,48 +330,76 @@ def PWR_CHECK():
     pwr_after_id = None
 
     try:
+        LED.INIT()
+        LED.LED_OFF()
+        set_arm_state("PRECHARGE")
+
         Precharge.OPEN_FET()
         PWR.config(text="FET ON...")
         root.update()
 
-        # Brief pause to allow the voltage to settle/register after FET activation
         time.sleep(0.2)
 
-        # Check if battery voltage is present and above 18V
         v_check = Batt_monitor.read_battery_voltage()
         if v_check is None or v_check < 18.0:
             print(f"[PWR CHECK] Low or no voltage detected: {v_check}V")
             Precharge.CLOSE_FET()
             Precharge.TURN_OFF_PRECHARGE()
+            set_arm_state("FAULT")
             PWR.config(text="Check Battery")
             time.sleep(5)
             PWR.config(text="POWER ON")
+            set_arm_state("IDLE")
             return
 
         Precharge.TURN_OFF_PRECHARGE()
-        LED.INIT()
         Spin_test.claim_pwm_pins()
+        set_arm_state("LIVE")
         PWR.config(text="PRECHARGE OK")
-        
+
     except Exception as e:
         print(f"[PWR CHECK ERROR] Failure during activation: {e}")
+        set_arm_state("FAULT")
         Precharge.CLOSE_FET()
         PWR.config(text="Power ERROR")
+        set_arm_state("IDLE")
         
 def SPIN():
-    threading.Thread(target=Spin_test.SPIN_START, daemon=True).start()
+    def run():
+        set_arm_state("SPINNING")
+        Spin_test.SPIN_START()
+        set_arm_state("LIVE")
+
+    threading.Thread(target=run, daemon=True).start()
 
 
 def TOP_SPIN():
-    threading.Thread(target=Spin_test.SPIN_TOP, daemon=True).start()
+    def run():
+        set_arm_state("SPINNING")
+        Spin_test.SPIN_TOP()
+        set_arm_state("LIVE")
+
+    threading.Thread(target=run, daemon=True).start()
 
 
 def BOT_SPIN():
-    threading.Thread(target=Spin_test.SPIN_BOT, daemon=True).start()
+    def run():
+        set_arm_state("SPINNING")
+        Spin_test.SPIN_BOT()
+        set_arm_state("LIVE")
+
+    threading.Thread(target=run, daemon=True).start()
+
 
 def PROP_SPIN():
-    threading.Thread(target=Spin_test.SPIN_PROP, daemon=True).start()
+    def run():
+        set_arm_state("SPINNING")
+        Spin_test.SPIN_PROP()
+        set_arm_state("LIVE")
 
+    threading.Thread(target=run, daemon=True).start()
+
+    
 def TOGGLE_LED():
     if LED_btn.cget("text") == "Turn LED On":
         LED.LED_ON()
@@ -352,7 +418,7 @@ def power_off():
         Precharge.CLOSE_FET()
 
         print("POWER OFF")
-
+        set_arm_state("IDLE")
         PWR.config(text="POWER ON")
         root.update()
 
