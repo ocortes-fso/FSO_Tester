@@ -366,17 +366,21 @@ def PWR_CHECK():
         return
 
     pwr_after_id = root.after(100, PWR_CHECK)
+
 def SPIN():
     def run():
         try:
             set_arm_state("SPINNING")
             root.after(0, lambda: start_spin_progress("SPIN ALL", 18))
             Spin_test.SPIN_START()
-            set_arm_state("LIVE")
+            # Only restore to LIVE if the user didn't interrupt the test
+            if current_state == "SPINNING":
+                set_arm_state("LIVE")
             root.after(0, stop_spin_progress)
         except Exception as e:
             print(f"[SPIN ALL ERROR] {e}")
-            set_arm_state("FAULT")
+            if current_state == "SPINNING":
+                set_arm_state("FAULT")
             root.after(0, stop_spin_progress)
     threading.Thread(target=run, daemon=True).start()
 
@@ -386,11 +390,13 @@ def TOP_SPIN():
             set_arm_state("SPINNING")
             root.after(0, lambda: start_spin_progress("SPIN TOP", 11))
             Spin_test.SPIN_TOP()
-            set_arm_state("LIVE")
+            if current_state == "SPINNING":
+                set_arm_state("LIVE")
             root.after(0, stop_spin_progress)
         except Exception as e:
             print(f"[TOP SPIN ERROR] {e}")
-            set_arm_state("FAULT")
+            if current_state == "SPINNING":
+                set_arm_state("FAULT")
             root.after(0, stop_spin_progress)
     threading.Thread(target=run, daemon=True).start()
 
@@ -400,11 +406,13 @@ def BOT_SPIN():
             set_arm_state("SPINNING")
             root.after(0, lambda: start_spin_progress("SPIN BOT", 11))
             Spin_test.SPIN_BOT()
-            set_arm_state("LIVE")
+            if current_state == "SPINNING":
+                set_arm_state("LIVE")
             root.after(0, stop_spin_progress)
         except Exception as e:
             print(f"[BOT SPIN ERROR] {e}")
-            set_arm_state("FAULT")
+            if current_state == "SPINNING":
+                set_arm_state("FAULT")
             root.after(0, stop_spin_progress)
     threading.Thread(target=run, daemon=True).start()
 
@@ -412,13 +420,15 @@ def PROP_SPIN():
     def run():
         try:
             set_arm_state("SPINNING")
-            root.after(0, lambda: start_spin_progress("PROP TEST", 64))
+            root.after(0, lambda: start_spin_progress("PROP TEST", 63)) # Timing updated to 63 here too!
             Spin_test.SPIN_PROP()
-            set_arm_state("LIVE")
+            if current_state == "SPINNING":
+                set_arm_state("LIVE")
             root.after(0, stop_spin_progress)
         except Exception as e:
             print(f"[PROP SPIN ERROR] {e}")
-            set_arm_state("FAULT")
+            if current_state == "SPINNING":
+                set_arm_state("FAULT")
             root.after(0, stop_spin_progress)
     threading.Thread(target=run, daemon=True).start()
     
