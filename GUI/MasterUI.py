@@ -17,6 +17,12 @@ lidar_after_id = None
 batt_after_id = None
 pwr_after_id = None
 current_state = "IDLE"
+spin_label = None
+spin_bar = None
+spin_running = False
+spin_start_time = 0
+spin_duration = 0
+spin_job = None
 
 eth_stop = threading.Event()
 body_stop = threading.Event()
@@ -141,6 +147,14 @@ status_text = ttk.Label(
 status_text.pack(anchor="w")
 
 
+spin_label = ttk.Label(status_container, text="", bootstyle=INFO, style='Sub.TLabel')
+spin_label.pack(anchor="w")
+
+spin_bar = ttk.Progressbar(status_container, maximum=100)
+spin_bar.pack(anchor="w", fill="x")
+spin_bar.pack_forget()
+
+
 # --- SCREENS ---
 
 def home():
@@ -165,6 +179,7 @@ def home():
     Rear_switch_plate_test.close()
     Batt_monitor.close()
     Precharge.CLOSE_FET()
+    stop_spin_progress()
     if pwr_after_id is not None:
         root.after_cancel(pwr_after_id)
         pwr_after_id = None
@@ -312,124 +327,132 @@ def set_arm_state(state):
         status_text.config(text="SPINNING")
 
 def PWR_ON():
-    global pwr_after_id
-
+    global precharge_start, pwr_after_id
     try:
         Precharge.INITIALIZE_SYSTEM()
         Precharge.START_PRECHARGE()
-        set_arm_state("PRECHARGE")
 
+        set_arm_state("PRECHARGE")
         PWR.config(text="PreCharging...")
 
-        pwr_after_id = PWR.after(5000, PWR_CHECK)
-        
+        precharge_start = time.time()
+        pwr_after_id = root.after(100, PWR_CHECK)
     except Exception as e:
-        print(f"[PWR ON ERROR] Cannot start precharge: {e}")
+        print(f"[PWR ON ERROR] {e}")
         set_arm_state("FAULT")
-        Precharge.CLOSE_FET()
-        PWR.config(text="Precharge FAIL")
+        PWR.config(text="Check Battery")
 
 def PWR_CHECK():
-    global pwr_after_id
-    pwr_after_id = None
+    global pwr_after_id, precharge_start
+    voltage = Batt_monitor.read_battery_voltage()
 
-    try:
-        LED.INIT()
-        LED.LED_OFF()
-        set_arm_state("PRECHARGE")
-
+    if voltage is not None and voltage > 22.0:
         Precharge.OPEN_FET()
-        PWR.config(text="FET ON...")
-        root.update()
-
-        time.sleep(0.2)
-
-        v_check = Batt_monitor.read_battery_voltage()
-        if v_check is None or v_check < 18.0:
-            print(f"[PWR CHECK] Low or no voltage detected: {v_check}V")
-            Precharge.CLOSE_FET()
-            Precharge.TURN_OFF_PRECHARGE()
-            set_arm_state("FAULT")
-            PWR.config(text="Check Battery")
-            time.sleep(5)
-            PWR.config(text="POWER ON")
-            set_arm_state("IDLE")
-            return
-
         Precharge.TURN_OFF_PRECHARGE()
         Spin_test.claim_pwm_pins()
-        set_arm_state("LIVE")
-        PWR.config(text="PRECHARGE OK")
 
-    except Exception as e:
-        print(f"[PWR CHECK ERROR] Failure during activation: {e}")
-        set_arm_state("FAULT")
+        set_arm_state("LIVE")
+        PWR.config(text="POWER ON")
+        pwr_after_id = None
+        return
+
+    if time.time() - precharge_start >= 5:
+        Precharge.TURN_OFF_PRECHARGE()
         Precharge.CLOSE_FET()
-        PWR.config(text="Power ERROR")
-        set_arm_state("IDLE")
-        
+
+        set_arm_state("FAULT")
+        PWR.config(text="Check Battery")
+        pwr_after_id = None
+        return
+
+    pwr_after_id = root.after(100, PWR_CHECK)
 def SPIN():
     def run():
-        if current_state != "LIVE":
-            set_arm_state("FAULT")
-            return
         try:
             set_arm_state("SPINNING")
+            start_spin_progress("SPIN ALL", 18)
             Spin_test.SPIN_START()
             set_arm_state("LIVE")
+            stop_spin_progress()
         except Exception as e:
-            print(f"[SPIN ERROR] Spin failed: {e}")
+            print(f"[SPIN ALL ERROR] {e}")
             set_arm_state("FAULT")
-
+            stop_spin_progress()
     threading.Thread(target=run, daemon=True).start()
-
 
 def TOP_SPIN():
     def run():
-        if current_state != "LIVE":
-            set_arm_state("FAULT")
-            return
         try:
             set_arm_state("SPINNING")
+            start_spin_progress("SPIN TOP", 11)
             Spin_test.SPIN_TOP()
             set_arm_state("LIVE")
+            stop_spin_progress()
         except Exception as e:
-            print(f"[TOP SPIN ERROR] Spin failed: {e}")
+            print(f"[TOP SPIN ERROR] {e}")
             set_arm_state("FAULT")
-
+            stop_spin_progress()
     threading.Thread(target=run, daemon=True).start()
-
 
 def BOT_SPIN():
     def run():
-        if current_state != "LIVE":
-            set_arm_state("FAULT")
-            return
         try:
             set_arm_state("SPINNING")
+            start_spin_progress("SPIN BOT", 11)
             Spin_test.SPIN_BOT()
             set_arm_state("LIVE")
+            stop_spin_progress()
         except Exception as e:
-            print(f"[BOT SPIN ERROR] Spin failed: {e}")
+            print(f"[BOT SPIN ERROR] {e}")
             set_arm_state("FAULT")
-
+            stop_spin_progress()
     threading.Thread(target=run, daemon=True).start()
-
 
 def PROP_SPIN():
     def run():
-        if current_state != "LIVE":
-            set_arm_state("FAULT")
-            return
         try:
             set_arm_state("SPINNING")
+            start_spin_progress("PROP TEST", 85)
             Spin_test.SPIN_PROP()
             set_arm_state("LIVE")
+            stop_spin_progress()
         except Exception as e:
-            print(f"[PROP SPIN ERROR] Spin failed: {e}")
+            print(f"[PROP SPIN ERROR] {e}")
             set_arm_state("FAULT")
-
+            stop_spin_progress()
     threading.Thread(target=run, daemon=True).start()
+    
+def start_spin_progress(name, duration):
+    global spin_running, spin_start_time, spin_duration
+    spin_running = True
+    spin_start_time = time.time()
+    spin_duration = duration
+
+    spin_label.config(text=f"Running: {name}")
+    spin_bar["value"] = 0
+    spin_bar.pack(fill="x")
+    update_spin_progress()
+
+def update_spin_progress():
+    global spin_running
+    if not spin_running:
+        return
+
+    elapsed = time.time() - spin_start_time
+    percent = min((elapsed / spin_duration) * 100, 100)
+    spin_bar["value"] = percent
+
+    if percent < 100:
+        root.after(100, update_spin_progress)
+    else:
+        spin_label.config(text="Completed")
+        root.after(800, stop_spin_progress)
+
+def stop_spin_progress():
+    global spin_running
+    spin_running = False
+    spin_bar.pack_forget()
+    spin_label.config(text="")
 
     
 def TOGGLE_LED():
@@ -452,6 +475,7 @@ def power_off():
         print("POWER OFF")
         set_arm_state("IDLE")
         PWR.config(text="POWER ON")
+        stop_spin_progress()
         root.update()
 
     except Exception as e:

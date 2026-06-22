@@ -166,6 +166,7 @@ def SPIN_PROP():
             time.sleep(5.0)
 
             manual_sweep(PULSE_MAX, INIT, pins, custom_delay=0.005, step_size=5)
+            time.sleep(0.2)
 
     finally:
         try:
