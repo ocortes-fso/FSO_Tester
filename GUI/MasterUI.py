@@ -485,14 +485,23 @@ def TOGGLE_LED():
         LED_btn.config(text="Turn LED On")
 
 def power_off():
+    global pwr_after_id
+
     try:
+        if pwr_after_id is not None:
+            root.after_cancel(pwr_after_id)
+            pwr_after_id = None
+
         stop_spin_progress()
+
         Precharge.TURN_OFF_PRECHARGE()
         Precharge.CLOSE_FET()
+
         print("POWER OFF")
+
         set_arm_state("IDLE")
         PWR.config(text="POWER ON")
-        root.update()
+
     except Exception as e:
         print("[POWER OFF ERROR]", e)
         set_arm_state("FAULT")
