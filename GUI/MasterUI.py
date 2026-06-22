@@ -273,7 +273,7 @@ def INF_SBUS_run_test():
     l_sbus_inf.after(0, lambda: l_sbus_inf.config(text="Scanning for signal...", bootstyle=INFO, font=(None, 24, 'bold')))
     if INF_sbus_stop.is_set():
         return
-    result = test_sbus() # Using the local test_sbus code provided
+    result = INF_SBUS.test_sbus() 
     if INF_sbus_stop.is_set():
         return
     l_sbus_inf.after(0, lambda: l_sbus_inf.config(
@@ -370,56 +370,56 @@ def SPIN():
     def run():
         try:
             set_arm_state("SPINNING")
-            start_spin_progress("SPIN ALL", 18)
+            root.after(0, lambda: start_spin_progress("SPIN ALL", 18))
             Spin_test.SPIN_START()
             set_arm_state("LIVE")
-            stop_spin_progress()
+            root.after(0, stop_spin_progress)
         except Exception as e:
             print(f"[SPIN ALL ERROR] {e}")
             set_arm_state("FAULT")
-            stop_spin_progress()
+            root.after(0, stop_spin_progress)
     threading.Thread(target=run, daemon=True).start()
 
 def TOP_SPIN():
     def run():
         try:
             set_arm_state("SPINNING")
-            start_spin_progress("SPIN TOP", 11)
+            root.after(0, lambda: start_spin_progress("SPIN TOP", 11))
             Spin_test.SPIN_TOP()
             set_arm_state("LIVE")
-            stop_spin_progress()
+            root.after(0, stop_spin_progress)
         except Exception as e:
             print(f"[TOP SPIN ERROR] {e}")
             set_arm_state("FAULT")
-            stop_spin_progress()
+            root.after(0, stop_spin_progress)
     threading.Thread(target=run, daemon=True).start()
 
 def BOT_SPIN():
     def run():
         try:
             set_arm_state("SPINNING")
-            start_spin_progress("SPIN BOT", 11)
+            root.after(0, lambda: start_spin_progress("SPIN BOT", 11))
             Spin_test.SPIN_BOT()
             set_arm_state("LIVE")
-            stop_spin_progress()
+            root.after(0, stop_spin_progress)
         except Exception as e:
             print(f"[BOT SPIN ERROR] {e}")
             set_arm_state("FAULT")
-            stop_spin_progress()
+            root.after(0, stop_spin_progress)
     threading.Thread(target=run, daemon=True).start()
 
 def PROP_SPIN():
     def run():
         try:
             set_arm_state("SPINNING")
-            start_spin_progress("PROP TEST", 85)
+            root.after(0, lambda: start_spin_progress("PROP TEST", 85))
             Spin_test.SPIN_PROP()
             set_arm_state("LIVE")
-            stop_spin_progress()
+            root.after(0, stop_spin_progress)
         except Exception as e:
             print(f"[PROP SPIN ERROR] {e}")
             set_arm_state("FAULT")
-            stop_spin_progress()
+            root.after(0, stop_spin_progress)
     threading.Thread(target=run, daemon=True).start()
     
 def start_spin_progress(name, duration):
@@ -465,21 +465,16 @@ def TOGGLE_LED():
 
 def power_off():
     try:
+        stop_spin_progress()
         Precharge.TURN_OFF_PRECHARGE()
-        Precharge.OPEN_FET()
-
-        time.sleep(0.05)
-
         Precharge.CLOSE_FET()
-
         print("POWER OFF")
         set_arm_state("IDLE")
         PWR.config(text="POWER ON")
-        stop_spin_progress()
         root.update()
-
     except Exception as e:
         print("[POWER OFF ERROR]", e)
+        set_arm_state("FAULT")
 
 def update_batt():
     global batt_after_id
@@ -524,7 +519,7 @@ def Eth_test():
     if eth_stop.is_set():
         return
     l3.after(0, lambda: l3.config(
-    text="PASS! Network Test Passed" if result else "Network Test Failed", 
+    text="PASS! Network Test Passed" if r if result else "Network Test Failed", 
     bootstyle=SUCCESS if result else DANGER, 
     font=(None, 24, 'bold') if result else (None, 24, 'bold')
 ))
