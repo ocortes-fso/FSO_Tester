@@ -328,6 +328,10 @@ def set_arm_state(state):
 
 def PWR_ON():
     global precharge_start, pwr_after_id
+    if spin_running:
+        PWR.config(text="Wait for Spin Stop...")
+        root.after(2000, lambda: PWR.config(text="POWER ON"))
+        return
     try:
         Precharge.INITIALIZE_SYSTEM()
         Precharge.START_PRECHARGE()
@@ -368,12 +372,13 @@ def PWR_CHECK():
     pwr_after_id = root.after(100, PWR_CHECK)
 
 def SPIN():
+    if spin_running:
+        return
     def run():
         try:
             set_arm_state("SPINNING")
             root.after(0, lambda: start_spin_progress("SPIN ALL", 18))
             Spin_test.SPIN_START()
-            # Only restore to LIVE if the user didn't interrupt the test
             if current_state == "SPINNING":
                 set_arm_state("LIVE")
             root.after(0, stop_spin_progress)
@@ -385,6 +390,8 @@ def SPIN():
     threading.Thread(target=run, daemon=True).start()
 
 def TOP_SPIN():
+    if spin_running:
+        return
     def run():
         try:
             set_arm_state("SPINNING")
@@ -401,6 +408,8 @@ def TOP_SPIN():
     threading.Thread(target=run, daemon=True).start()
 
 def BOT_SPIN():
+    if spin_running:
+        return
     def run():
         try:
             set_arm_state("SPINNING")
@@ -417,10 +426,12 @@ def BOT_SPIN():
     threading.Thread(target=run, daemon=True).start()
 
 def PROP_SPIN():
+    if spin_running:
+        return
     def run():
         try:
             set_arm_state("SPINNING")
-            root.after(0, lambda: start_spin_progress("PROP TEST", 63)) # Timing updated to 63 here too!
+            root.after(0, lambda: start_spin_progress("PROP TEST", 63))
             Spin_test.SPIN_PROP()
             if current_state == "SPINNING":
                 set_arm_state("LIVE")
