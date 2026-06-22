@@ -140,7 +140,7 @@ status_dot.pack(anchor="w")
 
 status_text = ttk.Label(
     status_container,
-    text="STATE: IDLE SAFE",
+    text="SAFE",
     bootstyle=SECONDARY,
     style='Sub.TLabel'
 )
@@ -150,9 +150,13 @@ status_text.pack(anchor="w")
 spin_label = ttk.Label(status_container, text="", bootstyle=INFO, style='Sub.TLabel')
 spin_label.pack(anchor="w")
 
-spin_bar = ttk.Progressbar(status_container, maximum=100)
-spin_bar.pack(anchor="w", fill="x")
-spin_bar.pack_forget()
+spin_bar = ttk.Progressbar(
+    status_container,
+    maximum=100,
+    bootstyle=INFO,
+    length=160
+)
+spin_bar.pack(anchor="w", pady=(5, 0))
 
 
 # --- SCREENS ---
