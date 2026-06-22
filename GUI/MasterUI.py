@@ -540,10 +540,11 @@ def Eth_test():
     if eth_stop.is_set():
         return
     l3.after(0, lambda: l3.config(
-    text="PASS! Network Test Passed" if r if result else "Network Test Failed", 
-    bootstyle=SUCCESS if result else DANGER, 
-    font=(None, 24, 'bold') if result else (None, 24, 'bold')
-))
+        text="PASS! Network Test Passed" if result else "Network Test Failed", 
+        bootstyle=SUCCESS if result else DANGER, 
+        font=(None, 24, 'bold')
+    ))
+
 
 def loom_test():
     matrix, gui_string = Arm_loom_test.arm_loom()
