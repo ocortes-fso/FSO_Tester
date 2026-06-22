@@ -16,6 +16,7 @@ mag_after_id = None
 lidar_after_id = None
 batt_after_id = None
 pwr_after_id = None
+current_state = "IDLE"
 
 eth_stop = threading.Event()
 body_stop = threading.Event()
@@ -287,6 +288,9 @@ def update_mag():
     mag_after_id = root.after(500, update_mag)
 
 def set_arm_state(state):
+    global current_state
+    current_state = state
+    
     if state == "IDLE":
         status_dot.config(foreground="white")
         status_text.config(text="SAFE")
@@ -366,6 +370,9 @@ def PWR_CHECK():
         
 def SPIN():
     def run():
+        if current_state != "LIVE":
+            set_arm_state("FAULT")
+            return
         try:
             set_arm_state("SPINNING")
             Spin_test.SPIN_START()
@@ -379,6 +386,9 @@ def SPIN():
 
 def TOP_SPIN():
     def run():
+        if current_state != "LIVE":
+            set_arm_state("FAULT")
+            return
         try:
             set_arm_state("SPINNING")
             Spin_test.SPIN_TOP()
@@ -392,6 +402,9 @@ def TOP_SPIN():
 
 def BOT_SPIN():
     def run():
+        if current_state != "LIVE":
+            set_arm_state("FAULT")
+            return
         try:
             set_arm_state("SPINNING")
             Spin_test.SPIN_BOT()
@@ -405,6 +418,9 @@ def BOT_SPIN():
 
 def PROP_SPIN():
     def run():
+        if current_state != "LIVE":
+            set_arm_state("FAULT")
+            return
         try:
             set_arm_state("SPINNING")
             Spin_test.SPIN_PROP()
