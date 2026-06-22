@@ -412,7 +412,7 @@ def PROP_SPIN():
     def run():
         try:
             set_arm_state("SPINNING")
-            root.after(0, lambda: start_spin_progress("PROP TEST", 85))
+            root.after(0, lambda: start_spin_progress("PROP TEST", 64))
             Spin_test.SPIN_PROP()
             set_arm_state("LIVE")
             root.after(0, stop_spin_progress)
