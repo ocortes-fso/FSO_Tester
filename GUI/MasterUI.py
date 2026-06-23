@@ -23,11 +23,13 @@ spin_running = False
 spin_start_time = 0
 spin_duration = 0
 spin_stop = threading.Event()
+spin_running_lock = threading.Lock()
 Spin_test.register_stop_event(spin_stop)
 eth_stop = threading.Event()
 body_stop = threading.Event()
 sbus_stop = threading.Event()
 INF_sbus_stop = threading.Event()
+
 
 root = ttk.Window(themename="cyborg", size=[1280, 720], title="FSO Tester") 
 style = ttk.Style()
@@ -166,7 +168,7 @@ def home():
     Lidar.close()
     Rear_switch_plate_test.close()
     Batt_monitor.close()
-    Precharge.CLOSE_FET
+    Precharge.CLOSE_FET()
     stop_spin_progress()
     if pwr_after_id is not None:
         root.after_cancel(pwr_after_id)
@@ -376,8 +378,9 @@ def PWR_CHECK():
         set_arm_state("IDLE")
 
 def SPIN():
-    if spin_running:
-        return
+    with spin_running_lock:
+        if spin_stop.is_set():
+            return
 
     if current_state != "LIVE":
         set_arm_state("FAULT")
@@ -411,8 +414,9 @@ def SPIN():
 
 
 def TOP_SPIN():
-    if spin_running:
-        return
+    with spin_running_lock:
+        if spin_stop.is_set():
+            return
 
     if current_state != "LIVE":
         set_arm_state("FAULT")
@@ -446,9 +450,9 @@ def TOP_SPIN():
 
 
 def BOT_SPIN():
-    if spin_running:
-        return
-
+    with spin_running_lock:
+        if spin_stop.is_set():
+            return
     if current_state != "LIVE":
         set_arm_state("FAULT")
         return
@@ -481,8 +485,9 @@ def BOT_SPIN():
 
 
 def PROP_SPIN():
-    if spin_running:
-        return
+    with spin_running_lock:
+        if spin_stop.is_set():
+            return
 
     if current_state != "LIVE":
         set_arm_state("FAULT")
@@ -557,6 +562,9 @@ def TOGGLE_LED():
 
 def power_off():
     global pwr_after_id
+    spin_stop.set()
+    spin_running = False
+    stop_spin_progress()
 
     try:
         spin_stop.set()
@@ -584,6 +592,10 @@ def power_off():
     except Exception as e:
         print("[POWER OFF ERROR]", e)
         set_arm_state("FAULT")
+
+
+
+
 
 def update_batt():
     global batt_after_id

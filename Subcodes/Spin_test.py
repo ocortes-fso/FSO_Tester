@@ -2,7 +2,6 @@ import time
 import lgpio
 import os
 import sys
-import threading
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from Subcodes import Precharge
@@ -18,15 +17,20 @@ SWEEP_DELAY = 0.05
 
 _last_sent = {}
 
+_stop_event = None
+
+def register_stop_event(event):
+    global _stop_event
+    _stop_event = event
+
 def spin_stopped():
-    return False  # GUI can patch this if needed later
+    return _stop_event is not None and _stop_event.is_set()
 
 def claim_pwm_pins():
     try:
         lgpio.gpio_claim_output(Precharge.h, PWM1, level=0)
     except:
         pass
-
     try:
         lgpio.gpio_claim_output(Precharge.h, PWM2, level=0)
     except:
@@ -98,7 +102,7 @@ def SPIN_START():
         manual_sweep(HIGH, LOW, pins)
 
     finally:
-        _kill_pwm()
+        SPIN_STOP()
 
 def SPIN_TOP():
     try:
@@ -120,7 +124,7 @@ def SPIN_TOP():
         manual_sweep(HIGH, LOW, pins)
 
     finally:
-        _kill_pwm()
+        SPIN_STOP()
 
 def SPIN_BOT():
     try:
@@ -142,7 +146,7 @@ def SPIN_BOT():
         manual_sweep(HIGH, LOW, pins)
 
     finally:
-        _kill_pwm()
+        SPIN_STOP()
 
 def SPIN_PROP():
     try:
@@ -166,7 +170,8 @@ def SPIN_PROP():
         PULSE_MAX = HIGHER + 50
 
         for _ in range(4):
-            if spin_stopped(): return
+            if spin_stopped():
+                return
 
             manual_sweep(INIT, PULSE_MAX, pins, delay=0.005)
             if safe_sleep(5.0): return
@@ -175,12 +180,9 @@ def SPIN_PROP():
             if safe_sleep(0.5): return
 
     finally:
-        _kill_pwm()
+        SPIN_STOP()
 
 def SPIN_STOP():
-    _kill_pwm()
-
-def _kill_pwm():
     try:
         lgpio.tx_servo(Precharge.h, PWM1, 0)
         lgpio.tx_servo(Precharge.h, PWM2, 0)
