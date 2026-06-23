@@ -7,9 +7,6 @@ import threading
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from Subcodes import Precharge
 
-DRIVE_12MA = 12 << 4
-SLEW_FAST = 1 << 8
-
 PWM1 = 7
 PWM2 = 5
 
@@ -20,6 +17,9 @@ LOW = 1000
 SWEEP_DELAY = 0.05
 
 _last_sent = {}
+
+def spin_stopped():
+    return False  # GUI can patch this if needed later
 
 def claim_pwm_pins():
     try:
@@ -32,36 +32,51 @@ def claim_pwm_pins():
     except:
         pass
 
-def set_pwm(us, target_pins):
-    for pin in target_pins:
+def set_pwm(us, pins):
+    for pin in pins:
         if _last_sent.get(pin) == us:
             continue
         _last_sent[pin] = us
-    for pin in target_pins:
         try:
             lgpio.tx_servo(Precharge.h, pin, us)
         except:
             pass
 
-def manual_sweep(start_us, end_us, target_pins, custom_delay=None, step_size=5):
+def safe_sleep(duration):
+    step = 0.01
+    elapsed = 0
+    while elapsed < duration:
+        if spin_stopped():
+            return True
+        time.sleep(step)
+        elapsed += step
+    return False
+
+def manual_sweep(start_us, end_us, pins, delay=None, step_size=5):
     if start_us == end_us:
-        set_pwm(end_us, target_pins)
+        set_pwm(end_us, pins)
         return
 
-    delay = SWEEP_DELAY if custom_delay is None else custom_delay
+    delay = SWEEP_DELAY if delay is None else delay
     step = step_size if end_us > start_us else -step_size
-    current_us = start_us
+    current = start_us
 
     while True:
-        set_pwm(current_us, target_pins)
-        time.sleep(delay)
+        if spin_stopped():
+            return
 
-        if (step > 0 and current_us + step >= end_us) or (step < 0 and current_us + step <= end_us):
+        set_pwm(current, pins)
+
+        if safe_sleep(delay):
+            return
+
+        if (step > 0 and current + step >= end_us) or (step < 0 and current + step <= end_us):
             break
 
-        current_us += step
+        current += step
 
-    set_pwm(end_us, target_pins)
+    if not spin_stopped():
+        set_pwm(end_us, pins)
 
 def SPIN_START():
     try:
@@ -72,22 +87,18 @@ def SPIN_START():
         pins = [PWM1, PWM2]
 
         set_pwm(LOW, pins)
-        time.sleep(0.5)
+        if safe_sleep(0.5): return
 
-        manual_sweep(LOW, INIT, pins, step_size=5)
-        time.sleep(1.5)
+        manual_sweep(LOW, INIT, pins)
+        if safe_sleep(1.5): return
 
-        manual_sweep(INIT, HIGH, pins, step_size=5)
-        time.sleep(10.0)
+        manual_sweep(INIT, HIGH, pins)
+        if safe_sleep(10.0): return
 
-        manual_sweep(HIGH, LOW, pins, step_size=5)
+        manual_sweep(HIGH, LOW, pins)
 
     finally:
-        try:
-            lgpio.tx_servo(Precharge.h, PWM1, 0)
-            lgpio.tx_servo(Precharge.h, PWM2, 0)
-        except:
-            pass
+        _kill_pwm()
 
 def SPIN_TOP():
     try:
@@ -98,21 +109,18 @@ def SPIN_TOP():
         pins = [PWM1]
 
         set_pwm(LOW, pins)
-        time.sleep(0.5)
+        if safe_sleep(0.5): return
 
-        manual_sweep(LOW, INIT, pins, step_size=5)
-        time.sleep(1.5)
+        manual_sweep(LOW, INIT, pins)
+        if safe_sleep(1.5): return
 
-        manual_sweep(INIT, HIGH, pins, step_size=5)
-        time.sleep(3.0)
+        manual_sweep(INIT, HIGH, pins)
+        if safe_sleep(3.0): return
 
-        manual_sweep(HIGH, LOW, pins, step_size=5)
+        manual_sweep(HIGH, LOW, pins)
 
     finally:
-        try:
-            lgpio.tx_servo(Precharge.h, PWM1, 0)
-        except:
-            pass
+        _kill_pwm()
 
 def SPIN_BOT():
     try:
@@ -123,21 +131,18 @@ def SPIN_BOT():
         pins = [PWM2]
 
         set_pwm(LOW, pins)
-        time.sleep(0.5)
+        if safe_sleep(0.5): return
 
-        manual_sweep(LOW, INIT, pins, step_size=5)
-        time.sleep(1.5)
+        manual_sweep(LOW, INIT, pins)
+        if safe_sleep(1.5): return
 
-        manual_sweep(INIT, HIGH, pins, step_size=5)
-        time.sleep(3.0)
+        manual_sweep(INIT, HIGH, pins)
+        if safe_sleep(3.0): return
 
-        manual_sweep(HIGH, LOW, pins, step_size=5)
+        manual_sweep(HIGH, LOW, pins)
 
     finally:
-        try:
-            lgpio.tx_servo(Precharge.h, PWM2, 0)
-        except:
-            pass
+        _kill_pwm()
 
 def SPIN_PROP():
     try:
@@ -148,29 +153,36 @@ def SPIN_PROP():
         pins = [PWM1, PWM2]
 
         set_pwm(LOW, pins)
-        time.sleep(0.5)
+        if safe_sleep(0.5): return
 
-        manual_sweep(LOW, INIT, pins, step_size=5)
-        time.sleep(1.5)
+        manual_sweep(LOW, INIT, pins)
+        if safe_sleep(1.5): return
 
-        manual_sweep(INIT, HIGHER, pins, step_size=5)
+        manual_sweep(INIT, HIGHER, pins)
+        if safe_sleep(30.0): return
 
-        time.sleep(30.0)
-
-        manual_sweep(HIGHER, INIT, pins, step_size=5)
+        manual_sweep(HIGHER, INIT, pins)
 
         PULSE_MAX = HIGHER + 50
 
         for _ in range(4):
-            manual_sweep(INIT, PULSE_MAX, pins, custom_delay=0.005, step_size=5)
-            time.sleep(5.0)
+            if spin_stopped(): return
 
-            manual_sweep(PULSE_MAX, INIT, pins, custom_delay=0.005, step_size=5)
-            time.sleep(0.5)
+            manual_sweep(INIT, PULSE_MAX, pins, delay=0.005)
+            if safe_sleep(5.0): return
+
+            manual_sweep(PULSE_MAX, INIT, pins, delay=0.005)
+            if safe_sleep(0.5): return
 
     finally:
-        try:
-            lgpio.tx_servo(Precharge.h, PWM1, 0)
-            lgpio.tx_servo(Precharge.h, PWM2, 0)
-        except:
-            pass
+        _kill_pwm()
+
+def SPIN_STOP():
+    _kill_pwm()
+
+def _kill_pwm():
+    try:
+        lgpio.tx_servo(Precharge.h, PWM1, 0)
+        lgpio.tx_servo(Precharge.h, PWM2, 0)
+    except:
+        pass

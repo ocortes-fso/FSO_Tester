@@ -23,7 +23,7 @@ spin_running = False
 spin_start_time = 0
 spin_duration = 0
 spin_stop = threading.Event()
-
+Spin_test.register_stop_event(spin_stop)
 eth_stop = threading.Event()
 body_stop = threading.Event()
 sbus_stop = threading.Event()
@@ -387,28 +387,28 @@ def SPIN():
 
     def run():
         try:
-            if spin_stop.is_set():
-                return
-
             set_arm_state("SPINNING")
             root.after(0, lambda: start_spin_progress("SPIN ALL", 18))
 
             Spin_test.SPIN_START()
 
             if spin_stop.is_set():
+                Spin_test.SPIN_STOP()
+                set_arm_state("IDLE")
+                root.after(0, stop_spin_progress)
                 return
 
-            if current_state == "SPINNING":
-                set_arm_state("LIVE")
-                root.after(0, stop_spin_progress)
+            Spin_test.SPIN_STOP()
+            set_arm_state("LIVE")
+            root.after(0, stop_spin_progress)
 
-        except Exception as e:
-            print(f"[SPIN ALL ERROR] {e}")
-            if current_state == "SPINNING":
-                set_arm_state("FAULT")
-                root.after(0, stop_spin_progress)
+        except:
+            Spin_test.SPIN_STOP()
+            set_arm_state("FAULT")
+            root.after(0, stop_spin_progress)
 
     threading.Thread(target=run, daemon=True).start()
+
 
 def TOP_SPIN():
     if spin_running:
@@ -422,28 +422,28 @@ def TOP_SPIN():
 
     def run():
         try:
-            if spin_stop.is_set():
-                return
-
             set_arm_state("SPINNING")
             root.after(0, lambda: start_spin_progress("SPIN TOP", 11))
 
             Spin_test.SPIN_TOP()
 
             if spin_stop.is_set():
+                Spin_test.SPIN_STOP()
+                set_arm_state("IDLE")
+                root.after(0, stop_spin_progress)
                 return
 
-            if current_state == "SPINNING":
-                set_arm_state("LIVE")
-                root.after(0, stop_spin_progress)
+            Spin_test.SPIN_STOP()
+            set_arm_state("LIVE")
+            root.after(0, stop_spin_progress)
 
-        except Exception as e:
-            print(f"[TOP SPIN ERROR] {e}")
-            if current_state == "SPINNING":
-                set_arm_state("FAULT")
-                root.after(0, stop_spin_progress)
+        except:
+            Spin_test.SPIN_STOP()
+            set_arm_state("FAULT")
+            root.after(0, stop_spin_progress)
 
     threading.Thread(target=run, daemon=True).start()
+
 
 def BOT_SPIN():
     if spin_running:
@@ -457,28 +457,28 @@ def BOT_SPIN():
 
     def run():
         try:
-            if spin_stop.is_set():
-                return
-
             set_arm_state("SPINNING")
             root.after(0, lambda: start_spin_progress("SPIN BOT", 11))
 
             Spin_test.SPIN_BOT()
 
             if spin_stop.is_set():
+                Spin_test.SPIN_STOP()
+                set_arm_state("IDLE")
+                root.after(0, stop_spin_progress)
                 return
 
-            if current_state == "SPINNING":
-                set_arm_state("LIVE")
-                root.after(0, stop_spin_progress)
+            Spin_test.SPIN_STOP()
+            set_arm_state("LIVE")
+            root.after(0, stop_spin_progress)
 
-        except Exception as e:
-            print(f"[BOT SPIN ERROR] {e}")
-            if current_state == "SPINNING":
-                set_arm_state("FAULT")
-                root.after(0, stop_spin_progress)
+        except:
+            Spin_test.SPIN_STOP()
+            set_arm_state("FAULT")
+            root.after(0, stop_spin_progress)
 
     threading.Thread(target=run, daemon=True).start()
+
 
 def PROP_SPIN():
     if spin_running:
@@ -492,26 +492,25 @@ def PROP_SPIN():
 
     def run():
         try:
-            if spin_stop.is_set():
-                return
-
             set_arm_state("SPINNING")
             root.after(0, lambda: start_spin_progress("PROP TEST", 64))
 
             Spin_test.SPIN_PROP()
 
             if spin_stop.is_set():
+                Spin_test.SPIN_STOP()
+                set_arm_state("IDLE")
+                root.after(0, stop_spin_progress)
                 return
 
-            if current_state == "SPINNING":
-                set_arm_state("LIVE")
-                root.after(0, stop_spin_progress)
+            Spin_test.SPIN_STOP()
+            set_arm_state("LIVE")
+            root.after(0, stop_spin_progress)
 
-        except Exception as e:
-            print(f"[PROP SPIN ERROR] {e}")
-            if current_state == "SPINNING":
-                set_arm_state("FAULT")
-                root.after(0, stop_spin_progress)
+        except:
+            Spin_test.SPIN_STOP()
+            set_arm_state("FAULT")
+            root.after(0, stop_spin_progress)
 
     threading.Thread(target=run, daemon=True).start()
     
@@ -562,34 +561,30 @@ def power_off():
     try:
         spin_stop.set()
 
+        try:
+            Spin_test.SPIN_STOP()
+        except:
+            pass
+
         stop_spin_progress()
 
         if pwr_after_id is not None:
             root.after_cancel(pwr_after_id)
             pwr_after_id = None
 
-        try:
-            Spin_test.SPIN_STOP()
-        except:
-            pass
-
         LED.LED_OFF()
 
         Precharge.TURN_OFF_PRECHARGE()
-
         time.sleep(0.05)
-
         Precharge.CLOSE_FET()
 
         set_arm_state("IDLE")
-
         PWR.config(text="POWER ON")
-
-        print("POWER OFF")
 
     except Exception as e:
         print("[POWER OFF ERROR]", e)
         set_arm_state("FAULT")
+
 def update_batt():
     global batt_after_id
 
