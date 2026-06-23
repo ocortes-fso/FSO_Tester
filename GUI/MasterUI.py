@@ -166,7 +166,7 @@ def home():
     Lidar.close()
     Rear_switch_plate_test.close()
     Batt_monitor.close()
-    Precharge.SAFETY_SHUTDOWN_FAULT()
+    Precharge.CLOSE_FET
     stop_spin_progress()
     if pwr_after_id is not None:
         root.after_cancel(pwr_after_id)
@@ -182,7 +182,6 @@ def arm():
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Arm_f.pack(fill=BOTH, expand=TRUE)
-    Precharge.INITIALIZE_SYSTEM()
     set_arm_state("IDLE")
     root.update()
     root.after(100, start_batt_monitor)
@@ -321,55 +320,59 @@ def set_arm_state(state):
 def PWR_ON():
     global pwr_after_id
 
-    if spin_running:
-        PWR.config(text="Wait for Spin Stop...")
-        root.after(2000, lambda: PWR.config(text="POWER ON"))
-        return
-
     try:
-        Precharge.CLOSE_FET()
-        Precharge.TURN_OFF_PRECHARGE()
-        time.sleep(0.1)
-
+        Precharge.INITIALIZE_SYSTEM()
         Precharge.START_PRECHARGE()
-
         set_arm_state("PRECHARGE")
+
         PWR.config(text="PreCharging...")
 
-        pwr_after_id = root.after(3000, PWR_CHECK)
-
+        pwr_after_id = PWR.after(3000, PWR_CHECK)
+        
     except Exception as e:
-        print(f"[PWR ON ERROR] {e}")
+        print(f"[PWR ON ERROR] Cannot start precharge: {e}")
         set_arm_state("FAULT")
-        Precharge.SAFETY_SHUTDOWN_FAULT()
-
+        Precharge.CLOSE_FET()
+        PWR.config(text="Precharge FAIL")
 
 def PWR_CHECK():
     global pwr_after_id
     pwr_after_id = None
 
     try:
-        voltage = Batt_monitor.read_battery_voltage()
+        LED.INIT()
+        LED.LED_OFF()
+        set_arm_state("PRECHARGE")
 
-        if voltage is None or voltage < 22.0:
-            Precharge.SAFETY_SHUTDOWN_FAULT()
+        Precharge.OPEN_FET()
+        PWR.config(text="FET ON...")
+        root.update()
+
+        time.sleep(0.2)
+
+        v_check = Batt_monitor.read_battery_voltage()
+        if v_check is None or v_check < 21.0:
+            print(f"[PWR CHECK] Low or no voltage detected: {v_check}V")
+            Precharge.CLOSE_FET()
+            Precharge.TURN_OFF_PRECHARGE()
             set_arm_state("FAULT")
             PWR.config(text="Check Battery")
+            time.sleep(5)
+            PWR.config(text="POWER ON")
+            set_arm_state("IDLE")
             return
 
-        Precharge.TURN_ON_MAIN_FET()
-        time.sleep(0.2)
         Precharge.TURN_OFF_PRECHARGE()
-
         Spin_test.claim_pwm_pins()
         set_arm_state("LIVE")
         PWR.config(text="PRECHARGE OK")
 
     except Exception as e:
-        print(f"[PWR CHECK ERROR] {e}")
-        Precharge.SAFETY_SHUTDOWN_FAULT()
+        print(f"[PWR CHECK ERROR] Failure during activation: {e}")
         set_arm_state("FAULT")
+        Precharge.CLOSE_FET()
         PWR.config(text="Power ERROR")
+        set_arm_state("IDLE")
 
 def SPIN():
     if spin_running:
