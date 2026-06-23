@@ -39,11 +39,7 @@ style.configure('secondary.TLabel', font=(None, 18, 'bold'))
 style.configure('Header.TLabel', font=(None, 20, 'bold'))
 style.configure('Sub.TLabel', font=(None, 18))
 
-style.configure(
-    "Stop.TButton",
-    font=(None, 20, "bold"),
-    padding=15
-)
+style.configure("Stop.TButton",font=(None, 20, "bold"),padding=15)
 
 main = ttk.Frame(root) 
 root.attributes('-fullscreen', True)
@@ -138,26 +134,14 @@ lt = ttk.Label(batt_container, text="Temperature:", bootstyle=SECONDARY, style='
 status_dot = ttk.Label(status_container, text="●", font=("Arial", 28, "bold"))
 status_dot.pack(anchor="w")
 
-status_text = ttk.Label(
-    status_container,
-    text="SAFE",
-    bootstyle=SECONDARY,
-    style='Sub.TLabel'
-)
+status_text = ttk.Label(status_container,text="SAFE",bootstyle=SECONDARY,style='Sub.TLabel')
 status_text.pack(anchor="w")
 
 
 spin_label = ttk.Label(status_container, text="", bootstyle=INFO, style='Sub.TLabel')
 spin_label.pack(anchor="w")
 
-spin_bar = ttk.Progressbar(
-    status_container,
-    maximum=100,
-    bootstyle=INFO,
-    length=160
-)
-spin_bar.pack(anchor="w", pady=(5, 0))
-
+spin_bar = ttk.Progressbar(status_container,maximum=100,bootstyle=INFO,length=160)
 
 # --- SCREENS ---
 
@@ -192,7 +176,6 @@ def home():
         f.pack_forget()
     main.pack(fill=BOTH, expand=TRUE)
     root.update()
-
 
 def arm():
     global batt_after_id
@@ -355,7 +338,7 @@ def PWR_CHECK():
     voltage = Batt_monitor.read_battery_voltage()
 
     if voltage is not None and voltage > 22.0:
-        Precharge.OPEN_FET()
+        Precharge.TURN_ON_MAIN_FET()
         Precharge.TURN_OFF_PRECHARGE()
         Spin_test.claim_pwm_pins()
 
@@ -365,8 +348,7 @@ def PWR_CHECK():
         return
 
     if time.time() - precharge_start >= 5:
-        Precharge.TURN_OFF_PRECHARGE()
-        Precharge.CLOSE_FET()
+        Precharge.SAFETY_SHUTDOWN_FAULT()
 
         set_arm_state("FAULT")
         PWR.config(text="Check Battery")
@@ -455,7 +437,7 @@ def start_spin_progress(name, duration):
 
     spin_label.config(text=f"Running: {name}")
     spin_bar["value"] = 0
-    spin_bar.pack(fill="x")
+    spin_bar.pack(anchor="w", pady=(5, 0))
     update_spin_progress()
 
 def update_spin_progress():
@@ -693,12 +675,7 @@ LED_btn = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, c
 LED_btn.pack(expand=TRUE, pady=5)
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, width=24, command=PROP_SPIN)
 PROP.pack(expand=TRUE, pady=(5, 15))
-STOP_btn = ttk.Button(
-    Arm_f,
-    text="POWER OFF",
-    style="Stop.TButton",
-    command=power_off
-)
+STOP_btn = ttk.Button(Arm_f,text="POWER OFF",style="Stop.TButton",command=power_off)
 STOP_btn.pack(expand=TRUE, pady=(15, 25))
 
 
