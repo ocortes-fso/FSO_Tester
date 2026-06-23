@@ -182,11 +182,18 @@ def arm():
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Arm_f.pack(fill=BOTH, expand=TRUE)
+    
     Precharge.INITIALIZE_SYSTEM()
-    Precharge.CLOSE_FET()
-    Precharge.TURN_OFF_PRECHARGE()
+    if Precharge.h is not None:
+        lgpio.gpio_write(Precharge.h, Precharge.PRECHARGE, 0)
+        lgpio.gpio_write(Precharge.h, Precharge.FET_CTL, 0)
+        
     set_arm_state("IDLE")
     root.update()
+    root.after(100, start_batt_monitor)
+
+def start_batt_monitor():
+    global batt_after_id
     if batt_after_id is None:
         update_batt()
 

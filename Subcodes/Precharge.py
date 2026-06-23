@@ -19,7 +19,7 @@ def INITIALIZE_SYSTEM():
     except Exception as e:
         print(f"PRECHARGE INIT ERROR: {e}")
         raise
-
+    
 def START_PRECHARGE():
     global h
     try:
