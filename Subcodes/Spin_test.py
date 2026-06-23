@@ -15,7 +15,7 @@ PWM2 = 5
 
 INIT = 1100
 HIGH = 1280
-HIGHER = 1390
+HIGHER = 1400
 LOW = 1000
 SWEEP_DELAY = 0.05
 
@@ -166,7 +166,7 @@ def SPIN_PROP():
             time.sleep(5.0)
 
             manual_sweep(PULSE_MAX, INIT, pins, custom_delay=0.005, step_size=5)
-            time.sleep(0.2)
+            time.sleep(0.4)
 
     finally:
         try:
