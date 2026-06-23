@@ -317,47 +317,57 @@ def set_arm_state(state):
         status_text.config(text="SPINNING")
 
 def PWR_ON():
-    global precharge_start, pwr_after_id
+    global pwr_after_id
+
     if spin_running:
         PWR.config(text="Wait for Spin Stop...")
         root.after(2000, lambda: PWR.config(text="POWER ON"))
         return
+
     try:
+        Precharge.CLOSE_FET()
+        Precharge.TURN_OFF_PRECHARGE()
+        time.sleep(0.1)
+
         Precharge.START_PRECHARGE()
 
         set_arm_state("PRECHARGE")
         PWR.config(text="PreCharging...")
 
-        precharge_start = time.time()
-        pwr_after_id = root.after(100, PWR_CHECK)
+        pwr_after_id = root.after(3000, PWR_CHECK)
+
     except Exception as e:
         print(f"[PWR ON ERROR] {e}")
         set_arm_state("FAULT")
-        PWR.config(text="Check Battery")
-
-def PWR_CHECK():
-    global pwr_after_id, precharge_start
-    voltage = Batt_monitor.read_battery_voltage()
-
-    if voltage is not None and voltage > 22.0:
-        Precharge.TURN_ON_MAIN_FET()
-        Precharge.TURN_OFF_PRECHARGE()
-        Spin_test.claim_pwm_pins()
-
-        set_arm_state("LIVE")
-        PWR.config(text="POWER ON")
-        pwr_after_id = None
-        return
-
-    if time.time() - precharge_start >= 5:
         Precharge.SAFETY_SHUTDOWN_FAULT()
 
-        set_arm_state("FAULT")
-        PWR.config(text="Check Battery")
-        pwr_after_id = None
-        return
 
-    pwr_after_id = root.after(100, PWR_CHECK)
+def PWR_CHECK():
+    global pwr_after_id
+    pwr_after_id = None
+
+    try:
+        voltage = Batt_monitor.read_battery_voltage()
+
+        if voltage is None or voltage < 22.0:
+            Precharge.SAFETY_SHUTDOWN_FAULT()
+            set_arm_state("FAULT")
+            PWR.config(text="Check Battery")
+            return
+
+        Precharge.TURN_ON_MAIN_FET()
+        time.sleep(0.2)
+        Precharge.TURN_OFF_PRECHARGE()
+
+        Spin_test.claim_pwm_pins()
+        set_arm_state("LIVE")
+        PWR.config(text="PRECHARGE OK")
+
+    except Exception as e:
+        print(f"[PWR CHECK ERROR] {e}")
+        Precharge.SAFETY_SHUTDOWN_FAULT()
+        set_arm_state("FAULT")
+        PWR.config(text="Power ERROR")
 
 def SPIN():
     if spin_running:

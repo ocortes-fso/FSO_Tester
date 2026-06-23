@@ -1,4 +1,5 @@
 import lgpio
+import time
 
 FET_CTL = 0
 PRECHARGE = 12
@@ -13,6 +14,7 @@ def INITIALIZE_SYSTEM():
             h = lgpio.gpiochip_open(CHIP)
             lgpio.gpio_claim_output(h, PRECHARGE, level=0)
             lgpio.gpio_claim_output(h, FET_CTL, level=0)
+            time.sleep(0.1)
             print("Precharge Pins successfully claimed LOW.")
     except Exception as e:
         print(f"PRECHARGE INIT ERROR: {e}")
