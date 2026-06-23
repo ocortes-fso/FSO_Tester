@@ -166,7 +166,7 @@ def home():
     Lidar.close()
     Rear_switch_plate_test.close()
     Batt_monitor.close()
-    Precharge.CLOSE_FET()
+    Precharge.SAFETY_SHUTDOWN_FAULT()
     stop_spin_progress()
     if pwr_after_id is not None:
         root.after_cancel(pwr_after_id)
@@ -182,12 +182,7 @@ def arm():
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Arm_f.pack(fill=BOTH, expand=TRUE)
-    
     Precharge.INITIALIZE_SYSTEM()
-    if Precharge.h is not None:
-        lgpio.gpio_write(Precharge.h, Precharge.PRECHARGE, 0)
-        lgpio.gpio_write(Precharge.h, Precharge.FET_CTL, 0)
-        
     set_arm_state("IDLE")
     root.update()
     root.after(100, start_batt_monitor)

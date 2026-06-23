@@ -16,6 +16,9 @@ def INITIALIZE_SYSTEM():
             lgpio.gpio_claim_output(h, FET_CTL, level=0)
             time.sleep(0.1)
             print("Precharge Pins successfully claimed LOW.")
+        else:
+            lgpio.gpio_write(h, PRECHARGE, 0)
+            lgpio.gpio_write(h, FET_CTL, 0)
     except Exception as e:
         print(f"PRECHARGE INIT ERROR: {e}")
         raise
@@ -72,8 +75,5 @@ def SAFETY_SHUTDOWN_FAULT():
         if h is not None:
             lgpio.gpio_write(h, PRECHARGE, 0)
             lgpio.gpio_write(h, FET_CTL, 0)
-            lgpio.gpiochip_close(h)
-            h = None
     except Exception as e:
-        print(f"GPIO CLOSE ERROR: {e}")
-        h = None
+        print(f"GPIO SAFE WRITE ERROR: {e}")
