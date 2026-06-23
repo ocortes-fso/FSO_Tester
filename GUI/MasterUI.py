@@ -496,7 +496,7 @@ def PROP_SPIN():
                 return
 
             set_arm_state("SPINNING")
-            root.after(0, lambda: start_spin_progress("PROP TEST", 63))
+            root.after(0, lambda: start_spin_progress("PROP TEST", 64))
 
             Spin_test.SPIN_PROP()
 
@@ -560,25 +560,36 @@ def power_off():
     global pwr_after_id
 
     try:
+        spin_stop.set()
+
+        stop_spin_progress()
+
         if pwr_after_id is not None:
             root.after_cancel(pwr_after_id)
             pwr_after_id = None
 
-        spin_stop.set()
-        stop_spin_progress()
+        try:
+            Spin_test.SPIN_STOP()
+        except:
+            pass
+
+        LED.LED_OFF()
 
         Precharge.TURN_OFF_PRECHARGE()
+
+        time.sleep(0.05)
+
         Precharge.CLOSE_FET()
 
-        print("POWER OFF")
-
         set_arm_state("IDLE")
+
         PWR.config(text="POWER ON")
+
+        print("POWER OFF")
 
     except Exception as e:
         print("[POWER OFF ERROR]", e)
         set_arm_state("FAULT")
-
 def update_batt():
     global batt_after_id
 
