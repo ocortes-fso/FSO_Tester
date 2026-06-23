@@ -182,6 +182,9 @@ def arm():
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Arm_f.pack(fill=BOTH, expand=TRUE)
+    Precharge.INITIALIZE_SYSTEM()
+    Precharge.CLOSE_FET()
+    Precharge.TURN_OFF_PRECHARGE()
     set_arm_state("IDLE")
     root.update()
     if batt_after_id is None:
@@ -320,7 +323,6 @@ def PWR_ON():
         root.after(2000, lambda: PWR.config(text="POWER ON"))
         return
     try:
-        Precharge.INITIALIZE_SYSTEM()
         Precharge.START_PRECHARGE()
 
         set_arm_state("PRECHARGE")

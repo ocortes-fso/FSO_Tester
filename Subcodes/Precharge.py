@@ -42,10 +42,26 @@ def TURN_OFF_PRECHARGE():
     global h
     try:
         if h is None:
-            raise RuntimeError("GPIO chip not initialized")
+            INITIALIZE_SYSTEM()
+
         lgpio.gpio_write(h, PRECHARGE, 0)
+
     except Exception as e:
         print(f"PRECHARGE OFF ERROR: {e}")
+        raise
+
+def CLOSE_FET():
+    global h
+    try:
+        if h is None:
+            INITIALIZE_SYSTEM()
+
+        lgpio.gpio_write(h, FET_CTL, 0)
+
+        print("MAIN FET OFF")
+
+    except Exception as e:
+        print(f"FET CLOSE ERROR: {e}")
         raise
 
 def SAFETY_SHUTDOWN_FAULT():
