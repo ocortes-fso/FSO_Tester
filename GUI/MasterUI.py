@@ -22,7 +22,7 @@ spin_bar = None
 spin_running = False
 spin_start_time = 0
 spin_duration = 0
-spin_job = None
+spin_stop = threading.Event()
 
 eth_stop = threading.Event()
 body_stop = threading.Event()
@@ -321,6 +321,7 @@ def PWR_ON():
     global pwr_after_id
 
     try:
+        spin_stop.clear()
         Precharge.INITIALIZE_SYSTEM()
         Precharge.START_PRECHARGE()
         set_arm_state("PRECHARGE")
@@ -377,73 +378,141 @@ def PWR_CHECK():
 def SPIN():
     if spin_running:
         return
+
+    if current_state != "LIVE":
+        set_arm_state("FAULT")
+        return
+
+    spin_stop.clear()
+
     def run():
         try:
+            if spin_stop.is_set():
+                return
+
             set_arm_state("SPINNING")
             root.after(0, lambda: start_spin_progress("SPIN ALL", 18))
+
             Spin_test.SPIN_START()
+
+            if spin_stop.is_set():
+                return
+
             if current_state == "SPINNING":
                 set_arm_state("LIVE")
                 root.after(0, stop_spin_progress)
+
         except Exception as e:
             print(f"[SPIN ALL ERROR] {e}")
             if current_state == "SPINNING":
                 set_arm_state("FAULT")
                 root.after(0, stop_spin_progress)
+
     threading.Thread(target=run, daemon=True).start()
 
 def TOP_SPIN():
     if spin_running:
         return
+
+    if current_state != "LIVE":
+        set_arm_state("FAULT")
+        return
+
+    spin_stop.clear()
+
     def run():
         try:
+            if spin_stop.is_set():
+                return
+
             set_arm_state("SPINNING")
             root.after(0, lambda: start_spin_progress("SPIN TOP", 11))
+
             Spin_test.SPIN_TOP()
+
+            if spin_stop.is_set():
+                return
+
             if current_state == "SPINNING":
                 set_arm_state("LIVE")
                 root.after(0, stop_spin_progress)
+
         except Exception as e:
             print(f"[TOP SPIN ERROR] {e}")
             if current_state == "SPINNING":
                 set_arm_state("FAULT")
                 root.after(0, stop_spin_progress)
+
     threading.Thread(target=run, daemon=True).start()
 
 def BOT_SPIN():
     if spin_running:
         return
+
+    if current_state != "LIVE":
+        set_arm_state("FAULT")
+        return
+
+    spin_stop.clear()
+
     def run():
         try:
+            if spin_stop.is_set():
+                return
+
             set_arm_state("SPINNING")
             root.after(0, lambda: start_spin_progress("SPIN BOT", 11))
+
             Spin_test.SPIN_BOT()
+
+            if spin_stop.is_set():
+                return
+
             if current_state == "SPINNING":
                 set_arm_state("LIVE")
                 root.after(0, stop_spin_progress)
+
         except Exception as e:
             print(f"[BOT SPIN ERROR] {e}")
             if current_state == "SPINNING":
                 set_arm_state("FAULT")
                 root.after(0, stop_spin_progress)
+
     threading.Thread(target=run, daemon=True).start()
 
 def PROP_SPIN():
     if spin_running:
         return
+
+    if current_state != "LIVE":
+        set_arm_state("FAULT")
+        return
+
+    spin_stop.clear()
+
     def run():
         try:
+            if spin_stop.is_set():
+                return
+
             set_arm_state("SPINNING")
             root.after(0, lambda: start_spin_progress("PROP TEST", 63))
+
             Spin_test.SPIN_PROP()
+
+            if spin_stop.is_set():
+                return
+
             if current_state == "SPINNING":
                 set_arm_state("LIVE")
                 root.after(0, stop_spin_progress)
+
         except Exception as e:
             print(f"[PROP SPIN ERROR] {e}")
             if current_state == "SPINNING":
                 set_arm_state("FAULT")
                 root.after(0, stop_spin_progress)
+
     threading.Thread(target=run, daemon=True).start()
     
 def start_spin_progress(name, duration):
@@ -495,6 +564,7 @@ def power_off():
             root.after_cancel(pwr_after_id)
             pwr_after_id = None
 
+        spin_stop.set()
         stop_spin_progress()
 
         Precharge.TURN_OFF_PRECHARGE()
