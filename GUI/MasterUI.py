@@ -1,5 +1,4 @@
 import time
-import lgpio
 import ttkbootstrap as ttk 
 from ttkbootstrap.constants import *
 import sys
@@ -379,7 +378,6 @@ def PWR_CHECK():
         set_arm_state("FAULT")
         Precharge.CLOSE_FET()
         PWR.config(text="Power ERROR")
-        set_arm_state("IDLE")
 
 def SPIN():
     with spin_running_lock:
@@ -555,7 +553,6 @@ def stop_spin_progress():
     spin_bar.pack_forget()
     spin_label.config(text="")
 
-    
 def TOGGLE_LED():
     if LED_btn.cget("text") == "Turn LED On":
         LED.LED_ON()
@@ -566,28 +563,20 @@ def TOGGLE_LED():
 
 def power_off():
     global pwr_after_id
+
     spin_stop.set()
-    spin_running = False
     stop_spin_progress()
 
     try:
-        spin_stop.set()
-
-        try:
-            Spin_test.SPIN_STOP()
-        except:
-            pass
-
-        stop_spin_progress()
+        Spin_test.SPIN_STOP()
+        LED.LED_OFF()
 
         if pwr_after_id is not None:
             root.after_cancel(pwr_after_id)
             pwr_after_id = None
 
-        LED.LED_OFF()
-
         Precharge.TURN_OFF_PRECHARGE()
-        time.sleep(0.05)
+        time.sleep(0.25)
         Precharge.CLOSE_FET()
 
         set_arm_state("IDLE")
@@ -596,10 +585,6 @@ def power_off():
     except Exception as e:
         print("[POWER OFF ERROR]", e)
         set_arm_state("FAULT")
-
-
-
-
 
 def update_batt():
     global batt_after_id
