@@ -569,22 +569,32 @@ def power_off():
 
     try:
         Spin_test.SPIN_STOP()
+    except:
+        pass
+
+    try:
         LED.LED_OFF()
+    except:
+        pass
 
-        if pwr_after_id is not None:
-            root.after_cancel(pwr_after_id)
-            pwr_after_id = None
+    if pwr_after_id is not None:
+        root.after_cancel(pwr_after_id)
+        pwr_after_id = None
 
+    try:
         Precharge.TURN_OFF_PRECHARGE()
-        time.sleep(0.25)
+    except:
+        pass
+
+    time.sleep(0.25) #play with this to see if imapcts power paths at all
+
+    try:
         Precharge.CLOSE_FET()
+    except:
+        pass
 
-        set_arm_state("IDLE")
-        PWR.config(text="POWER ON")
-
-    except Exception as e:
-        print("[POWER OFF ERROR]", e)
-        set_arm_state("FAULT")
+    set_arm_state("IDLE")
+    PWR.config(text="POWER ON")
 
 def update_batt():
     global batt_after_id
