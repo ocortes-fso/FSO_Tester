@@ -690,7 +690,7 @@ def body_test():
     combined_output = f"Results: A1={output[0]:.2f} V, A2={output[1]:.2f} V"
     if (0.7 <= output[0] <= 0.9) and (1.5 <= output[1] <= 1.7):
         la.after(0, lambda: la.config(text=f"PASS -- {combined_output}", bootstyle=SUCCESS, font=(None, 14)))
-    if (output[0] == -1) or (output[1] == -1):
+    elif (output[0] == -1) or (output[1] == -1):
         la.after(0, lambda: la.config(text=f"FAIL -- COULDNT WRITE PARAMS - CHECK CFG", bootstyle=DANGER, font=(None, 14)))
     else:
         la.after(0, lambda: la.config(text=f"FAIL -- {combined_output}", bootstyle=DANGER, font=(None, 14)))
