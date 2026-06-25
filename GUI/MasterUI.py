@@ -79,7 +79,7 @@ body_left_container.pack(side=LEFT, fill=BOTH, expand=TRUE)
 
 l4 = ttk.Label(body_left_container, text="SERIAL", bootstyle=SECONDARY)
 l4.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
-ls = ttk.Label(body_left_container, text="Waiting for heatbeat", bootstyle=SECONDARY, font=(None, 14))
+ls = ttk.Label(body_left_container, text="Waiting for heartbeat", bootstyle=SECONDARY, font=(None, 14))
 ls.pack(side=TOP, anchor=W, expand=TRUE, padx=100)
 
 l5 = ttk.Label(body_left_container, text="ANALOG PORT", bootstyle=SECONDARY)
