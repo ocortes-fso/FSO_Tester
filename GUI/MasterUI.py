@@ -224,6 +224,10 @@ def loom():
     
 def body():
     body_stop.clear()
+    ls.config(text="Waiting for heartbeat", bootstyle=SECONDARY)
+    la.config(text="", bootstyle=SECONDARY)
+    lcan.config(text="", bootstyle=SECONDARY)
+    lpwm.config(text="", bootstyle=SECONDARY)
     main.pack_forget()
     back_b.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
