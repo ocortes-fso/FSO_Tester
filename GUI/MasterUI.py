@@ -224,7 +224,7 @@ def loom():
     
 def body():
     body_stop.clear()
-    ls.config(text="Waiting for heartbeat", bootstyle=SECONDARY)
+    ls.config(text="Waiting for heartbeat", bootstyle=SECONDARY,font=(None, 14))
     la.config(text="", bootstyle=SECONDARY)
     lcan.config(text="", bootstyle=SECONDARY)
     lpwm.config(text="", bootstyle=SECONDARY)
