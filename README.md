@@ -28,3 +28,4 @@ Repository of all the codes used for the testing boxes.
 7. python-can           
 8. Pillow
 9. DroneCAN  
+sudo apt-get install python3-pil python3-pil.imagetk -y
