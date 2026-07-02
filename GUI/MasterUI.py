@@ -683,10 +683,14 @@ def body_test():
         return
     
     combined_output = f"Results: A1={output[0]:.2f} V, A2={output[1]:.2f} V"
-    if (0.7 <= output[0] <= 0.9) and (1.5 <= output[1] <= 1.7):
+
+    board1 = (0.7 <= output[0] <= 0.9) and (1.5 <= output[1] <= 1.7)
+    board2 = (1.1 <= output[0] <= 1.3) and (2.3 <= output[1] <= 2.5)
+
+    if board1 or board2:
         la.after(0, lambda: la.config(text=f"PASS -- {combined_output}", bootstyle=SUCCESS, font=(None, 11)))
     elif (output[0] == -1) or (output[1] == -1):
-        la.after(0, lambda: la.config(text=f"FAIL -- COULDNT WRITE PARAMS - CHECK CFG", bootstyle=DANGER, font=(None, 11)))
+        la.after(0, lambda: la.config(text="FAIL -- COULDNT WRITE PARAMS - CHECK CFG", bootstyle=DANGER, font=(None, 11)))
     else:
         la.after(0, lambda: la.config(text=f"FAIL -- {combined_output}", bootstyle=DANGER, font=(None, 11)))
 
