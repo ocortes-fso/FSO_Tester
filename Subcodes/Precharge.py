@@ -9,20 +9,34 @@ h = None
 
 def INITIALIZE_SYSTEM():
     global h
+
     try:
         if h is None:
             h = lgpio.gpiochip_open(CHIP)
 
-            lgpio.gpio_claim_output(h, PRECHARGE, level=0)
-            lgpio.gpio_claim_output(h, FET_CTL, level=0)
-            print("Precharge Pins successfully claimed LOW.")
+        try:
+            lgpio.gpio_claim_output(h, PRECHARGE)
+        except:
+            pass
+
+        try:
+            lgpio.gpio_claim_output(h, FET_CTL)
+        except:
+            pass
+
+        lgpio.gpio_write(h, PRECHARGE, 0)
+        lgpio.gpio_write(h, FET_CTL, 0)
+
+        print("System initialized OFF")
 
     except Exception as e:
         print(f"PRECHARGE INIT ERROR: {e}")
         raise
 
+
 def START_PRECHARGE():
     global h
+
     try:
         if h is None:
             raise RuntimeError("GPIO chip not initialized")
@@ -36,6 +50,7 @@ def START_PRECHARGE():
 
 def OPEN_FET():
     global h
+
     try:
         if h is None:
             raise RuntimeError("GPIO chip not initialized")
@@ -49,6 +64,7 @@ def OPEN_FET():
 
 def TURN_OFF_PRECHARGE():
     global h
+
     try:
         if h is None:
             raise RuntimeError("GPIO chip not initialized")
@@ -66,5 +82,39 @@ def CLOSE_FET():
     if h is None:
         return
 
-    lgpio.gpio_write(h, PRECHARGE, 0)
-    lgpio.gpio_write(h, FET_CTL, 0)
+    try:
+        lgpio.gpio_write(h, FET_CTL, 0)
+        lgpio.gpio_write(h, PRECHARGE, 0)
+        print("FET CLOSED")
+
+    except Exception as e:
+        print(f"FET CLOSE ERROR: {e}")
+
+
+def READ_PINS():
+    global h
+
+    if h is None:
+        return
+
+    print("PRECHARGE:", lgpio.gpio_read(h, PRECHARGE))
+    print("FET_CTL:", lgpio.gpio_read(h, FET_CTL))
+
+
+def CLOSE_SYSTEM():
+    global h
+
+    if h is None:
+        return
+
+    try:
+        lgpio.gpio_write(h, PRECHARGE, 0)
+        lgpio.gpio_write(h, FET_CTL, 0)
+
+        lgpio.gpiochip_close(h)
+        h = None
+
+        print("GPIO CLOSED")
+
+    except Exception as e:
+        print(f"GPIO CLOSE ERROR: {e}")

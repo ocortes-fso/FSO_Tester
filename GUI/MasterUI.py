@@ -167,7 +167,7 @@ def home():
     Lidar.close()
     Rear_switch_plate_test.close()
     Batt_monitor.close()
-    Precharge.CLOSE_FET()
+    Precharge.CLOSE_SYSTEM()
     stop_spin_progress()
     if pwr_after_id is not None:
         root.after_cancel(pwr_after_id)
@@ -184,6 +184,7 @@ def arm():
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Arm_f.pack(fill=BOTH, expand=TRUE)
     Precharge.INITIALIZE_SYSTEM()
+    Precharge.CLOSE_FET()
     set_arm_state("IDLE")
     root.update()
     root.after(100, start_batt_monitor)
@@ -356,6 +357,8 @@ def PWR_CHECK():
         root.update()
 
         time.sleep(0.2)
+
+        Precharge.READ_PINS()
 
         v_check = Batt_monitor.read_battery_voltage()
         if v_check is None or v_check < 21.0:
@@ -583,13 +586,6 @@ def power_off():
         pwr_after_id = None
 
     try:
-        Precharge.TURN_OFF_PRECHARGE()
-    except:
-        pass
-
-    time.sleep(0.1) #play with this to see if imapcts power paths at all
-
-    try:
         Precharge.CLOSE_FET()
     except:
         pass
@@ -597,6 +593,7 @@ def power_off():
     set_arm_state("IDLE")
     PWR.config(text="POWER ON")
     LED_btn.config(text="Turn LED On")
+
 
 def update_batt():
     global batt_after_id
