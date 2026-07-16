@@ -84,21 +84,10 @@ def CLOSE_FET():
 
     try:
         lgpio.gpio_write(h, FET_CTL, 0)
-        lgpio.gpio_write(h, PRECHARGE, 1)
         print("FET CLOSED")
 
     except Exception as e:
         print(f"FET CLOSE ERROR: {e}")
-
-
-def READ_PINS():
-    global h
-
-    if h is None:
-        return
-
-    print("PRECHARGE:", lgpio.gpio_read(h, PRECHARGE))
-    print("FET_CTL:", lgpio.gpio_read(h, FET_CTL))
 
 
 def CLOSE_SYSTEM():

@@ -358,7 +358,6 @@ def PWR_CHECK():
 
         time.sleep(0.2)
 
-        Precharge.READ_PINS()
 
         v_check = Batt_monitor.read_battery_voltage()
         if v_check is None or v_check < 21.0:
@@ -602,20 +601,24 @@ def update_batt():
         batt_after_id = None
         return
 
-    V = Batt_monitor.read_battery_voltage()
-    I = Batt_monitor.read_battery_current()
-    T = Batt_monitor.read_battery_temperature()
+V = Batt_monitor.read_battery_voltage()
+I = Batt_monitor.read_battery_current()
+T = Batt_monitor.read_battery_temperature()
 
-    if V is not None:
-        lv.config(text=f"Voltage: {V:.2f} V")
+if V is not None:
+    lv.config(text=f"Voltage: {V:.2f} V")
+else:
+    lv.config(text="Voltage: ---")
 
-    if I is not None:
-        li.config(text=f"Current: {I:.2f} A")
+if I is not None:
+    li.config(text=f"Current: {I:.2f} A")
+else:
+    li.config(text="Current: ---")
 
-    if T is not None:
-        lt.config(text=f"Temperature: {T:.2f} C")
-
-    batt_after_id = root.after(500, update_batt)
+if T is not None:
+    lt.config(text=f"Temperature: {T:.2f} C")
+else:
+    lt.config(text="Temperature: ---")
         
 
 def update_lidar():
