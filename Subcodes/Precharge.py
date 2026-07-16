@@ -62,18 +62,9 @@ def TURN_OFF_PRECHARGE():
 
 def CLOSE_FET():
     global h
-    try:
-        if h is not None:
-            lgpio.gpio_write(h, FET_CTL, 0)
 
-    except Exception as e:
-        print(f"FET CLOSE ERROR: {e}")
+    if h is None:
+        return
 
-    finally:
-        try:
-            if h is not None:
-                lgpio.gpiochip_close(h)
-                h = None
-        except Exception as e:
-            print(f"GPIO CLOSE ERROR: {e}")
-            h = None
+    lgpio.gpio_write(h, PRECHARGE, 0)
+    lgpio.gpio_write(h, FET_CTL, 0)

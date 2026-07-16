@@ -13,7 +13,7 @@ INIT = 1100
 HIGH = 1280
 HIGHER = 1400
 LOW = 1000
-SWEEP_DELAY = 0.05
+SWEEP_DELAY = 0.01
 
 _last_sent = {}
 
@@ -56,7 +56,7 @@ def safe_sleep(duration):
         elapsed += step
     return False
 
-def manual_sweep(start_us, end_us, pins, delay=None, step_size=5):
+def manual_sweep(start_us, end_us, pins, delay=None, step_size=1):
     if start_us == end_us:
         set_pwm(end_us, pins)
         return

@@ -183,6 +183,7 @@ def arm():
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Arm_f.pack(fill=BOTH, expand=TRUE)
+    Precharge.INITIALIZE_SYSTEM()
     set_arm_state("IDLE")
     root.update()
     root.after(100, start_batt_monitor)
