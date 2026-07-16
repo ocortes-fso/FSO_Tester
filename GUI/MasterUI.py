@@ -588,6 +588,10 @@ def power_off():
         Precharge.CLOSE_FET()
     except:
         pass
+    try:
+        Precharge.TURN_OFF_PRECHARGE()
+    except:
+        pass
 
     set_arm_state("IDLE")
     PWR.config(text="POWER ON")
@@ -601,25 +605,25 @@ def update_batt():
         batt_after_id = None
         return
 
-V = Batt_monitor.read_battery_voltage()
-I = Batt_monitor.read_battery_current()
-T = Batt_monitor.read_battery_temperature()
+    V = Batt_monitor.read_battery_voltage()
+    I = Batt_monitor.read_battery_current()
+    T = Batt_monitor.read_battery_temperature()
 
-if V is not None:
-    lv.config(text=f"Voltage: {V:.2f} V")
-else:
-    lv.config(text="Voltage: ---")
+    if V is not None:
+        lv.config(text=f"Voltage: {V:.2f} V")
+    else:
+        lv.config(text="Voltage: ---")
 
-if I is not None:
-    li.config(text=f"Current: {I:.2f} A")
-else:
-    li.config(text="Current: ---")
+    if I is not None:
+        li.config(text=f"Current: {I:.2f} A")
+    else:
+        li.config(text="Current: ---")
 
-if T is not None:
-    lt.config(text=f"Temperature: {T:.2f} C")
-else:
-    lt.config(text="Temperature: ---")
-        
+    if T is not None:
+        lt.config(text=f"Temperature: {T:.2f} C")
+    else:
+        lt.config(text="Temperature: ---")
+            
 
 def update_lidar():
     global lidar_after_id
