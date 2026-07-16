@@ -25,7 +25,7 @@ def INITIALIZE_SYSTEM():
             pass
 
         lgpio.gpio_write(h, FET_CTL, 0)
-        lgpio.gpio_write(h, FET_CTL, 1)
+        lgpio.gpio_write(h, PRECHARGE, 1)
 
         print("System initialized OFF")
 
@@ -84,7 +84,7 @@ def CLOSE_FET():
 
     try:
         lgpio.gpio_write(h, FET_CTL, 0)
-        lgpio.gpio_write(h, PRECHARGE, 0)
+        lgpio.gpio_write(h, PRECHARGE, 1)
         print("FET CLOSED")
 
     except Exception as e:
