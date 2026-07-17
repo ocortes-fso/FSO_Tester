@@ -623,7 +623,8 @@ def update_batt():
         lt.config(text=f"Temperature: {T:.2f} C")
     else:
         lt.config(text="Temperature: ---")
-            
+
+    batt_after_id = root.after(100, update_batt)          
 
 def update_lidar():
     global lidar_after_id
