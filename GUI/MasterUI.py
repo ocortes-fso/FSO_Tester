@@ -396,7 +396,7 @@ def SPIN():
     def run():
         try:
             set_arm_state("SPINNING")
-            root.after(0, lambda: start_spin_progress("SPIN ALL", 18))
+            root.after(0, lambda: start_spin_progress("SPIN ALL", 14))
 
             Spin_test.SPIN_START()
 
@@ -432,7 +432,7 @@ def TOP_SPIN():
     def run():
         try:
             set_arm_state("SPINNING")
-            root.after(0, lambda: start_spin_progress("SPIN TOP", 11))
+            root.after(0, lambda: start_spin_progress("SPIN TOP", 7))
 
             Spin_test.SPIN_TOP()
 
@@ -467,7 +467,7 @@ def BOT_SPIN():
     def run():
         try:
             set_arm_state("SPINNING")
-            root.after(0, lambda: start_spin_progress("SPIN BOT", 11))
+            root.after(0, lambda: start_spin_progress("SPIN BOT", 9))
 
             Spin_test.SPIN_BOT()
 
@@ -503,7 +503,7 @@ def PROP_SPIN():
     def run():
         try:
             set_arm_state("SPINNING")
-            root.after(0, lambda: start_spin_progress("PROP TEST", 64))
+            root.after(0, lambda: start_spin_progress("PROP TEST", 75))
 
             Spin_test.SPIN_PROP()
 

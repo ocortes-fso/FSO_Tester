@@ -9,11 +9,11 @@ from Subcodes import Precharge
 PWM1 = 7
 PWM2 = 5
 
-INIT = 1100
+INIT = 1150   #need to confirm these values..
 HIGH = 1280
 HIGHER = 1400
-LOW = 1000
-SWEEP_DELAY = 0.01
+LOW = 1100
+SWEEP_DELAY = 0.02
 
 _last_sent = {}
 
@@ -56,7 +56,7 @@ def safe_sleep(duration):
         elapsed += step
     return False
 
-def manual_sweep(start_us, end_us, pins, delay=None, step_size=1):
+def manual_sweep(start_us, end_us, pins, delay=None, step_size=2):
     if start_us == end_us:
         set_pwm(end_us, pins)
         return
@@ -93,10 +93,7 @@ def SPIN_START():
         set_pwm(LOW, pins)
         if safe_sleep(0.5): return
 
-        manual_sweep(LOW, INIT, pins)
-        if safe_sleep(1.5): return
-
-        manual_sweep(INIT, HIGH, pins)
+        manual_sweep(LOW, HIGH, pins)
         if safe_sleep(10.0): return
 
         manual_sweep(HIGH, LOW, pins)
@@ -115,10 +112,7 @@ def SPIN_TOP():
         set_pwm(LOW, pins)
         if safe_sleep(0.5): return
 
-        manual_sweep(LOW, INIT, pins)
-        if safe_sleep(1.5): return
-
-        manual_sweep(INIT, HIGH, pins)
+        manual_sweep(LOW, HIGH, pins)
         if safe_sleep(3.0): return
 
         manual_sweep(HIGH, LOW, pins)
@@ -137,10 +131,7 @@ def SPIN_BOT():
         set_pwm(LOW, pins)
         if safe_sleep(0.5): return
 
-        manual_sweep(LOW, INIT, pins)
-        if safe_sleep(1.5): return
-
-        manual_sweep(INIT, HIGH, pins)
+        manual_sweep(LOW, HIGH, pins)
         if safe_sleep(3.0): return
 
         manual_sweep(HIGH, LOW, pins)
@@ -167,22 +158,27 @@ def SPIN_PROP():
 
         manual_sweep(HIGHER, INIT, pins)
 
-        PULSE_MAX = HIGHER + 50
+        step_increment = 50
+        pulse_count = 5
 
-        for _ in range(4):
+        for i in range(pulse_count):
             if spin_stopped():
                 return
 
-            manual_sweep(INIT, PULSE_MAX, pins, delay=0.005)
+            target_pulse = HIGHER + ((i + 1) * step_increment)
+
+            manual_sweep(INIT, target_pulse, pins, delay=0.005)
             if safe_sleep(5.0): return
 
-            manual_sweep(PULSE_MAX, INIT, pins, delay=0.005)
+            manual_sweep(target_pulse, INIT, pins, delay=0.005)
             if safe_sleep(0.5): return
 
     finally:
         SPIN_STOP()
 
 def SPIN_STOP():
+    global _last_sent
+    _last_sent.clear()
     try:
         lgpio.tx_servo(Precharge.h, PWM1, 0)
         lgpio.tx_servo(Precharge.h, PWM2, 0)
