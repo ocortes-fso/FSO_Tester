@@ -352,12 +352,7 @@ def PWR_CHECK():
         LED.LED_OFF()
         set_arm_state("PRECHARGE")
 
-        Precharge.OPEN_FET()
-        PWR.config(text="FET ON...")
-        root.update()
-
-        time.sleep(0.2)
-
+        Precharge.READ_PINS()
 
         v_check = Batt_monitor.read_battery_voltage()
         if v_check is None or v_check < 21.0:
@@ -370,6 +365,12 @@ def PWR_CHECK():
             PWR.config(text="POWER ON")
             set_arm_state("IDLE")
             return
+
+        Precharge.OPEN_FET()
+        PWR.config(text="FET ON...")
+        root.update()
+
+        time.sleep(0.2)
 
         Precharge.TURN_OFF_PRECHARGE()
         Spin_test.claim_pwm_pins()
