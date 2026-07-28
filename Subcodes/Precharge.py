@@ -27,7 +27,7 @@ def INITIALIZE_SYSTEM():
         lgpio.gpio_write(h, FET_CTL, 0)
         lgpio.gpio_write(h, PRECHARGE, 1)
 
-        print("System initialized OFF")
+        print("System initialized and precharge off, FET off")
 
     except Exception as e:
         print(f"PRECHARGE INIT ERROR: {e}")
@@ -42,6 +42,7 @@ def START_PRECHARGE():
             raise RuntimeError("GPIO chip not initialized")
 
         lgpio.gpio_write(h, PRECHARGE, 0)
+        print("Precharge on")
 
     except Exception as e:
         print(f"PRECHARGE START ERROR: {e}")
@@ -56,6 +57,7 @@ def OPEN_FET():
             raise RuntimeError("GPIO chip not initialized")
 
         lgpio.gpio_write(h, FET_CTL, 1)
+        print("FET ON")
 
     except Exception as e:
         print(f"FET OPEN ERROR: {e}")
@@ -70,6 +72,7 @@ def TURN_OFF_PRECHARGE():
             raise RuntimeError("GPIO chip not initialized")
 
         lgpio.gpio_write(h, PRECHARGE, 1)
+        print("Precharge off")
 
     except Exception as e:
         print(f"PRECHARGE OFF ERROR: {e}")
@@ -84,8 +87,7 @@ def CLOSE_FET():
 
     try:
         lgpio.gpio_write(h, FET_CTL, 0)
-        lgpio.gpio_write(h, PRECHARGE, 1)
-        print("FET CLOSED")
+        print("FET OFF")
 
     except Exception as e:
         print(f"FET CLOSE ERROR: {e}")
@@ -101,9 +103,11 @@ def CLOSE_SYSTEM():
         lgpio.gpio_write(h, FET_CTL, 0)
 
         lgpio.gpiochip_close(h)
-        h = None
 
-        print("GPIO CLOSED")
+        print("GPIO CLOSED and Precharge off, FET off")
 
     except Exception as e:
         print(f"GPIO CLOSE ERROR: {e}")
+
+    finally:
+        h = None

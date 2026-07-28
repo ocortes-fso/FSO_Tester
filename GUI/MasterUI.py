@@ -324,61 +324,105 @@ def set_arm_state(state):
         status_dot.config(foreground="blue")
         status_text.config(text="SPINNING")
 
+PRECHARGE_TIMEOUT = 3000
+PRECHARGE_CHECK_INTERVAL = 200
+PRECHARGE_MIN_VOLTAGE = 21.0
+
+precharge_start_time = None
+precharge_good_count = 0
+
+
 def PWR_ON():
     global pwr_after_id
+    global precharge_start_time
+    global precharge_good_count
 
     try:
         spin_stop.clear()
+
         Precharge.INITIALIZE_SYSTEM()
         Precharge.START_PRECHARGE()
-        set_arm_state("PRECHARGE")
 
+        precharge_start_time = time.time()
+        precharge_good_count = 0
+
+        set_arm_state("PRECHARGE")
         PWR.config(text="PreCharging...")
 
-        pwr_after_id = PWR.after(3000, PWR_CHECK)
-        
+        pwr_after_id = PWR.after(
+            PRECHARGE_CHECK_INTERVAL,
+            PWR_CHECK
+        )
+
     except Exception as e:
         print(f"[PWR ON ERROR] Cannot start precharge: {e}")
+
         set_arm_state("FAULT")
         Precharge.CLOSE_FET()
         PWR.config(text="Precharge FAIL")
 
+
 def PWR_CHECK():
     global pwr_after_id
-    pwr_after_id = None
+    global precharge_good_count
 
     try:
-        LED.INIT()
-        LED.LED_OFF()
-        set_arm_state("PRECHARGE")
+        elapsed = (time.time() - precharge_start_time) * 1000
 
-        Precharge.OPEN_FET()
-        PWR.config(text="FET ON...")
-        root.update()
+        if elapsed >= PRECHARGE_TIMEOUT:
+            print("[PWR CHECK] Precharge timeout")
 
-        time.sleep(0.2)
-
-        v_check = Batt_monitor.read_battery_voltage()
-        if v_check is None or v_check < 21.0:
-            print(f"[PWR CHECK] Low or no voltage detected: {v_check}V")
             Precharge.CLOSE_FET()
             Precharge.TURN_OFF_PRECHARGE()
+            pwr_after_id = None
             set_arm_state("FAULT")
             PWR.config(text="Check Battery")
-            time.sleep(5)
-            PWR.config(text="POWER ON")
-            set_arm_state("IDLE")
             return
 
-        Precharge.TURN_OFF_PRECHARGE()
-        Spin_test.claim_pwm_pins()
-        set_arm_state("LIVE")
-        PWR.config(text="PRECHARGE OK")
+
+        voltage = Batt_monitor.read_battery_voltage()
+
+        if voltage is not None and voltage >= PRECHARGE_MIN_VOLTAGE:
+            precharge_good_count += 1
+            print(f"[PWR CHECK] Voltage OK {voltage:.2f}V ({precharge_good_count}/2)")
+
+        else:
+            precharge_good_count = 0
+            print(f"[PWR CHECK] Voltage low {voltage}")
+
+
+        if precharge_good_count >= 2:
+
+            print("[PWR CHECK] Precharge successful")
+
+            Precharge.OPEN_FET()
+
+            PWR.config(text="FET ON")
+            root.update()
+
+            Precharge.TURN_OFF_PRECHARGE()
+
+            Spin_test.claim_pwm_pins()
+
+            set_arm_state("LIVE")
+
+            pwr_after_id = None
+            return
+
+
+        pwr_after_id = PWR.after(
+            PRECHARGE_CHECK_INTERVAL,
+            PWR_CHECK
+        )
+
 
     except Exception as e:
-        print(f"[PWR CHECK ERROR] Failure during activation: {e}")
-        set_arm_state("FAULT")
+        print(f"[PWR CHECK ERROR] {e}")
+
         Precharge.CLOSE_FET()
+        Precharge.TURN_OFF_PRECHARGE()
+
+        set_arm_state("FAULT")
         PWR.config(text="Power ERROR")
 
 def SPIN():
@@ -600,20 +644,35 @@ def update_batt():
         batt_after_id = None
         return
 
-    V = Batt_monitor.read_battery_voltage()
-    I = Batt_monitor.read_battery_current()
-    T = Batt_monitor.read_battery_temperature()
+    try:
+        V = Batt_monitor.read_battery_voltage()
+        I = Batt_monitor.read_battery_current()
+        T = Batt_monitor.read_battery_temperature()
 
-    if V is not None:
-        lv.config(text=f"Voltage: {V:.2f} V")
+        if V is not None:
+            lv.config(text=f"Voltage: {V:.2f} V")
+        else:
+            lv.config(text="Voltage: --")
 
-    if I is not None:
-        li.config(text=f"Current: {I:.2f} A")
+        if I is not None:
+            li.config(text=f"Current: {I:.2f} A")
+        else:
+            li.config(text="Current: --")
 
-    if T is not None:
-        lt.config(text=f"Temperature: {T:.2f} C")
+        if T is not None:
+            lt.config(text=f"Temperature: {T:.2f} C")
+        else:
+            lt.config(text="Temperature: --")
 
-    batt_after_id = root.after(500, update_batt)
+    except Exception as e:
+        lv.config(text="Voltage: No Connection")
+        li.config(text="Current: No Connection")
+        lt.config(text="Temperature: No Connection")
+
+        print(f"Battery monitor error check connection: {e}")
+
+    finally:
+        batt_after_id = root.after(100, update_batt)
         
 
 def update_lidar():
