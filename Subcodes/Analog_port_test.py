@@ -42,6 +42,11 @@ def analog_port_run():
     )
     time.sleep(15)
 
+    # clear old MAVLink messages after reboot to see if fix bug
+    while master.recv_match(blocking=False):
+        pass
+
+
     master.mav.command_long_send(
         master.target_system, 
         master.target_component,
@@ -60,12 +65,10 @@ def analog_port_run():
         
         if msg:
             if msg.id == 7:
-                time.sleep(0.5)
                 voltage8 = msg.voltages[0]/1000
                 received_batt8 = True
             
             elif msg.id == 8:
-                time.sleep(0.5)
                 voltage9 = msg.voltages[0]/1000
                 received_batt9 = True
 
