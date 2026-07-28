@@ -30,7 +30,7 @@ def analog_port_run():
             value,
             mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
         )
-        time.sleep(0.1)
+        time.sleep(0.2)
 
     master.mav.command_long_send(
         master.target_system,
@@ -40,7 +40,7 @@ def analog_port_run():
         1,
         0, 0, 0, 0, 0, 0
     )
-    time.sleep(15)
+    time.sleep(20)
 
     # clear old MAVLink messages after reboot to see if fix bug
     while master.recv_match(blocking=False):
