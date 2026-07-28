@@ -358,8 +358,6 @@ def PWR_CHECK():
 
         time.sleep(0.2)
 
-        Precharge.READ_PINS()
-
         v_check = Batt_monitor.read_battery_voltage()
         if v_check is None or v_check < 21.0:
             print(f"[PWR CHECK] Low or no voltage detected: {v_check}V")
