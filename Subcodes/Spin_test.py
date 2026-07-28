@@ -9,10 +9,10 @@ from Subcodes import Precharge
 PWM1 = 7
 PWM2 = 5
 
-INIT = 1150   #need to confirm these values..
+INIT = 1100   #need to confirm these values..
 HIGH = 1280
 HIGHER = 1400
-LOW = 1100
+LOW = 1000
 SWEEP_DELAY = 0.02
 
 _last_sent = {}

@@ -330,6 +330,7 @@ def PWR_ON():
     try:
         spin_stop.clear()
         Precharge.INITIALIZE_SYSTEM()
+        LED.INIT()
         Precharge.START_PRECHARGE()
         set_arm_state("PRECHARGE")
 
