@@ -388,6 +388,8 @@ def PWR_CHECK():
     try:
         elapsed = (time.time() - precharge_start_time) * 1000
 
+        Precharge.OPEN_FET()   #force fet open for now until fix precharge issue then remove this line!!. 
+
         if elapsed >= PRECHARGE_TIMEOUT:
             print("[PWR CHECK] Precharge timeout")
 
