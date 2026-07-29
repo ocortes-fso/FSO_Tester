@@ -664,13 +664,6 @@ def update_batt():
         else:
             lt.config(text="Temperature: --")
 
-    except Exception as e:
-        lv.config(text="Voltage: No Connection")
-        li.config(text="Current: No Connection")
-        lt.config(text="Temperature: No Connection")
-
-        print(f"Battery monitor error check connection: {e}")
-
     finally:
         batt_after_id = root.after(100, update_batt)
         
