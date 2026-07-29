@@ -6,7 +6,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from Subcodes import Precharge
 
-FREQ = 250
+FREQ = 400
 
 PWM1 = 7
 PWM2 = 5
@@ -19,6 +19,8 @@ HIGHER = 1600
 PUNCH_INCREMENT = 50
 PUNCH_NUM = 7
 
+INIT_DELAY = 5
+
 START_RUN_DELAY = 7
 TOP_RUN_DELAY = 4
 BOT_RUN_DELAY = 4
@@ -29,7 +31,7 @@ PROP_PULSE_PAUSE_DELAY = 1
 
 SWEEP_DELAY = 0.005
 PUNCH_SWEEP_DELAY = 0.0005
-STEP_SIZE = 1.  #cannot be zero.. obviously
+STEP_SIZE = 2.  #cannot be zero.. obviously
 
 _last_sent = {}
 _stop_event = None
@@ -220,5 +222,33 @@ def SPIN_STOP():
     try:
         lgpio.tx_servo(Precharge.h, PWM1, 0)
         lgpio.tx_servo(Precharge.h, PWM2, 0)
+
+        _last_sent.pop(PWM1, None)
+        _last_sent.pop(PWM2, None)
+
     except:
         pass
+
+def SPIN_INIT():
+    try:
+        if Precharge.h is None:
+            return
+
+        claim_pwm_pins()
+        pins = [PWM1, PWM2]
+
+        manual_sweep(LOW, INIT, pins)
+
+        if safe_sleep(INIT_DELAY):
+            return
+
+        manual_sweep(INIT, LOW, pins)
+
+    finally:
+        SPIN_STOP()
+
+def get_pwm_state():
+    return {
+        "PWM1": _last_sent.get(PWM1, None),
+        "PWM2": _last_sent.get(PWM2, None)
+    }

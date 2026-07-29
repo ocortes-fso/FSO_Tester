@@ -28,6 +28,7 @@ eth_stop = threading.Event()
 body_stop = threading.Event()
 sbus_stop = threading.Event()
 INF_sbus_stop = threading.Event()
+arm_powered = False
 
 
 root = ttk.Window(themename="cyborg", size=[1280, 720], title="FSO Tester") 
@@ -131,6 +132,14 @@ status_container.pack(side=LEFT, anchor=NW, padx=15, pady=15)
 lv = ttk.Label(batt_container, text="Voltage:", bootstyle=SECONDARY, style='Sub.TLabel'); lv.pack()
 li = ttk.Label(batt_container, text="Current:", bootstyle=SECONDARY, style='Sub.TLabel'); li.pack()
 lt = ttk.Label(batt_container, text="Temperature:", bootstyle=SECONDARY, style='Sub.TLabel'); lt.pack()
+
+lpwm_status = ttk.Label(
+    batt_container,
+    text="PWM1: --   PWM2: --",
+    bootstyle=SECONDARY,
+    style='Sub.TLabel'
+)
+lpwm_status.pack(pady=(10,0))
 
 status_dot = ttk.Label(status_container, text="●", font=("Arial", 28, "bold"))
 status_dot.pack(anchor="w")
@@ -347,7 +356,6 @@ def PWR_ON():
         precharge_good_count = 0
 
         set_arm_state("PRECHARGE")
-        PWR.config(text="PreCharging...")
 
         pwr_after_id = PWR.after(
             PRECHARGE_CHECK_INTERVAL,
@@ -361,6 +369,17 @@ def PWR_ON():
         Precharge.CLOSE_FET()
         PWR.config(text="Precharge FAIL")
 
+def toggle_power():
+    global arm_powered
+
+    if not arm_powered:
+        PWR_ON()
+        arm_powered = True
+        PWR.config(text="POWER OFF")
+    else:
+        power_off()
+        arm_powered = False
+        PWR.config(text="POWER ON")
 
 def PWR_CHECK():
     global pwr_after_id
@@ -397,7 +416,6 @@ def PWR_CHECK():
 
             Precharge.OPEN_FET()
 
-            PWR.config(text="FET ON")
             root.update()
 
             Precharge.TURN_OFF_PRECHARGE()
@@ -425,148 +443,169 @@ def PWR_CHECK():
         set_arm_state("FAULT")
         PWR.config(text="Power ERROR")
 
-def SPIN():
-    with spin_running_lock:
-        if spin_stop.is_set():
-            return
+def run_spin_toggle(button, default_text, status_text, duration, spin_function):
+
+
+
+    # Cancel current spin
+    if button.cget("text") == "Cancel Spin":
+
+        spin_stop.set()
+
+        try:
+            Spin_test.SPIN_STOP()
+        except:
+            pass
+
+        stop_spin_progress()
+
+        set_arm_state("LIVE")
+
+        button.config(text=default_text)
+
+        return
+
 
     if current_state != "LIVE":
         set_arm_state("FAULT")
         return
 
+
     spin_stop.clear()
 
-    def run():
+    button.config(text="Cancel Spin")
+
+
+    def worker():
+
         try:
+
             set_arm_state("SPINNING")
-            root.after(0, lambda: start_spin_progress("SPIN ALL", 18))
 
-            Spin_test.SPIN_START()
+            root.after(
+                0,
+                lambda: start_spin_progress(status_text, duration)
+            )
 
-            if spin_stop.is_set():
-                Spin_test.SPIN_STOP()
-                set_arm_state("IDLE")
-                root.after(0, stop_spin_progress)
-                return
+
+            spin_function()
+
+
+        except Exception as e:
+
+            print(f"[SPIN ERROR] {e}")
 
             Spin_test.SPIN_STOP()
-            set_arm_state("LIVE")
-            root.after(0, stop_spin_progress)
 
-        except:
-            Spin_test.SPIN_STOP()
             set_arm_state("FAULT")
-            root.after(0, stop_spin_progress)
 
-    threading.Thread(target=run, daemon=True).start()
+
+        finally:
+
+            try:
+                Spin_test.SPIN_STOP()
+            except:
+                pass
+
+
+            root.after(
+                0,
+                stop_spin_progress
+            )
+
+
+            root.after(
+                0,
+                lambda: button.config(text=default_text)
+            )
+
+
+            if not spin_stop.is_set():
+
+                set_arm_state("LIVE")
+
+
+    threading.Thread(
+        target=worker,
+        daemon=True
+    ).start()
+
+def update_pwm_status():
+    try:
+        pwm = Spin_test.get_pwm_state()
+
+        pwm1 = pwm["PWM1"] if pwm["PWM1"] is not None else "--"
+        pwm2 = pwm["PWM2"] if pwm["PWM2"] is not None else "--"
+
+        lpwm_status.config(
+            text=f"PWM1: {pwm1}   PWM2: {pwm2}"
+        )
+
+    except Exception:
+        lpwm_status.config(
+            text="PWM1: --   PWM2: --"
+        )
+
+    root.after(100, update_pwm_status)
+
+def INITIAL_PWM():
+
+    run_spin_toggle(
+        PWM_INIT,
+        "Initialise PWM",
+        "INITIALISE PWM",
+        6,
+        Spin_test.SPIN_INIT
+    )
+
+
+
+def SPIN():
+
+    run_spin_toggle(
+        SPIN_ALL,
+        "Spin ALL",
+        "SPIN ALL",
+        9,
+        Spin_test.SPIN_START
+    )
+
 
 
 def TOP_SPIN():
-    with spin_running_lock:
-        if spin_stop.is_set():
-            return
 
-    if current_state != "LIVE":
-        set_arm_state("FAULT")
-        return
+    run_spin_toggle(
+        SPIN_TOP,
+        "Spin TOP",
+        "SPIN TOP",
+        6,
+        Spin_test.SPIN_TOP
+    )
 
-    spin_stop.clear()
-
-    def run():
-        try:
-            set_arm_state("SPINNING")
-            root.after(0, lambda: start_spin_progress("SPIN TOP", 11))
-
-            Spin_test.SPIN_TOP()
-
-            if spin_stop.is_set():
-                Spin_test.SPIN_STOP()
-                set_arm_state("IDLE")
-                root.after(0, stop_spin_progress)
-                return
-
-            Spin_test.SPIN_STOP()
-            set_arm_state("LIVE")
-            root.after(0, stop_spin_progress)
-
-        except:
-            Spin_test.SPIN_STOP()
-            set_arm_state("FAULT")
-            root.after(0, stop_spin_progress)
-
-    threading.Thread(target=run, daemon=True).start()
 
 
 def BOT_SPIN():
-    with spin_running_lock:
-        if spin_stop.is_set():
-            return
-    if current_state != "LIVE":
-        set_arm_state("FAULT")
-        return
 
-    spin_stop.clear()
+    run_spin_toggle(
+        SPIN_BOT,
+        "Spin BOT",
+        "SPIN BOT",
+        6,
+        Spin_test.SPIN_BOT
+    )
 
-    def run():
-        try:
-            set_arm_state("SPINNING")
-            root.after(0, lambda: start_spin_progress("SPIN BOT", 11))
-
-            Spin_test.SPIN_BOT()
-
-            if spin_stop.is_set():
-                Spin_test.SPIN_STOP()
-                set_arm_state("IDLE")
-                root.after(0, stop_spin_progress)
-                return
-
-            Spin_test.SPIN_STOP()
-            set_arm_state("LIVE")
-            root.after(0, stop_spin_progress)
-
-        except:
-            Spin_test.SPIN_STOP()
-            set_arm_state("FAULT")
-            root.after(0, stop_spin_progress)
-
-    threading.Thread(target=run, daemon=True).start()
 
 
 def PROP_SPIN():
-    with spin_running_lock:
-        if spin_stop.is_set():
-            return
 
-    if current_state != "LIVE":
-        set_arm_state("FAULT")
-        return
+    run_spin_toggle(
+        PROP,
+        "Prop Test",
+        "PROP TEST",
+        53,
+        Spin_test.SPIN_PROP
+    )
 
-    spin_stop.clear()
-
-    def run():
-        try:
-            set_arm_state("SPINNING")
-            root.after(0, lambda: start_spin_progress("PROP TEST", 64))
-
-            Spin_test.SPIN_PROP()
-
-            if spin_stop.is_set():
-                Spin_test.SPIN_STOP()
-                set_arm_state("IDLE")
-                root.after(0, stop_spin_progress)
-                return
-
-            Spin_test.SPIN_STOP()
-            set_arm_state("LIVE")
-            root.after(0, stop_spin_progress)
-
-        except:
-            Spin_test.SPIN_STOP()
-            set_arm_state("FAULT")
-            root.after(0, stop_spin_progress)
-
-    threading.Thread(target=run, daemon=True).start()
-    
 def start_spin_progress(name, duration):
     global spin_running, spin_start_time, spin_duration
     spin_running = True
@@ -608,7 +647,7 @@ def TOGGLE_LED():
         LED_btn.config(text="Turn LED On")
 
 def power_off():
-    global pwr_after_id
+    global pwr_after_id, arm_powered
 
     spin_stop.set()
     stop_spin_progress()
@@ -633,6 +672,7 @@ def power_off():
         pass
 
     set_arm_state("IDLE")
+    arm_powered = False
     PWR.config(text="POWER ON")
     LED_btn.config(text="Turn LED On")
 
@@ -820,7 +860,7 @@ SB2 = ttk.Button(Body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, widt
 Debug = ttk.Button(Body_f, text="Debug Mode", bootstyle=SECONDARY, width=20); #Debug.pack(expand=TRUE, anchor=E, padx=75)   #hidden for now until we work this out
 
 # Arm buttons
-PWR = ttk.Button(Arm_f, text="POWER ON", bootstyle=PRIMARY, width=24, command=PWR_ON)
+PWR = ttk.Button(Arm_f, text="POWER ON", bootstyle=PRIMARY, width=24, command=toggle_power)
 PWR.pack(expand=TRUE, pady=(25, 15))
 SPIN_ALL = ttk.Button(Arm_f, text="Spin ALL", bootstyle=SECONDARY, width=24, command=SPIN)
 SPIN_ALL.pack(expand=TRUE, pady=5)
@@ -830,10 +870,11 @@ SPIN_BOT = ttk.Button(Arm_f, text="Spin BOT", bootstyle=SECONDARY, width=24, com
 SPIN_BOT.pack(expand=TRUE, pady=5)
 LED_btn = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, command=TOGGLE_LED)
 LED_btn.pack(expand=TRUE, pady=5)
+PWM_INIT = ttk.Button(Arm_f, text="Intialise PWM", bootstyle=SECONDARY, width=24, command=INITIAL_PWM)
+PWM_INIT.pack(expand=TRUE, pady=(5, 15))
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, width=24, command=PROP_SPIN)
 PROP.pack(expand=TRUE, pady=(5, 15))
-STOP_btn = ttk.Button(Arm_f,text="POWER OFF",style="Stop.TButton",command=power_off)
-STOP_btn.pack(expand=TRUE, pady=(15, 25))
+
 
 
 # Loom test page
@@ -842,4 +883,5 @@ l21 = ttk.Label(loom_f, text="", bootstyle=PRIMARY); l21.pack(expand=TRUE)
 ttk.Button(loom_f, text="Run Test", bootstyle=SECONDARY, width=15, command=loom_test).pack(pady=25)
 
 main.pack(fill=BOTH, expand=True)
+update_pwm_status()
 root.mainloop()
