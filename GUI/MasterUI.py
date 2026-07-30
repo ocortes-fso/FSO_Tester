@@ -641,6 +641,10 @@ def stop_spin_progress():
     spin_label.config(text="")
 
 def TOGGLE_LED():
+    if current_state != "LIVE":
+        set_arm_state("FAULT")
+        return
+
     if LED_btn.cget("text") == "Turn LED On":
         LED.LED_ON()
         LED_btn.config(text="Turn LED Off")
@@ -873,9 +877,9 @@ SPIN_BOT.pack(expand=TRUE, pady=5)
 LED_btn = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, command=TOGGLE_LED)
 LED_btn.pack(expand=TRUE, pady=5)
 PWM_INIT = ttk.Button(Arm_f, text="Intialise PWM", bootstyle=SECONDARY, width=24, command=INITIAL_PWM)
-PWM_INIT.pack(expand=TRUE, pady=(5, 15))
+PWM_INIT.pack(expand=TRUE, pady=5)
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, width=24, command=PROP_SPIN)
-PROP.pack(expand=TRUE, pady=(5, 15))
+PROP.pack(expand=TRUE, pady=5)
 
 
 
