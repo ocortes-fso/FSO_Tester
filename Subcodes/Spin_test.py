@@ -229,20 +229,26 @@ def SPIN_STOP():
     except:
         pass
 
-def SPIN_INIT():
+def SPIN_CNCL():
+    try:
+        lgpio.tx_servo(Precharge.h, PWM1, INIT)
+        lgpio.tx_servo(Precharge.h, PWM2, INIT)
+
+    except:
+        pass
+
+def SPIN_INIT():                #should see no spin just stop beeping when pressed and holds for 5 seconds, sets to 1100 then holds for 5 seconds, then sets low  
     try:
         if Precharge.h is None:
             return
 
-        claim_pwm_pins()
-        pins = [PWM1, PWM2]
-
-        manual_sweep(LOW, INIT, pins)
+        lgpio.tx_servo(Precharge.h, PWM1, INIT)
+        lgpio.tx_servo(Precharge.h, PWM2, INIT)
 
         if safe_sleep(INIT_DELAY):
+            lgpio.tx_servo(Precharge.h, PWM1, LOW)
+            lgpio.tx_servo(Precharge.h, PWM2, LOW)
             return
-
-        manual_sweep(INIT, LOW, pins)
 
     finally:
         SPIN_STOP()

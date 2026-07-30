@@ -192,6 +192,7 @@ def arm():
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Arm_f.pack(fill=BOTH, expand=TRUE)
+    lpwm_status.config(text="PWM1: --   PWM2: --")
     Precharge.INITIALIZE_SYSTEM()
     Precharge.CLOSE_FET()
     set_arm_state("IDLE")
@@ -455,7 +456,7 @@ def run_spin_toggle(button, default_text, status_text, duration, spin_function):
         spin_stop.set()
 
         try:
-            Spin_test.SPIN_STOP()
+            Spin_test.SPIN_CNCL()
         except:
             pass
 
@@ -868,6 +869,8 @@ Debug = ttk.Button(Body_f, text="Debug Mode", bootstyle=SECONDARY, width=20); #D
 # Arm buttons
 PWR = ttk.Button(Arm_f, text="POWER ON", bootstyle=PRIMARY, width=24, command=toggle_power)
 PWR.pack(expand=TRUE, pady=(25, 15))
+PWM_INIT = ttk.Button(Arm_f, text="Intialise PWM", bootstyle=SECONDARY, width=24, command=INITIAL_PWM)
+PWM_INIT.pack(expand=TRUE, pady=5)
 SPIN_ALL = ttk.Button(Arm_f, text="Spin ALL", bootstyle=SECONDARY, width=24, command=SPIN)
 SPIN_ALL.pack(expand=TRUE, pady=5)
 SPIN_TOP = ttk.Button(Arm_f, text="Spin TOP", bootstyle=SECONDARY, width=24, command=TOP_SPIN)
@@ -876,8 +879,6 @@ SPIN_BOT = ttk.Button(Arm_f, text="Spin BOT", bootstyle=SECONDARY, width=24, com
 SPIN_BOT.pack(expand=TRUE, pady=5)
 LED_btn = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, command=TOGGLE_LED)
 LED_btn.pack(expand=TRUE, pady=5)
-PWM_INIT = ttk.Button(Arm_f, text="Intialise PWM", bootstyle=SECONDARY, width=24, command=INITIAL_PWM)
-PWM_INIT.pack(expand=TRUE, pady=5)
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, width=24, command=PROP_SPIN)
 PROP.pack(expand=TRUE, pady=5)
 
