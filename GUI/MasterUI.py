@@ -194,6 +194,7 @@ def arm():
     Arm_f.pack(fill=BOTH, expand=TRUE)
     lpwm_status.config(text="PWM1: --   PWM2: --")
     Precharge.INITIALIZE_SYSTEM()
+    LED.INIT()
     Precharge.CLOSE_FET()
     set_arm_state("IDLE")
     root.update()
@@ -605,7 +606,7 @@ def PROP_SPIN():
         PROP,
         "Prop Test",
         "PROP TEST",
-        53,
+        56,
         Spin_test.SPIN_PROP
     )
 
