@@ -31,7 +31,7 @@ PROP_PULSE_PAUSE_DELAY = 1
 
 SWEEP_DELAY = 0.005
 PUNCH_SWEEP_DELAY = 0.0005
-STEP_SIZE = 2.  #cannot be zero.. obviously
+STEP_SIZE = 2.  # cannot be zero.. obviously
 
 _last_sent = {}
 _stop_event = None
@@ -73,6 +73,7 @@ def claim_pwm_pins():
 
 def set_pwm(us, pins):
     for pin in pins:
+
         if _last_sent.get(pin) == us:
             continue
 
@@ -220,38 +221,44 @@ def SPIN_PROP():
 
 def SPIN_STOP():
     try:
-        lgpio.tx_servo(Precharge.h, PWM1, 0)
-        lgpio.tx_servo(Precharge.h, PWM2, 0)
-
-        _last_sent.pop(PWM1, None)
-        _last_sent.pop(PWM2, None)
+        # Keep ESCs armed at idle instead of sending 0
+        set_pwm(LOW, [PWM1, PWM2])
 
     except:
         pass
+
 
 def SPIN_CNCL():
     try:
-        lgpio.tx_servo(Precharge.h, PWM1, INIT)
-        lgpio.tx_servo(Precharge.h, PWM2, INIT)
+        # Move to safe idle value
+        set_pwm(INIT, [PWM1, PWM2])
 
     except:
         pass
 
-def SPIN_INIT():                #should see no spin just stop beeping when pressed and holds for 5 seconds, sets to 1100 then holds for 5 seconds, then sets low  
+
+def SPIN_INIT():
+    # Sends:
+    # 1000us for 5 seconds
+    # 1100us for 5 seconds
+    # back to 1000us
+
     try:
         if Precharge.h is None:
             return
 
-        lgpio.tx_servo(Precharge.h, PWM1, INIT)
-        lgpio.tx_servo(Precharge.h, PWM2, INIT)
+        claim_pwm_pins()
+
+        pins = [PWM1, PWM2]
+
+        set_pwm(LOW, pins)
 
         if safe_sleep(INIT_DELAY):
-            lgpio.tx_servo(Precharge.h, PWM1, LOW)
-            lgpio.tx_servo(Precharge.h, PWM2, LOW)
             return
 
     finally:
-        SPIN_STOP()
+        pass
+
 
 def get_pwm_state():
     return {
