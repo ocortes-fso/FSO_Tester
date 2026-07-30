@@ -570,7 +570,7 @@ def SPIN():
         SPIN_ALL,
         "Spin ALL",
         "SPIN ALL",
-        9,
+        10,
         Spin_test.SPIN_START
     )
 
@@ -582,7 +582,7 @@ def TOP_SPIN():
         SPIN_TOP,
         "Spin TOP",
         "SPIN TOP",
-        6,
+        7,
         Spin_test.SPIN_TOP
     )
 
@@ -594,7 +594,7 @@ def BOT_SPIN():
         SPIN_BOT,
         "Spin BOT",
         "SPIN BOT",
-        6,
+        7,
         Spin_test.SPIN_BOT
     )
 
@@ -606,7 +606,7 @@ def PROP_SPIN():
         PROP,
         "Prop Test",
         "PROP TEST",
-        56,
+        61,
         Spin_test.SPIN_PROP
     )
 

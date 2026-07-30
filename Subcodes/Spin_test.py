@@ -251,14 +251,15 @@ def SPIN_INIT():
 
         pins = [PWM1, PWM2]
 
-        set_pwm(LOW, pins)
+        set_pwm(INIT, pins)
 
         if safe_sleep(INIT_DELAY):
             return
 
+        set_pwm(LOW, pins)
+
     finally:
         pass
-
 
 def get_pwm_state():
     return {
