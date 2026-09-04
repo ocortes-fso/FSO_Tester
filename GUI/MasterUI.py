@@ -145,8 +145,7 @@ lpwm_status = ttk.Label(
 )
 lpwm_status.pack(pady=(10,0))
 
-STOP_btn = ttk.Button(batt_container, text="STOP", bootstyle=DANGER, style="Stop.TButton", width=12, command=power_off)
-STOP_btn.pack(pady=(15, 0))
+
 
 
 
@@ -718,6 +717,7 @@ def power_off():
     set_arm_state("IDLE")
     arm_powered = False
     PWR.config(text="POWER ON")
+    PWR.configure(bootstyle=PRIMARY)
     LED_btn.config(text="Turn LED On")
 
 
@@ -926,7 +926,8 @@ LED_btn.pack(expand=TRUE, pady=5)
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, style="Arm.TButton", width=24, command=PROP_SPIN)
 PROP.pack(expand=TRUE, pady=5)
 
-
+STOP_btn = ttk.Button(batt_container, text="STOP", bootstyle=DANGER, style="Stop.TButton", width=12, command=power_off)
+STOP_btn.pack(pady=(15, 0))
 
 
 
