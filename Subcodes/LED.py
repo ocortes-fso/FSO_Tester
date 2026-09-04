@@ -16,11 +16,11 @@ def INIT():
             return
 
         lgpio.gpio_claim_output(h, LED_GPIO, 0)
-        lgpio.gpio_write(h, LED_GPIO, 0)
         print("[LED] INIT -> LOW")
 
     except Exception as e:
         print("[LED] INIT ERROR:", e)
+
 
 
 def LED_ON():
