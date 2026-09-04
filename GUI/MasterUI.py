@@ -354,11 +354,6 @@ precharge_good_count = 0
 def arm_red():
     PWR.configure(style="ArmDanger.TButton")
 
-
-def arm_green():
-    for button in [PWM_INIT, SPIN_ALL, SPIN_TOP, SPIN_BOT, LED_btn, PROP]:
-        button.configure(style="ArmSuccess.TButton")
-        
 def arm_reset():
     PWR.configure(style="Arm.TButton")
     for button in [PWM_INIT, SPIN_ALL, SPIN_TOP, SPIN_BOT, LED_btn, PROP]:
@@ -452,8 +447,7 @@ def PWR_CHECK():
             Spin_test.claim_pwm_pins()
 
             set_arm_state("LIVE")
-            arm_green()
-
+            
             pwr_after_id = None
             return
 
