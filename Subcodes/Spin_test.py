@@ -17,10 +17,10 @@ INIT = 1100
 #Change the values below ONLY as desired... 
 
 HIGH = 1150
-PUNCH_START = 1350   #actual start is + 50 since increments can change this.. 
+PUNCH_START = 1400   #actual start is + 50 since increments can change this.. 
 HIGHER = 1400
 
-PUNCH_INCREMENT = 100
+PUNCH_INCREMENT = 50
 PUNCH_NUM = 3   #Faris suggestion is 5, Sean suggestion is 4, ken suggestion is -- need to change prop test timings
 
 INIT_DELAY = 5
@@ -28,10 +28,11 @@ INIT_DELAY = 5
 START_RUN_DELAY = 5
 TOP_RUN_DELAY = 3
 BOT_RUN_DELAY = 3
+PROP_RUN_DELAY = 5
 
 PROP_EXTENDED_DELAY = 10
 PROP_PULSE_HOLD_DELAY = 4
-PROP_PULSE_PAUSE_DELAY = 3
+PROP_PULSE_PAUSE_DELAY = 2
 
 SWEEP_DELAY = 0.005
 PUNCH_SWEEP_DELAY = 0.0005
@@ -189,8 +190,12 @@ def SPIN_PROP():
 
         if safe_sleep(PROP_EXTENDED_DELAY):
             return
-
+        
         manual_sweep(HIGHER, LOW, pins)
+
+        if safe_sleep(PROP_RUN_DELAY):
+            return
+
 
         for i in range(PUNCH_NUM):
 
