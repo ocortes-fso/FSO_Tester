@@ -41,10 +41,10 @@ style.configure('secondary.TLabel', font=(None, 18, 'bold'))
 style.configure('Header.TLabel', font=(None, 20, 'bold'))
 style.configure('Sub.TLabel', font=(None, 18))
 
-style.configure("Arm.TButton", font=(None, 20, "bold"), padding=10)
-style.configure("ArmDanger.TButton", font=(None, 20, "bold"), padding=10)
-style.configure("ArmSuccess.TButton", font=(None, 20, "bold"), padding=10)
-style.configure("Stop.TButton", font=(None, 20, "bold"), padding=10)
+style.configure("Arm.TButton", font=(None, 20, "bold"), padding=10, background="#0d6efd", foreground="white")
+style.configure("ArmDanger.TButton", font=(None, 20, "bold"), padding=10, background="#dc3545", foreground="white")
+style.configure("ArmSuccess.TButton", font=(None, 20, "bold"), padding=10, background="#198754", foreground="white")
+style.configure("Stop.TButton", font=(None, 20, "bold"), padding=10, background="#dc3545", foreground="white")
 
 
 main = ttk.Frame(root) 
@@ -352,16 +352,17 @@ precharge_start_time = None
 precharge_good_count = 0
 
 def arm_red():
-    PWR.configure(bootstyle=DANGER)
+    PWR.configure(style="ArmDanger.TButton")
+
 
 def arm_green():
     for button in [PWM_INIT, SPIN_ALL, SPIN_TOP, SPIN_BOT, LED_btn, PROP]:
-        button.configure(bootstyle=SUCCESS)
-
+        button.configure(style="ArmSuccess.TButton")
+        
 def arm_reset():
-    PWR.configure(bootstyle=PRIMARY)
+    PWR.configure(style="Arm.TButton")
     for button in [PWM_INIT, SPIN_ALL, SPIN_TOP, SPIN_BOT, LED_btn, PROP]:
-        button.configure(bootstyle=SECONDARY)
+        button.configure(style="Arm.TButton")
 
 
 def PWR_ON():
@@ -451,6 +452,7 @@ def PWR_CHECK():
             Spin_test.claim_pwm_pins()
 
             set_arm_state("LIVE")
+            arm_green()
 
             pwr_after_id = None
             return
@@ -492,7 +494,8 @@ def run_spin_toggle(button, default_text, status_text, duration, spin_function):
         button.config(text=default_text)
 
 
-        button.configure(bootstyle=SECONDARY)
+        button.configure(style="Arm.TButton")
+
 
 
 
@@ -505,7 +508,8 @@ def run_spin_toggle(button, default_text, status_text, duration, spin_function):
 
 
     spin_stop.clear()
-    button.configure(bootstyle=SUCCESS)
+    button.configure(style="ArmSuccess.TButton")
+
 
 
     button.config(text="Cancel Spin")
@@ -536,29 +540,22 @@ def run_spin_toggle(button, default_text, status_text, duration, spin_function):
 
 
         finally:
-
             try:
                 Spin_test.SPIN_STOP()
             except:
                 pass
 
+            root.after(0, stop_spin_progress)
 
-            root.after(
-                0,
-                stop_spin_progress
-            )
+            def reset_spin_button():
+                button.config(text=default_text)
+                button.configure(style="Arm.TButton")
 
-
-            root.after(
-                0,
-                lambda: button.config(text=default_text),
-                button.configure(bootstyle=SECONDARY)
-            )
-
+            root.after(0, reset_spin_button)
 
             if not spin_stop.is_set():
-
                 set_arm_state("LIVE")
+
 
 
     threading.Thread(
@@ -682,11 +679,13 @@ def TOGGLE_LED():
     if LED_btn.cget("text") == "Turn LED On":
         LED.LED_ON()
         LED_btn.config(text="Turn LED Off")
-        LED_btn.configure(bootstyle=SUCCESS)
+        LED_btn.configure(style="ArmSuccess.TButton")
+
     else:
         LED.LED_OFF()
         LED_btn.config(text="Turn LED On")
-        LED_btn.configure(bootstyle=SECONDARY)
+        LED_btn.configure(style="Arm.TButton")
+
 
 
 def power_off():
@@ -717,8 +716,10 @@ def power_off():
     set_arm_state("IDLE")
     arm_powered = False
     PWR.config(text="POWER ON")
-    PWR.configure(bootstyle=PRIMARY)
+    PWR.configure(style="Arm.TButton")
     LED_btn.config(text="Turn LED On")
+    LED_btn.configure(style="Arm.TButton")
+    arm_reset()
 
 
 def update_batt():
@@ -926,8 +927,8 @@ LED_btn.pack(expand=TRUE, pady=5)
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, style="Arm.TButton", width=24, command=PROP_SPIN)
 PROP.pack(expand=TRUE, pady=5)
 
-STOP_btn = ttk.Button(batt_container, text="STOP", bootstyle=DANGER, style="Stop.TButton", width=12, command=power_off)
-STOP_btn.pack(pady=(15, 0))
+STOP_btn = ttk.Button(batt_container, text="STOP", style="Stop.TButton", width=12, command=power_off)
+STOP_btn.pack(pady=10)
 
 
 
