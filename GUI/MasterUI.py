@@ -552,7 +552,7 @@ def run_spin_toggle(button, default_text, status_text, duration, spin_function):
 
             root.after(
                 0,
-                lambda: button.config(text=default_text)
+                lambda: button.config(text=default_text),
                 button.configure(bootstyle=SECONDARY)
             )
 
