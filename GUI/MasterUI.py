@@ -412,6 +412,8 @@ def PWR_CHECK():
 
         Precharge.OPEN_FET()   #force fet open for now until fix precharge issue then remove this line!!. 
 
+        LED.LED_OFF() 
+
         if elapsed >= PRECHARGE_TIMEOUT:
             print("[PWR CHECK] Precharge timeout")
 
