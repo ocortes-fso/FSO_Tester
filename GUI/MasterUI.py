@@ -195,6 +195,7 @@ def arm():
     lpwm_status.config(text="PWM1: --   PWM2: --")
     Precharge.INITIALIZE_SYSTEM()
     LED.INIT()
+    LED.LED_OFF()
     Precharge.CLOSE_FET()
     set_arm_state("IDLE")
     root.update()
@@ -342,6 +343,14 @@ PRECHARGE_MIN_VOLTAGE = 21.0
 precharge_start_time = None
 precharge_good_count = 0
 
+def arm_red():
+    Arm_f.configure(bootstyle="danger")
+
+def arm_green():
+    Arm_f.configure(bootstyle="success")
+
+def arm_reset():
+    Arm_f.configure(bootstyle="dark")
 
 def PWR_ON():
     global pwr_after_id
@@ -350,7 +359,7 @@ def PWR_ON():
 
     try:
         spin_stop.clear()
-
+        LED.LED_OFF()
         Precharge.INITIALIZE_SYSTEM()
         Precharge.START_PRECHARGE()
 
@@ -378,10 +387,13 @@ def toggle_power():
         PWR_ON()
         arm_powered = True
         PWR.config(text="POWER OFF")
+        arm_red()
     else:
         power_off()
         arm_powered = False
         PWR.config(text="POWER ON")
+        arm_reset()
+
 
 def PWR_CHECK():
     global pwr_after_id
@@ -467,6 +479,10 @@ def run_spin_toggle(button, default_text, status_text, duration, spin_function):
 
         button.config(text=default_text)
 
+
+        arm_reset()
+
+
         return
 
 
@@ -476,6 +492,7 @@ def run_spin_toggle(button, default_text, status_text, duration, spin_function):
 
 
     spin_stop.clear()
+    arm_green()
 
     button.config(text="Cancel Spin")
 
@@ -570,7 +587,7 @@ def SPIN():
         SPIN_ALL,
         "Spin ALL",
         "SPIN ALL",
-        10,
+        8,
         Spin_test.SPIN_START
     )
 
@@ -582,7 +599,7 @@ def TOP_SPIN():
         SPIN_TOP,
         "Spin TOP",
         "SPIN TOP",
-        7,
+        6,
         Spin_test.SPIN_TOP
     )
 
@@ -594,7 +611,7 @@ def BOT_SPIN():
         SPIN_BOT,
         "Spin BOT",
         "SPIN BOT",
-        7,
+        6,
         Spin_test.SPIN_BOT
     )
 
@@ -606,7 +623,7 @@ def PROP_SPIN():
         PROP,
         "Prop Test",
         "PROP TEST",
-        61,
+        39,
         Spin_test.SPIN_PROP
     )
 
@@ -650,9 +667,12 @@ def TOGGLE_LED():
     if LED_btn.cget("text") == "Turn LED On":
         LED.LED_ON()
         LED_btn.config(text="Turn LED Off")
+        arm_green()
     else:
         LED.LED_OFF()
         LED_btn.config(text="Turn LED On")
+        arm_reset()
+
 
 def power_off():
     global pwr_after_id, arm_powered
@@ -882,6 +902,8 @@ LED_btn = ttk.Button(Arm_f, text="Turn LED On", bootstyle=SECONDARY, width=24, c
 LED_btn.pack(expand=TRUE, pady=5)
 PROP = ttk.Button(Arm_f, text="Prop Test", bootstyle=SECONDARY, width=24, command=PROP_SPIN)
 PROP.pack(expand=TRUE, pady=5)
+STOP_btn = ttk.Button(Arm_f, text="STOP", bootstyle="danger", style="Stop.TButton", width=24, command=power_off); STOP_btn.pack(side=BOTTOM, anchor=SE, padx=25, pady=25)
+
 
 
 

@@ -15,7 +15,7 @@ def INIT():
             print("[LED] INIT ERROR: Precharge not initialized")
             return
 
-        lgpio.gpio_claim_output(h, LED_GPIO)
+        lgpio.gpio_claim_output(h, LED_GPIO, 0)
         lgpio.gpio_write(h, LED_GPIO, 0)
         print("[LED] INIT -> LOW")
 

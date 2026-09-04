@@ -36,7 +36,7 @@ PROP_PULSE_PAUSE_DELAY = 2
 
 SWEEP_DELAY = 0.005
 PUNCH_SWEEP_DELAY = 0.0005
-STEP_SIZE = 2.  # cannot be zero.. obviously
+STEP_SIZE = 1.  # cannot be zero.. obviously
 
 _last_sent = {}
 _stop_event = None
