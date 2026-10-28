@@ -1,0 +1,8 @@
+# Prop test telemetry logs. Clean runs delete their own log; the ones that
+# survive are fault logs, pruned after Hobbywing_Prop_Test.LOG_RETENTION_DAYS.
+Logs/
+
+Simulator/
+
+__pycache__/
+*.py[cod]
