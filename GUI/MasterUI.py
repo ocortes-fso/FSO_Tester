@@ -71,6 +71,8 @@ body_pwm_done = threading.Event()   # set by body_test() the moment run_pwm_test
 body_lock_start = 0
 # Set by body_test when a run stops early, rendered once the lock lifts.
 body_result_note = ""
+# The running worker, so Start can refuse to launch a second one.
+body_thread = None
 
 # Hard ceiling on the lock, because two of the four sections can block forever:
 # Analog_port_test and PWM_test both call master.wait_heartbeat() with no
@@ -300,7 +302,12 @@ def home():
         root.after_cancel(propv2_after_id)
         propv2_after_id = None
     if Hobbywing_Prop_Test.session_live():
-        Hobbywing_Prop_Test.session_emergency_stop()
+        # Leaving the page is a normal operator action, so power off normally
+        # rather than flagging an emergency. The exception is walking out with
+        # a phase still running - that abandoned a run, so keep the trace.
+        if propv2_running:
+            Hobbywing_Prop_Test.mark_log_keep("page left mid-phase")
+        Hobbywing_Prop_Test.session_power_off()
     # Stops the sampler and closes the I2C bus. The sampler outlives the
     # emergency stop on purpose, so leaving the page is what actually ends it -
     # and it must end before the Arm Test page's own I2C polling can start.
@@ -358,12 +365,15 @@ def start_batt_monitor():
 
 #####*****CHANGES*****#####
 # ==========================================================================
-# Body test navigation lock
+# Body test: Start/Stop and the navigation lock
 # ==========================================================================
 # The body test reboots the flight controller twice: once in the analog port
 # test and again in the PWM test. If the operator leaves the page mid-reboot
 # the FC is left with the test parameters still written to it, so every way
-# off this page is disabled until the PWM test returns.
+# off this page is disabled from Start until the PWM test returns.
+#
+# The lock is taken by the Start button, not by opening the page - so the
+# Ethernet and SBUS tests are reachable the moment you arrive.
 #
 # "Every way off" is four buttons: Home, plus the three sub-test buttons on the
 # Body page itself (Ethernet / INF SBUS / Standard SBUS), which pack_forget
@@ -376,12 +386,23 @@ def body_nav_buttons():
 
 
 def body_lock_nav(locked):
-    """Disable/enable every exit from the Body page. Tk thread only."""
+    """
+    Disable/enable every exit from the Body page. Tk thread only.
+
+    Also drives Start/Stop, because "the lock is held" and "the test is
+    running" are the same condition - keeping them in one place means they
+    cannot drift apart.
+    """
     global body_nav_locked
     body_nav_locked = locked
 
     for b in body_nav_buttons():
         b.config(state="disabled" if locked else "normal")
+
+    #####*****CHANGES*****#####
+    BODY_START.config(state="disabled" if locked else "normal")
+    BODY_STOP.config(state="normal" if locked else "disabled")
+    #####*****END CHANGES*****#####
 
     # Say why the buttons are dead, or the next person to use the rig will
     # reasonably assume the GUI has hung.
@@ -396,6 +417,73 @@ def body_lock_nav(locked):
         lbody_lock.config(text=body_result_note, bootstyle=DANGER)
     else:
         lbody_lock.config(text="", bootstyle=SECONDARY)
+
+
+#####*****CHANGES*****#####
+def body_reset_labels():
+    """Clear the four result lines plus the status note. Tk thread only."""
+    ls.config(text="Waiting for heartbeat", bootstyle=SECONDARY, font=(None, 14))
+    la.config(text="", bootstyle=SECONDARY)
+    lcan.config(text="", bootstyle=SECONDARY)
+    lpwm.config(text="", bootstyle=SECONDARY)
+    lbody_lock.config(text="", bootstyle=SECONDARY)
+
+
+def body_start():
+    """
+    Start button. Runs the four body-test sections in a worker thread.
+
+    The navigation lock is taken here, on the Tk thread, before the thread is
+    started - so the exits are already dead before the first reboot can begin.
+    """
+    global body_lock_start, body_result_note, body_thread
+
+    # A run can still be finishing reset.run_reset() after the lock lifted, so
+    # check the thread rather than the lock before starting a second one.
+    if body_thread is not None and body_thread.is_alive():
+        print("[BODY] already running")
+        return
+
+    body_result_note = ""
+    body_stop.clear()
+    body_pwm_done.clear()
+    body_reset_labels()
+
+    body_lock_start = time.time()
+    body_lock_nav(True)
+
+    body_thread = threading.Thread(target=body_test, daemon=True)
+    body_thread.start()
+    body_nav_watch(body_thread)
+
+
+def body_stop_test():
+    """
+    Stop button. Asks the run to stop at the next section boundary.
+
+    It cannot be instant: body_test only checks the flag between sections, and
+    the sections themselves contain fixed settles that cannot be cut short (20 s
+    in the analog port test, 15 s in the PWM test) because the flight controller
+    is rebooting through them. So this is a request, and the label says so.
+
+    The navigation lock deliberately stays on until the section ends - that is
+    the whole point of it, the FC is still mid-reboot.
+    """
+    global body_result_note
+
+    if not body_nav_locked:
+        return
+
+    print("[BODY] stop requested")
+    body_stop.set()
+    BODY_STOP.config(state="disabled")
+    body_result_note = "Stopped by operator - results below may be incomplete."
+    lbody_lock.config(
+        text="Stopping - waiting for the current section to finish "
+             "(a reboot cannot be cut short)...",
+        bootstyle=WARNING,
+    )
+#####*****END CHANGES*****#####
 
 
 def body_nav_watch(t):
@@ -681,6 +769,8 @@ def propv2_buttons_idle():
     """Nothing powered: only the precharge button is usable."""
     PV2_PRECHARGE.config(state="normal", text="Start Precharge")
     PV2_PRECHARGE.configure(style="PropIdle.TButton")
+    PV2_POWEROFF.config(state="disabled")       # nothing to power off
+    PV2_POWEROFF.configure(style="PropIdle.TButton")
     PV2_LED.config(state="disabled", text="Turn LED On")
     PV2_LED.configure(style="PropIdle.TButton")
     for b in propv2_test_buttons():
@@ -689,9 +779,11 @@ def propv2_buttons_idle():
 
 
 def propv2_buttons_live():
-    """Bus up and idle: every test is available."""
+    """Bus up and idle: every test is available, and so is powering off."""
     PV2_PRECHARGE.config(state="disabled", text="Precharged")
     PV2_PRECHARGE.configure(style="PropOn.TButton")
+    PV2_POWEROFF.config(state="normal")
+    PV2_POWEROFF.configure(style="PropIdle.TButton")
     PV2_LED.config(state="normal")
     PV2_LED.configure(style="PropOn.TButton" if PV2_LED.cget("text") == "Turn LED Off" else "PropIdle.TButton")
     for key, b in zip(("top", "bot", "both", "pulse"), propv2_test_buttons()):
@@ -706,8 +798,13 @@ def propv2_buttons_busy(active):
 
     Locking the others matters: starting a second phase while one is running
     would have two worker threads commanding the same two ESCs.
+
+    Power Off is locked out too. Cutting power with the motors spinning is the
+    emergency case, not the normal one, and the emergency stop is the button
+    for that - it is the only one that is never disabled.
     """
     PV2_PRECHARGE.config(state="disabled")
+    PV2_POWEROFF.config(state="disabled")
     PV2_LED.config(state="disabled")
     for b in propv2_test_buttons():
         if b is active:
@@ -771,6 +868,47 @@ def propv2_precharge():
             propv2_post(failed)
 
     threading.Thread(target=worker, daemon=True).start()
+
+
+def propv2_power_off():
+    """
+    Button: normal end-of-test power-down. LIVE -> SAFE.
+
+    The counterpart to Start Precharge, and the one to use when the test is
+    simply finished: it de-energises exactly as hard as the emergency stop
+    does, but without flagging a fault, so a clean run still bins its log.
+
+    Disabled while a phase is running. Cutting power with the motors spinning
+    is the emergency case, and that button is right there.
+    """
+    global propv2_fault_latched, propv2_idle_watch, propv2_idle_note
+
+    if not Hobbywing_Prop_Test.session_live():
+        return
+
+    propv2_stop.set()
+
+    try:
+        kept = Hobbywing_Prop_Test.session_power_off()
+    except Exception as e:
+        print(f"[PROP V2 POWER OFF ERROR] {e}")
+        kept = None
+
+    propv2_bar_stop()
+    PV2_LED.config(text="Turn LED On")
+
+    propv2_fault_latched = False
+    note = "powered down"
+    if kept:
+        # Something earlier in the run flagged itself, so the log survived even
+        # though this was a normal shutdown. Say so.
+        note += f", log: {os.path.basename(kept)}"
+    propv2_idle_note = note
+    propv2_idle_watch = True
+    set_propv2_state("SAFE", f"{note} - reading bus...")
+
+    propv2_buttons_idle()
+    root.update_idletasks()
 
 
 def propv2_estop(detail="operator pressed STOP"):
@@ -946,28 +1084,21 @@ def loom():
     loom_f.pack(fill=BOTH, expand=TRUE)
     
 def body():
-    global body_lock_start, body_result_note            #####*****CHANGES*****#####
+    #####*****CHANGES*****#####
+    # Opening the page no longer starts the test. It used to, which meant the
+    # Ethernet and SBUS buttons were unreachable for the ~55 s the body test
+    # takes - you had to sit through a full run (two flight controller reboots)
+    # before you could do anything else on this page. Now the page just shows,
+    # and the test waits for the Start button.
+    global body_result_note
     body_result_note = ""                               # clear last run's verdict
     body_stop.clear()
-    ls.config(text="Waiting for heartbeat", bootstyle=SECONDARY,font=(None, 14))
-    la.config(text="", bootstyle=SECONDARY)
-    lcan.config(text="", bootstyle=SECONDARY)
-    lpwm.config(text="", bootstyle=SECONDARY)
+    body_reset_labels()
     main.pack_forget()
     back_b.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Body_f.pack(fill=BOTH, expand=TRUE)
-
-    #####*****CHANGES*****#####
-    # Lock navigation, then watch the worker from the Tk thread. The lock is
-    # taken here (on the Tk thread) rather than inside body_test, so the
-    # buttons are already dead before the first reboot can start.
-    body_pwm_done.clear()
-    body_lock_start = time.time()
-    body_lock_nav(True)
-    t = threading.Thread(target=body_test, daemon=True)
-    t.start()
-    body_nav_watch(t)
+    body_lock_nav(False)        # nothing running: everything available
     #####*****END CHANGES*****#####
 
 def volt():
@@ -1548,8 +1679,7 @@ def body_test():
         # the watchdog lifts the lock. Setting the label here instead would
         # race with that same call clearing it.
         global body_result_note
-        body_result_note = ("Stopped at the serial test: no heartbeat, so "
-                            "nothing downstream can run. Fix the link and run "
+        body_result_note = ("Stopped at the serial test: Fix the link and run "
                             "Body Test again.")
         return
     #####*****END CHANGES*****#####
@@ -1665,6 +1795,21 @@ SB1 = ttk.Button(Body_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, 
 SB2 = ttk.Button(Body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20, command=SBUS); SB2.pack(expand=TRUE, anchor=E, padx=75)
 Debug = ttk.Button(Body_f, text="Debug Mode", bootstyle=SECONDARY, width=20); #Debug.pack(expand=TRUE, anchor=E, padx=75)   #hidden for now until we work this out
 
+#####*****CHANGES*****#####
+# Start/Stop for the four-section body test, which no longer auto-runs on page
+# entry. Packed with before=eth1 so they sit at the TOP of the right-hand
+# column: they are created down here because `command=` needs the handlers to
+# exist already, but they belong above the sub-test buttons visually.
+BODY_START = ttk.Button(Body_f, text="Start Body Test", bootstyle=SUCCESS, width=20, command=body_start)
+BODY_START.pack(expand=TRUE, anchor=E, padx=75, before=eth1)
+
+BODY_STOP = ttk.Button(Body_f, text="Stop Body Test", bootstyle=DANGER, width=20, command=body_stop_test)
+BODY_STOP.pack(expand=TRUE, anchor=E, padx=75, before=eth1)
+
+# Nothing running yet, so Stop starts out dead.
+BODY_STOP.config(state="disabled")
+#####*****END CHANGES*****#####
+
 # Arm buttons
 # Arm buttons
 PWR = ttk.Button(Arm_f, text="POWER ON", bootstyle=PRIMARY, style="Arm.TButton", width=24, command=toggle_power)
@@ -1708,16 +1853,22 @@ propv2_title.pack(pady=(25, 5))
 PV2_PRECHARGE = ttk.Button(propv2_btns, text="Start Precharge", style="PropIdle.TButton", width=26, command=propv2_precharge)
 PV2_PRECHARGE.pack(expand=TRUE, pady=6)
 
-# 2. Emergency stop. Bigger style and extra padding above/below so it is hard
+# 2. Power off - the opposite of precharge, so it sits next to it. Normal
+#    end-of-test shutdown: de-energises just as hard as the emergency stop but
+#    without flagging a fault, so a clean run still bins its log.
+PV2_POWEROFF = ttk.Button(propv2_btns, text="Power Off", style="PropIdle.TButton", width=26, command=propv2_power_off)
+PV2_POWEROFF.pack(expand=TRUE, pady=6)
+
+# 3. Emergency stop. Bigger style and extra padding above/below so it is hard
 #    to hit by accident and impossible to miss when you need it.
 PV2_ESTOP = ttk.Button(propv2_btns, text="EMERGENCY STOP", style="EStop.TButton", width=22, command=propv2_estop)
 PV2_ESTOP.pack(expand=TRUE, pady=(18, 18))
 
-# 3. LED
+# 4. LED
 PV2_LED = ttk.Button(propv2_btns, text="Turn LED On", style="PropIdle.TButton", width=26, command=propv2_led)
 PV2_LED.pack(expand=TRUE, pady=6)
 
-# 4-7. The four phases from Hobbywing_Prop_Test.SEQUENCE
+# 5-8. The four phases from Hobbywing_Prop_Test.SEQUENCE
 PV2_TOP = ttk.Button(propv2_btns, text="TOP Motor Test", style="PropIdle.TButton", width=26, command=propv2_top)
 PV2_TOP.pack(expand=TRUE, pady=6)
 

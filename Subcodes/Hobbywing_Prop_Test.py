@@ -137,11 +137,12 @@ LOG_RETENTION_DAYS = 4
 #   * a guard trip (over-current / under-voltage)
 #   * a failed precharge
 #   * an exception out of a phase
-#   * the operator cancelling a phase - if you stopped a run part way through,
-#     you stopped it for a reason and the trace is what tells you why
+#   * the operator cancelling a phase, or hitting EMERGENCY STOP - if you
+#     reached for either, you reached for it for a reason, and the trace is
+#     what tells you what it was
 #
-# The one case that still bins its log is a run that went all the way through
-# and was then ended with STOP. Nothing happened, so there is nothing to read.
+# The case that bins its log is a run ended with the normal POWER OFF button.
+# Nothing went wrong, so there is nothing to read.
 _log_keep = False
 
 
@@ -1119,33 +1120,39 @@ def session_cancel_phase():
     _abort("cancelled by operator")
 
 
-def session_emergency_stop():
+def _shutdown(reason, tag, keep_log):
     """
-    Everything off, in the order that leaves the rig safest.
+    De-energise the rig. Shared by the normal power-off and the emergency stop,
+    which differ only in what they do with the log.
+
+    Order is what matters and it is the reverse of session_power_up():
+    throttle to safe, frames off, LED off, FET off, precharge off, chip closed.
 
     Safe to call from the Tk thread at any time, including while a worker
     thread is mid-phase, and safe to call twice. Frames die before power does,
     and SoftServoPWM.stop() latches `disabled` so the unwinding worker cannot
     push any more commands at the closed handle.
     """
-    _abort("emergency stop")
+    if keep_log:
+        mark_log_keep(reason)
+    _abort(reason)
 
     pwm = _session["pwm"]
     if pwm is not None:
         try:
             if pwm.live:
                 pwm.all_safe()      # 1000 us on both channels
-                time.sleep(0.1)     # one 50 Hz frame is 20 ms, so this lands
+                time.sleep(0.1)     # one frame is 20 ms at 50 Hz, so this lands
             pwm.stop()              # frames off -> ESCs go back to beeping
         except Exception as e:
-            print(f"[E-STOP] PWM: {e}")
+            print(f"[{tag}] PWM: {e}")
 
     # The LED runs off the same bus as the ESCs, so it goes off with everything
     # else rather than being left lit on a dead rail.
     try:
         LED.LED_OFF()
     except Exception as e:
-        print(f"[E-STOP] LED: {e}")
+        print(f"[{tag}] LED: {e}")
 
     power_down()                    # FET off, precharge off, gpiochip closed
 
@@ -1157,12 +1164,35 @@ def session_emergency_stop():
     if telem is not None:
         telem.set_guards(False)
 
-    session_finish_log()            #####*****CHANGES*****##### bin it if clean
+    kept = session_finish_log()
 
     _session.update(pwm=None)
     _set_state(phase="stopped", step="-", target_us=None,
                top_us=None, bot_us=None)
-    print("[E-STOP] complete")
+    print(f"[{tag}] complete")
+    return kept
+
+
+def session_power_off():
+    """
+    Normal end-of-test power-down. The opposite of session_power_up().
+
+    Takes the rig from LIVE back to SAFE without flagging anything wrong, so a
+    run that went fine still bins its log. This is the button you want when the
+    test is simply finished - reaching for the emergency stop every time would
+    make every log a kept one and bury the ones that matter.
+    """
+    return _shutdown("powered down by operator", "POWER OFF", keep_log=False)
+
+
+def session_emergency_stop():
+    """
+    Emergency power-down. Same teardown, but the log is kept.
+
+    Hitting this means something was wrong, so the trace up to that point is
+    worth reading - same reasoning as cancelling a phase.
+    """
+    return _shutdown("emergency stop", "E-STOP", keep_log=True)
 #####*****END CHANGES*****#####
 
 
