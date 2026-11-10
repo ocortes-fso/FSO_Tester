@@ -112,12 +112,28 @@ PRECHARGE_GOOD_COUNT = 2        # consecutive good reads before we close the FET
 PRECHARGE_POLL_S = 0.2
 
 #####*****CHANGES*****#####
-# With the FET open and the precharge off, the INA228 sits on the load side of
-# the switch and should read roughly nothing. Anything above this while we
-# believe the rig is unpowered means residual charge in the ESC capacitors, a
-# FET that is not actually opening, or a feed wired past the switch - so the
-# page says so instead of claiming SAFE.
-BUS_DEAD_MAX_V = 2.0
+# Precharge is disabled (faulty hardware, see Precharge.py). The four constants
+# above belong to the wait-for-bus-voltage loop that went with it; they are left
+# here for the PCB redesign. What runs instead is a single input-voltage check,
+# and these are its knobs. The sane window itself lives in Precharge.py so the
+# Arm Test page and this module cannot disagree about it.
+VIN_CHECK_SAMPLES = 5
+VIN_CHECK_INTERVAL_S = 0.05
+#####*****END CHANGES*****#####
+
+#####*****CHANGES*****#####
+# NO LONGER USED - kept for the PCB redesign.
+#
+# This was the "is the rig really dead?" threshold, written when the INA228 was
+# assumed to sit on the LOAD side of the switch, so that it read ~0 V with the
+# FET open and anything higher meant trouble. The input-voltage check that
+# replaces precharge only works if the monitor reads the INPUT side instead, so
+# with the FET open it now reads the pack and a reading near 25 V is correct and
+# expected. Judging "dead" from this number would be wrong either way round, so
+# the idle readout classifies the input voltage instead - see
+# Precharge.classify_input_voltage and propv2_idle_readout in the GUI.
+#
+# BUS_DEAD_MAX_V = 2.0
 
 
 # ---------------------------------------------------------------------------
@@ -681,53 +697,67 @@ def _fmt_unit(v, unit, nd):
 # Power sequencing
 # ---------------------------------------------------------------------------
 
+def read_input_voltage(samples=VIN_CHECK_SAMPLES):
+    """
+    Sample the input voltage and return the median, or None if nothing read.
+
+    Median of a few samples rather than one: the gate on closing the main FET
+    should not swing on a single I2C glitch, in either direction - a spurious
+    low blocks a good pack, a spurious good reading lets a bad one through.
+    """
+    reads = []
+    for _ in range(samples):
+        with _i2c_lock:
+            v = Batt_monitor.read_battery_voltage()
+        if v is not None:
+            reads.append(v)
+        time.sleep(VIN_CHECK_INTERVAL_S)
+
+    if not reads:
+        return None
+    reads.sort()
+    return reads[len(reads) // 2]
+
+
 def power_up():
     """
-    Precharge, then close the main FET. See Precharge.py for the pin polarity.
+    Check the input voltage, then close the main FET.
 
-    Order matters and this is the whole reason the precharge circuit exists:
-    charge the bus capacitance through the precharge resistor first, confirm
-    the bus has actually come up, only then put the low-resistance FET across
-    it, and finally remove the resistor from the path. Closing the FET into a
-    flat bus is what welds contacts, pops ESC caps and browns out the Pi.
+    #####*****CHANGES*****#####
+    The precharge circuit is faulty and disabled (see Precharge.py), so the
+    stage that used to charge the bus capacitance through a resistor and wait
+    for it to come up is gone. What is left is the check we can still make:
+    confirm the input looks like the 25 V pack before switching onto it.
+
+    Be clear about what this does and does not buy: it stops us closing the FET
+    onto a missing, flat or wrong supply, but it does nothing about inrush into
+    the ESC bus capacitance. That protection comes back with the new board.
+
+    Raises RuntimeError whose message is written for the operator - the GUI puts
+    it straight on screen - and leaves the FET open on any failure.
     """
     Precharge.INITIALIZE_SYSTEM()
-    Precharge.START_PRECHARGE()
+    Precharge.START_PRECHARGE()         # no-op while precharge is disabled
 
-    deadline = time.monotonic() + PRECHARGE_TIMEOUT_S
-    good = 0
+    if stop_requested():
+        Precharge.CLOSE_FET()
+        raise RuntimeError("aborted before power up")
 
-    while time.monotonic() < deadline:
-        if stop_requested():
-            Precharge.CLOSE_FET()
-            Precharge.TURN_OFF_PRECHARGE()
-            raise RuntimeError("aborted during precharge")
+    volts = read_input_voltage()
+    ok, message = Precharge.classify_input_voltage(volts)
 
-        with _i2c_lock:
-            volts = Batt_monitor.read_battery_voltage()
+    if not ok:
+        # Never close the FET on an input we could not confirm.
+        Precharge.CLOSE_FET()
+        Precharge.TURN_OFF_PRECHARGE()
+        print(f"[POWER UP] refused: {message}")
+        raise RuntimeError(message)
 
-        if volts is not None and volts >= PRECHARGE_MIN_VOLTAGE:
-            good += 1
-            print(f"[PRECHARGE] bus {volts:.2f} V OK ({good}/{PRECHARGE_GOOD_COUNT})")
-            if good >= PRECHARGE_GOOD_COUNT:
-                Precharge.OPEN_FET()
-                Precharge.TURN_OFF_PRECHARGE()
-                print("[PRECHARGE] complete, bus live")
-                return
-        else:
-            good = 0
-            shown = _fmt_num(volts, 2) or "no reading"
-            print(f"[PRECHARGE] bus {shown} V, waiting")
-
-        time.sleep(PRECHARGE_POLL_S)
-
-    # Never close the FET on a bus that did not come up.
-    Precharge.CLOSE_FET()
+    print(f"[POWER UP] input {message} - closing FET")
+    Precharge.OPEN_FET()
     Precharge.TURN_OFF_PRECHARGE()
-    raise RuntimeError(
-        f"precharge did not reach {PRECHARGE_MIN_VOLTAGE} V in "
-        f"{PRECHARGE_TIMEOUT_S} s - check the pack and the precharge resistor"
-    )
+    print("[POWER UP] bus live")
+    #####*****END CHANGES*****#####
 
 
 def power_down():
@@ -795,6 +825,15 @@ def run_full_test(phases=None, do_power=True, guards_enabled=True, log_dir=None,
     completed = []
 
     try:
+        #####*****CHANGES*****#####
+        # Sampling and logging start BEFORE the power-up, not after. power_up()
+        # now reads the input voltage and refuses to close the FET if it is bad,
+        # and that refusal is exactly the thing worth having a trace of - it was
+        # being thrown away because the thread had not opened the CSV yet. This
+        # matches session_power_up(), which already did it in this order.
+        telem.start()
+        #####*****END CHANGES*****#####
+
         # --- step 1: power up, no frames, listen for the 1 Hz beeps ----------
         if do_power:
             print("\n[1] Powering up")
@@ -802,8 +841,6 @@ def run_full_test(phases=None, do_power=True, guards_enabled=True, log_dir=None,
         else:
             print("\n[1] --no-power: skipping precharge, FET stays open")
             Precharge.INITIALIZE_SYSTEM()
-
-        telem.start()
 
         pwm = SoftServoPWM(Precharge.h)
         pwm.claim()

@@ -225,6 +225,16 @@ status_dot.pack(anchor="w")
 status_text = ttk.Label(status_container,text="SAFE",bootstyle=SECONDARY,style='Sub.TLabel')
 status_text.pack(anchor="w")
 
+#####*****CHANGES*****#####
+# Why the power-on was refused. Precharge is disabled (faulty hardware) and the
+# FET now only closes if the input voltage checks out, so when it does not the
+# operator needs the reason on screen - "Check Battery" on the button did not
+# say whether the pack was missing, flat, or the monitor unreachable.
+arm_reason = ttk.Label(status_container, text="", bootstyle=SECONDARY,
+                       font=(None, 13), wraplength=320, justify="left")
+arm_reason.pack(anchor="w")
+#####*****END CHANGES*****#####
+
 
 spin_label = ttk.Label(status_container, text="", bootstyle=INFO, style='Sub.TLabel')
 spin_label.pack(anchor="w")
@@ -253,7 +263,7 @@ propv2_state_lbl = ttk.Label(propv2_side, text="NO POWER", bootstyle=SECONDARY, 
 propv2_state_lbl.pack(anchor="e")
 
 # Second line of the status: which phase/step, or why we faulted.
-propv2_detail_lbl = ttk.Label(propv2_side, text="press Start Precharge", bootstyle=INFO, font=(None, 13))
+propv2_detail_lbl = ttk.Label(propv2_side, text="press Power On", bootstyle=INFO, font=(None, 13))
 propv2_detail_lbl.pack(anchor="e", pady=(0, 18))
 
 propv2_v_lbl = ttk.Label(propv2_side, text="Voltage:  --", bootstyle=SECONDARY, style='Sub.TLabel')
@@ -349,6 +359,7 @@ def arm():
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Arm_f.pack(fill=BOTH, expand=TRUE)
     lpwm_status.config(text="PWM1: --   PWM2: --")
+    arm_reason.config(text="press POWER ON", bootstyle=SECONDARY)   #####*****CHANGES*****#####
     Precharge.INITIALIZE_SYSTEM()
     LED.INIT()
     LED.LED_OFF()
@@ -638,30 +649,31 @@ def set_propv2_state(state, detail=""):
     propv2_detail_lbl.config(text=detail)
 
 
+#####*****CHANGES*****#####
+# Rewritten: precharge is disabled (faulty hardware), so the gate on closing the
+# main FET is now "does the input look like the 25 V pack?". Running that same
+# check continuously while idle puts the answer on screen before the operator
+# presses anything, so a bad pack names itself instead of only showing up as a
+# refused power-on.
+#
+# The old version asked whether the bus had gone dead, which assumed the monitor
+# sat on the LOAD side of the FET. It cannot be both sides at once, and the input
+# check needs it on the INPUT side - so that test is gone.
 def propv2_idle_readout(volts):
     """
-    State for the unpowered page, decided by what the shunt actually reads.
+    State for the unpowered page: a live pre-flight check of the input.
 
-    SAFE is an assertion about the hardware, so it is only made when there is a
-    reading to back it up:
-
-      * no reading      -> FAULT. The INA228 is not answering, so nothing else
-                           on this page can be trusted either. Almost always
-                           I2C wiring or the wrong address.
-      * bus still up    -> FAULT. FET open and precharge off, yet there is
-                           voltage: residual charge in the ESC caps, a FET that
-                           is not opening, or a feed wired past the switch.
-      * near zero       -> SAFE, with the measured value shown so the operator
-                           can see it is a measurement and not an assumption.
+    Classification lives in Precharge.classify_input_voltage, shared with the
+    Arm Test page so the two cannot disagree about what "sane" means.
     """
-    if volts is None:
-        return "FAULT", "no INA228 reading - check the I2C wiring"
+    ok, message = Precharge.classify_input_voltage(volts)
 
-    if volts > Hobbywing_Prop_Test.BUS_DEAD_MAX_V:
-        return "FAULT", f"bus still at {volts:.2f} V with the FET open - do not touch"
+    if not ok:
+        return "FAULT", message
 
     note = f"{propv2_idle_note} - " if propv2_idle_note else ""
-    return "SAFE", f"{note}bus {volts:.2f} V - press Start Precharge"
+    return "SAFE", f"{note}Vin {message} - press Power On"
+#####*****END CHANGES*****#####
 
 
 def update_propv2():
@@ -767,7 +779,7 @@ def propv2_test_buttons():
 
 def propv2_buttons_idle():
     """Nothing powered: only the precharge button is usable."""
-    PV2_PRECHARGE.config(state="normal", text="Start Precharge")
+    PV2_PRECHARGE.config(state="normal", text="Power On (FET)")
     PV2_PRECHARGE.configure(style="PropIdle.TButton")
     PV2_POWEROFF.config(state="disabled")       # nothing to power off
     PV2_POWEROFF.configure(style="PropIdle.TButton")
@@ -780,7 +792,7 @@ def propv2_buttons_idle():
 
 def propv2_buttons_live():
     """Bus up and idle: every test is available, and so is powering off."""
-    PV2_PRECHARGE.config(state="disabled", text="Precharged")
+    PV2_PRECHARGE.config(state="disabled", text="Powered")
     PV2_PRECHARGE.configure(style="PropOn.TButton")
     PV2_POWEROFF.config(state="normal")
     PV2_POWEROFF.configure(style="PropIdle.TButton")
@@ -832,7 +844,7 @@ def propv2_precharge():
     propv2_idle_watch = False       # the handler owns the status from here on
     propv2_idle_note = ""
     propv2_stop.clear()
-    set_propv2_state("PRECHARGING", "charging bus through the resistor")
+    set_propv2_state("PRECHARGING", "checking input voltage...")
     PV2_PRECHARGE.config(state="disabled")
 
     def worker():
@@ -861,7 +873,7 @@ def propv2_precharge():
                 # status corner back to the idle readout, carrying the reason.
                 global propv2_idle_watch, propv2_idle_note
                 set_propv2_state("FAULT", msg)
-                propv2_idle_note = "precharge failed"
+                propv2_idle_note = "power on refused"
                 propv2_idle_watch = True
                 propv2_buttons_idle()
 
@@ -874,7 +886,7 @@ def propv2_power_off():
     """
     Button: normal end-of-test power-down. LIVE -> SAFE.
 
-    The counterpart to Start Precharge, and the one to use when the test is
+    The counterpart to Power On, and the one to use when the test is
     simply finished: it de-energises exactly as hard as the emergency stop
     does, but without flagging a fault, so a clean run still bins its log.
 
@@ -961,7 +973,7 @@ def propv2_estop(detail="operator pressed STOP"):
 def propv2_led():
     """Button 3. LED on/off. Needs the bus live, same as the Arm Test page."""
     if not Hobbywing_Prop_Test.session_live():
-        set_propv2_state("FAULT", "precharge before using the LED")
+        set_propv2_state("FAULT", "power on before using the LED")
         return
 
     if PV2_LED.cget("text") == "Turn LED On":
@@ -992,7 +1004,7 @@ def propv2_run_phase(key, button):
         return
 
     if not Hobbywing_Prop_Test.session_live():
-        set_propv2_state("FAULT", "precharge first")
+        set_propv2_state("FAULT", "power on first")
         return
 
     title = Hobbywing_Prop_Test.PHASE_TITLES[key]
@@ -1190,12 +1202,20 @@ def set_arm_state(state):
         status_dot.config(foreground="blue")
         status_text.config(text="SPINNING")
 
-PRECHARGE_TIMEOUT = 3000
-PRECHARGE_CHECK_INTERVAL = 200
-PRECHARGE_MIN_VOLTAGE = 21.0
-
-precharge_start_time = None
-precharge_good_count = 0
+#####*****CHANGES*****#####
+# NO LONGER USED - kept for the PCB redesign. These drove the wait-for-bus-
+# voltage loop that went with the precharge circuit; that circuit is faulty and
+# disabled (see Precharge.py), so PWR_ON now does a one-shot input-voltage check
+# instead. The sane input window lives in Precharge.py (VIN_MIN / VIN_MAX) so
+# this page and the Prop TEST V2 page cannot disagree about it.
+#
+# PRECHARGE_TIMEOUT = 3000
+# PRECHARGE_CHECK_INTERVAL = 200
+# PRECHARGE_MIN_VOLTAGE = 21.0
+#
+# precharge_start_time = None
+# precharge_good_count = 0
+#####*****END CHANGES*****#####
 
 def arm_red():
     PWR.configure(style="ArmDanger.TButton")
@@ -1206,114 +1226,121 @@ def arm_reset():
         button.configure(style="Arm.TButton")
 
 
+#####*****CHANGES*****#####
+# PWR_ON / PWR_CHECK rewritten: precharge is disabled (faulty hardware, see
+# Precharge.py). What this used to do was start the precharge, then poll the bus
+# voltage for up to PRECHARGE_TIMEOUT waiting for it to rise - except it also
+# called OPEN_FET() on every poll, before any check ("force fet open for now
+# until fix precharge issue then remove this line!!"), so the FET actually closed
+# onto an unverified supply and the voltage loop only decided whether to call it
+# LIVE or FAULT afterwards.
+#
+# That last part is almost certainly why the spin buttons stopped working: with
+# the precharge circuit dead the bus never rose, the loop timed out at FAULT, and
+# run_spin_toggle refuses to do anything unless current_state == "LIVE".
+#
+# Now: check the input voltage FIRST, and only close the FET if it looks like the
+# 25 V pack. No polling loop, because there is no longer anything to wait for.
+
+def read_input_voltage(samples=4, interval=0.04):
+    """
+    Median of a few INA228 reads, or None if none of them answered.
+
+    Median rather than a single read so that one I2C glitch cannot decide
+    whether the main FET closes - in either direction. Runs on the Tk thread
+    and blocks for about 160 ms, which is fine for a button press and far
+    simpler than another after() state machine.
+    """
+    reads = []
+    for _ in range(samples):
+        v = Batt_monitor.read_battery_voltage()
+        if v is not None:
+            reads.append(v)
+        time.sleep(interval)
+
+    if not reads:
+        return None
+    reads.sort()
+    return reads[len(reads) // 2]
+
+
 def PWR_ON():
+    """
+    Check the input, then close the main FET. Returns True if the bus went live.
+
+    On refusal the FET is left open, the state goes FAULT, and the reason is put
+    on screen next to the status dot.
+    """
     global pwr_after_id
-    global precharge_start_time
-    global precharge_good_count
 
     try:
         spin_stop.clear()
-        LED.LED_OFF()
         Precharge.INITIALIZE_SYSTEM()
-        Precharge.START_PRECHARGE()
-
-        precharge_start_time = time.time()
-        precharge_good_count = 0
+        LED.LED_OFF()
+        Precharge.START_PRECHARGE()         # no-op while precharge is disabled
 
         set_arm_state("PRECHARGE")
+        arm_reason.config(text="checking input voltage...", bootstyle=INFO)
+        root.update_idletasks()
 
-        pwr_after_id = PWR.after(
-            PRECHARGE_CHECK_INTERVAL,
-            PWR_CHECK
-        )
+        voltage = read_input_voltage()
+        ok, message = Precharge.classify_input_voltage(voltage)
 
-    except Exception as e:
-        print(f"[PWR ON ERROR] Cannot start precharge: {e}")
-
-        set_arm_state("FAULT")
-        Precharge.CLOSE_FET()
-        PWR.config(text="Precharge FAIL")
-
-def toggle_power():
-    global arm_powered
-
-    if not arm_powered:
-        PWR_ON()
-        arm_powered = True
-        PWR.config(text="POWER OFF")
-        arm_red()
-    else:
-        power_off()
-        arm_powered = False
-        PWR.config(text="POWER ON")
-        arm_reset()
-
-
-def PWR_CHECK():
-    global pwr_after_id
-    global precharge_good_count
-
-    try:
-        elapsed = (time.time() - precharge_start_time) * 1000
-
-        Precharge.OPEN_FET()   #force fet open for now until fix precharge issue then remove this line!!. 
-
-        LED.LED_OFF() 
-
-        if elapsed >= PRECHARGE_TIMEOUT:
-            print("[PWR CHECK] Precharge timeout")
-
+        if not ok:
+            print(f"[PWR ON] refused: {message}")
             Precharge.CLOSE_FET()
             Precharge.TURN_OFF_PRECHARGE()
             pwr_after_id = None
             set_arm_state("FAULT")
-            PWR.config(text="Check Battery")
-            return
+            arm_reason.config(text=message, bootstyle=DANGER)
+            PWR.config(text="Check Input")
+            return False
 
+        print(f"[PWR ON] input {message} - closing FET")
 
-        voltage = Batt_monitor.read_battery_voltage()
+        Precharge.OPEN_FET()
+        Precharge.TURN_OFF_PRECHARGE()
+        LED.LED_OFF()                       # bus-powered, so force it off
 
-        if voltage is not None and voltage >= PRECHARGE_MIN_VOLTAGE:
-            precharge_good_count += 1
-            print(f"[PWR CHECK] Voltage OK {voltage:.2f}V ({precharge_good_count}/2)")
+        Spin_test.claim_pwm_pins()
 
-        else:
-            precharge_good_count = 0
-            print(f"[PWR CHECK] Voltage low {voltage}")
-
-
-        if precharge_good_count >= 2:
-
-            print("[PWR CHECK] Precharge successful")
-
-            Precharge.OPEN_FET()
-
-            root.update()
-
-            Precharge.TURN_OFF_PRECHARGE()
-
-            Spin_test.claim_pwm_pins()
-
-            set_arm_state("LIVE")
-            
-            pwr_after_id = None
-            return
-
-
-        pwr_after_id = PWR.after(
-            PRECHARGE_CHECK_INTERVAL,
-            PWR_CHECK
-        )
-
+        set_arm_state("LIVE")
+        arm_reason.config(text=f"Vin {message}", bootstyle=SUCCESS)
+        pwr_after_id = None
+        return True
 
     except Exception as e:
-        print(f"[PWR CHECK ERROR] {e}")
+        print(f"[PWR ON ERROR] {e}")
 
         Precharge.CLOSE_FET()
         Precharge.TURN_OFF_PRECHARGE()
 
         set_arm_state("FAULT")
+        arm_reason.config(text=f"power on failed: {e}", bootstyle=DANGER)
         PWR.config(text="Power ERROR")
+        return False
+
+
+def toggle_power():
+    global arm_powered
+
+    if not arm_powered:
+        # Only latch "powered" if the input check actually passed. It used to
+        # latch unconditionally, which left the button reading POWER OFF after a
+        # refusal - so the obvious retry did a power-off instead.
+        if PWR_ON():
+            arm_powered = True
+            PWR.config(text="POWER OFF")
+            arm_red()
+        else:
+            arm_powered = False
+            PWR.config(text="POWER ON")
+    else:
+        power_off()
+        arm_powered = False
+        PWR.config(text="POWER ON")
+        arm_reset()
+#####*****END CHANGES*****#####
 
 def run_spin_toggle(button, default_text, status_text, duration, spin_function):
 
@@ -1345,7 +1372,13 @@ def run_spin_toggle(button, default_text, status_text, duration, spin_function):
 
 
     if current_state != "LIVE":
+        #####*****CHANGES*****#####
         set_arm_state("FAULT")
+        arm_reason.config(
+            text=f"not live (state: {current_state}) - press POWER ON first",
+            bootstyle=DANGER,
+        )
+        #####*****END CHANGES*****#####
         return
 
 
@@ -1515,7 +1548,13 @@ def stop_spin_progress():
 
 def TOGGLE_LED():
     if current_state != "LIVE":
+        #####*****CHANGES*****#####
         set_arm_state("FAULT")
+        arm_reason.config(
+            text=f"not live (state: {current_state}) - press POWER ON first",
+            bootstyle=DANGER,
+        )
+        #####*****END CHANGES*****#####
         return
 
     if LED_btn.cget("text") == "Turn LED On":
@@ -1561,6 +1600,7 @@ def power_off():
     PWR.configure(style="Arm.TButton")
     LED_btn.config(text="Turn LED On")
     LED_btn.configure(style="Arm.TButton")
+    arm_reason.config(text="", bootstyle=SECONDARY)   #####*****CHANGES*****#####
     arm_reset()
 
 
@@ -1849,8 +1889,10 @@ propv2_btns.pack(side=LEFT, fill=BOTH, expand=TRUE, padx=50)
 propv2_title = ttk.Label(propv2_btns, text="PROP TEST V2", bootstyle=PRIMARY, font=(None, 26, "bold"))
 propv2_title.pack(pady=(25, 5))
 
-# 1. Precharge
-PV2_PRECHARGE = ttk.Button(propv2_btns, text="Start Precharge", style="PropIdle.TButton", width=26, command=propv2_precharge)
+# 1. Power on. Named "precharge" in the identifiers for history - precharge
+#    itself is disabled (faulty hardware); this now checks the input voltage
+#    and closes the main FET. See Precharge.py.
+PV2_PRECHARGE = ttk.Button(propv2_btns, text="Power On (FET)", style="PropIdle.TButton", width=26, command=propv2_precharge)
 PV2_PRECHARGE.pack(expand=TRUE, pady=6)
 
 # 2. Power off - the opposite of precharge, so it sits next to it. Normal
