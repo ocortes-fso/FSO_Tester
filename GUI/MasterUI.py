@@ -650,29 +650,35 @@ def set_propv2_state(state, detail=""):
 
 
 #####*****CHANGES*****#####
-# Rewritten: precharge is disabled (faulty hardware), so the gate on closing the
-# main FET is now "does the input look like the 25 V pack?". Running that same
-# check continuously while idle puts the answer on screen before the operator
-# presses anything, so a bad pack names itself instead of only showing up as a
-# refused power-on.
-#
-# The old version asked whether the bus had gone dead, which assumed the monitor
-# sat on the LOAD side of the FET. It cannot be both sides at once, and the input
-# check needs it on the INPUT side - so that test is gone.
+# The battery monitor is on the OUTPUT of the MOSFETs, so with them open it
+# reads roughly nothing. That makes a pre-flight voltage check impossible -
+# there is nothing on the shunt until the FETs conduct - but it does mean the
+# reading is a direct answer to "is the rig de-energised?", which is what this
+# readout wants.
 def propv2_idle_readout(volts):
     """
-    State for the unpowered page: a live pre-flight check of the input.
+    State for the unpowered page, decided by what the shunt actually reads.
 
-    Classification lives in Precharge.classify_input_voltage, shared with the
-    Arm Test page so the two cannot disagree about what "sane" means.
+    SAFE is an assertion about the hardware, so it is only made when there is a
+    reading to back it up:
+
+      * no reading      -> FAULT. The INA228 is not answering, so nothing else
+                           on this page can be trusted either. Almost always
+                           I2C wiring or the wrong address.
+      * bus still up    -> FAULT. FETs open, yet there is voltage on their
+                           output: residual charge in the ESC caps, a FET that
+                           is not opening, or a feed wired past the switch.
+      * near zero       -> SAFE, with the measured value shown so the operator
+                           can see it is a measurement and not an assumption.
     """
-    ok, message = Precharge.classify_input_voltage(volts)
+    if volts is None:
+        return "FAULT", "no INA228 reading - check the I2C wiring"
 
-    if not ok:
-        return "FAULT", message
+    if volts > Precharge.BUS_DEAD_MAX_V:
+        return "FAULT", f"bus still at {volts:.2f} V with the FETs off - do not touch"
 
     note = f"{propv2_idle_note} - " if propv2_idle_note else ""
-    return "SAFE", f"{note}Vin {message} - press Power On"
+    return "SAFE", f"{note}bus {volts:.2f} V - press Power On"
 #####*****END CHANGES*****#####
 
 
@@ -869,13 +875,20 @@ def propv2_precharge():
             print(f"[PROP V2 PRECHARGE ERROR] {msg}")
 
             def failed():
-                # The FET was never closed, so the rig is safe - hand the
-                # status corner back to the idle readout, carrying the reason.
+                #####*****CHANGES*****#####
+                # Keep the reason pinned instead of handing the corner back to
+                # the idle readout. The readout now reports the dead bus, which
+                # says nothing about WHY the power-on was refused, and it
+                # repaints at 10 Hz - so the message was being wiped before
+                # anyone could read it. Cleared on the next Power On or on
+                # re-entering the page, same as a guard trip. The live bus
+                # voltage is still on screen in the Voltage label either way.
                 global propv2_idle_watch, propv2_idle_note
+                propv2_idle_watch = False
+                propv2_idle_note = ""
                 set_propv2_state("FAULT", msg)
-                propv2_idle_note = "power on refused"
-                propv2_idle_watch = True
                 propv2_buttons_idle()
+                #####*****END CHANGES*****#####
 
             propv2_post(failed)
 
@@ -1206,7 +1219,7 @@ def set_arm_state(state):
 # NO LONGER USED - kept for the PCB redesign. These drove the wait-for-bus-
 # voltage loop that went with the precharge circuit; that circuit is faulty and
 # disabled (see Precharge.py), so PWR_ON now does a one-shot input-voltage check
-# instead. The sane input window lives in Precharge.py (VIN_MIN / VIN_MAX) so
+# instead. The threshold lives in Precharge.py (BUS_MIN_VOLTAGE) so
 # this page and the Prop TEST V2 page cannot disagree about it.
 #
 # PRECHARGE_TIMEOUT = 3000
@@ -1239,15 +1252,19 @@ def arm_reset():
 # the precharge circuit dead the bus never rose, the loop timed out at FAULT, and
 # run_spin_toggle refuses to do anything unless current_state == "LIVE".
 #
-# Now: check the input voltage FIRST, and only close the FET if it looks like the
-# 25 V pack. No polling loop, because there is no longer anything to wait for.
+# Now: close the FETs, let the bus settle, then confirm it reached
+# Precharge.BUS_MIN_VOLTAGE and open them again if it did not. The monitor is on
+# the OUTPUT of the MOSFETs, so it reads nothing until they conduct - the check
+# has to come after switching on. One shot, no polling loop: the old loop
+# existed to watch a precharge resistor slowly charge the bus, and through a
+# closed FET the bus is either up straight away or it is not coming up at all.
 
-def read_input_voltage(samples=4, interval=0.04):
+def read_bus_voltage(samples=4, interval=0.04):
     """
     Median of a few INA228 reads, or None if none of them answered.
 
     Median rather than a single read so that one I2C glitch cannot decide
-    whether the main FET closes - in either direction. Runs on the Tk thread
+    whether the FETs stay closed - in either direction. Runs on the Tk thread
     and blocks for about 160 ms, which is fine for a button press and far
     simpler than another after() state machine.
     """
@@ -1266,10 +1283,13 @@ def read_input_voltage(samples=4, interval=0.04):
 
 def PWR_ON():
     """
-    Check the input, then close the main FET. Returns True if the bus went live.
+    Close the FETs, then confirm the bus came up. Returns True if it went live.
 
-    On refusal the FET is left open, the state goes FAULT, and the reason is put
-    on screen next to the status dot.
+    The monitor is on the OUTPUT of the MOSFETs, so there is nothing to measure
+    until they conduct - the check has to happen after switching on, not before.
+    If the bus does not reach Precharge.BUS_MIN_VOLTAGE the FETs are opened
+    again, the state goes FAULT, and the reason is put on screen next to the
+    status dot.
     """
     global pwr_after_id
 
@@ -1280,32 +1300,37 @@ def PWR_ON():
         Precharge.START_PRECHARGE()         # no-op while precharge is disabled
 
         set_arm_state("PRECHARGE")
-        arm_reason.config(text="checking input voltage...", bootstyle=INFO)
+        arm_reason.config(text="closing FETs...", bootstyle=INFO)
         root.update_idletasks()
 
-        voltage = read_input_voltage()
-        ok, message = Precharge.classify_input_voltage(voltage)
+        Precharge.OPEN_FET()
+        Precharge.TURN_OFF_PRECHARGE()
+
+        arm_reason.config(text="checking bus voltage...", bootstyle=INFO)
+        root.update_idletasks()
+        time.sleep(Precharge.BUS_SETTLE_S)  # let the bus come up before reading
+
+        voltage = read_bus_voltage()
+        ok, message = Precharge.classify_bus_voltage(voltage)
 
         if not ok:
-            print(f"[PWR ON] refused: {message}")
+            print(f"[PWR ON] opening FETs again: {message}")
             Precharge.CLOSE_FET()
             Precharge.TURN_OFF_PRECHARGE()
             pwr_after_id = None
             set_arm_state("FAULT")
             arm_reason.config(text=message, bootstyle=DANGER)
-            PWR.config(text="Check Input")
+            PWR.config(text="Check Battery")
             return False
 
-        print(f"[PWR ON] input {message} - closing FET")
+        print(f"[PWR ON] bus {message} - live")
 
-        Precharge.OPEN_FET()
-        Precharge.TURN_OFF_PRECHARGE()
         LED.LED_OFF()                       # bus-powered, so force it off
 
         Spin_test.claim_pwm_pins()
 
         set_arm_state("LIVE")
-        arm_reason.config(text=f"Vin {message}", bootstyle=SUCCESS)
+        arm_reason.config(text=f"bus {message}", bootstyle=SUCCESS)
         pwr_after_id = None
         return True
 
