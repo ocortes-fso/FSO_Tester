@@ -1974,7 +1974,6 @@ ESTOP_D = 96            # diameter in px. 112 covered the Temp and PWM lines
                         # on the 800x480 screen; this clears them.
 
 
-
 def _estop_paint(fill):
     PV2_ESTOP.itemconfigure(_estop_disc, fill=fill)
     root.update_idletasks()     # paint before the teardown blocks
