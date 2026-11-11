@@ -1944,13 +1944,13 @@ PV2_LED = ttk.Button(propv2_btns, text="Turn LED On", style="PropIdle.TButton", 
 PV2_LED.pack(expand=TRUE, pady=2)
 
 # 5-8. The four phases from Hobbywing_Prop_Test.SEQUENCE
-PV2_TOP = ttk.Button(propv2_btns, text="TOP Motor Test", style="PropIdle.TButton", width=26, command=propv2_top)
+PV2_TOP = ttk.Button(propv2_btns, text="TOP Test", style="PropIdle.TButton", width=26, command=propv2_top)
 PV2_TOP.pack(expand=TRUE, pady=2)
 
-PV2_BOT = ttk.Button(propv2_btns, text="BOT Motor Test", style="PropIdle.TButton", width=26, command=propv2_bot)
+PV2_BOT = ttk.Button(propv2_btns, text="BOT Test", style="PropIdle.TButton", width=26, command=propv2_bot)
 PV2_BOT.pack(expand=TRUE, pady=2)
 
-PV2_BOTH = ttk.Button(propv2_btns, text="BOTH Motors Test", style="PropIdle.TButton", width=26, command=propv2_both)
+PV2_BOTH = ttk.Button(propv2_btns, text="Prop Test", style="PropIdle.TButton", width=26, command=propv2_both)
 PV2_BOTH.pack(expand=TRUE, pady=2)
 
 PV2_PULSE = ttk.Button(propv2_btns, text="Pulse Test", style="PropIdle.TButton", width=26, command=propv2_pulse)
@@ -1970,7 +1970,7 @@ PV2_PULSE.pack(expand=TRUE, pady=(2, 4))   #####*****CHANGES*****##### was (6, 2
 # taken by the Home button, and the status column hugs the top-right, so this
 # corner is free.
 
-ESTOP_D = 96            # diameter in px. 112 covered the Temp and PWM lines
+ESTOP_D = 120           # diameter in px. 112 covered the Temp and PWM lines in Simulator
                         # on the 800x480 screen; this clears them.
 
 

@@ -18,7 +18,7 @@ Hobbywing datasheet asks for, without needing a hardware PWM channel.
 Throttle map (from the ESC datasheet)
 -------------------------------------
     1000 us  below the 0% point -> valid frame, ESC will NOT arm or spin (safety)
-    1100 us  0%
+    1150 us  1%
     1310 us  25%
     1520 us  50%
     1690 us  70%
@@ -286,9 +286,9 @@ SEQUENCE = [
     ]),
     ("PULSE TEST", BOTH, [
         ("50%", US_50, 5.0),
-        ("0%  stop", US_0, 3.0),
+        ("0%  stop", US_SAFE, 3.0),
         ("~60%", US_60, 5.0),
-        ("0%  stop", US_0, 3.0),
+        ("0%  stop", US_SAFE, 3.0),
         ("70%", US_70, 5.0),
         ("0%  stop", US_0, 3.0),
     ]),
