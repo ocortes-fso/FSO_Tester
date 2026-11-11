@@ -164,6 +164,14 @@ style.configure("A06SmallOn.TButton", font=(None, 14, "bold"), padding=4, backgr
 style.configure("A06Spin.TButton", font=(None, 16, "bold"), padding=3, background="#0d6efd", foreground="white")
 style.configure("A06Stop.TButton", font=(None, 16, "bold"), padding=3, background="#dc3545", foreground="white")
 style.configure("A06Busy.TButton", font=(None, 16, "bold"), padding=3, background="#fd7e14", foreground="white")
+
+# Main menu, now two groups side by side. Smaller than the old single column
+# because two columns of the old size came to 1132px against the 800px the
+# 5-inch screen has - measured, not estimated. At font 17 a 22-character
+# button is about 295px, so the pair plus their gutters comes to roughly 650px
+# and still leaves room.
+style.configure("Menu.TButton", font=(None, 17, "bold"), padding=7, background="#0d6efd", foreground="white")
+style.configure("MenuHead.TLabel", font=(None, 17, "bold"))
 #####*****END CHANGES*****#####
 
 
@@ -2804,48 +2812,96 @@ def show_body_from_back():
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     Body_f.pack(fill=BOTH, expand=TRUE)
 
-# Main window buttons
-b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar); b1.pack(expand=TRUE, pady=(50,0))
-b2 = ttk.Button(main, text="Magnetometer Test", bootstyle=PRIMARY, width=30, command=mag); b2.pack(expand=TRUE)
-b3 = ttk.Button(main, text="Rear Switch Plate Test", bootstyle=PRIMARY, width=30, command=switch_plate); b3.pack(expand=TRUE)
-b4 = ttk.Button(main, text="Loom Test", bootstyle=PRIMARY, width=30, command=loom); b4.pack(expand=TRUE)
 #####*****CHANGES*****#####
-# --- Cv2_A06 Testing, directly under Loom Test ----------------------------
-# Manual PWM page: two sliders, two canned 3-second nudges, LED, and an
-# emergency stop. See the "Cv2_A06 Testing page - behaviour" section above and
-# Subcodes/Manual_PWM_Test.py.
+# ==========================================================================
+# Main menu - split into two groups
+# ==========================================================================
+# SUB-ASSEMBLIES: parts tested on their own, before they go into a vehicle.
+# BUILD TESTING:  tests run against an assembled build.
 #
-# Created here rather than at the end of the block with pack(before=b5) so the
-# order in the source matches the order on screen - a `before=` reference means
-# reading the whole block to work out what the menu actually looks like.
-# `cv2_a06` is already defined by this point, same as every other command here.
-b9 = ttk.Button(main, text="Cv2_A06 Testing", bootstyle=PRIMARY, width=30, command=cv2_a06)
-b9.pack(expand=TRUE)
-#####*****END CHANGES*****#####
-b5 = ttk.Button(main, text="Body Test", bootstyle=PRIMARY, width=30, command=body); b5.pack(expand=TRUE)
-b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=volt); b6.pack(expand=TRUE) 
-#####*****CHANGES*****#####
-# --- Arm Test REMOVED from the menu ---------------------------------------
-# The button is still built but never packed, so the Arm Test page and
-# everything behind it (Spin_test.py, toggle_power, INITIAL_PWM, SPIN,
-# TOP_SPIN, BOT_SPIN, PROP_SPIN, update_pwm_status, the Arm_f widgets) is
-# intact and unreachable instead of deleted.
+# Side by side rather than stacked, and that is a measurement rather than a
+# preference. Stacking two groups means 8 buttons plus 2 headers in one column:
+# at the old size that is 50 + 8*51 + 50 = 508px against the 480px the 5-inch
+# screen has.
 #
-# Why built-but-not-packed rather than commented out: `arm()` and the Arm_f
+# Which it already was. Before this change the menu was ALREADY overflowing:
+# "Prop TEST V2" measured 23px tall against 51px for every other button,
+# because pack silently crushes the last child when it runs out of room. That
+# arrived when Cv2_A06 Testing was added and took the count from 7 to 8 - a
+# seventh button fitted at 457px, an eighth did not. So the group split is also
+# the fix for it.
+#
+# Two columns of four fit comfortably: about 200px tall, against 404px of usable
+# height. The buttons had to shrink from font 24 / width 30 to font 17 / width
+# 22 for the pair to fit the 800px width - see "Menu.TButton" up with the other
+# styles.
+#
+# The b1..b9 names are kept, each still pointing at the page it always did, so
+# this is a re-layout and not a rewrite. Nothing outside this block refers to
+# them.
+
+menu_row = ttk.Frame(main)
+menu_row.pack(expand=TRUE)      # expand with no fill = centred in `main`
+
+
+def _menu_group(title):
+    """
+    One titled column of menu buttons.
+
+    A heading plus a separator rather than a ttk.Labelframe: the Labelframe's
+    own label font is themed and awkward to enlarge, and on a touchscreen the
+    group title has to be readable at a glance. Returns the frame to pack
+    buttons into - the heading and rule are already in it.
+    """
+    col = ttk.Frame(menu_row)
+    col.pack(side=LEFT, anchor=N, padx=24)
+    ttk.Label(col, text=title, style="MenuHead.TLabel", bootstyle=INFO).pack(anchor=W)
+    ttk.Separator(col, bootstyle=INFO).pack(fill=X, pady=(2, 10))
+    return col
+
+
+# --- group 1: sub-assemblies ---
+menu_sub = _menu_group("SUB-ASSEMBLIES")
+
+b1 = ttk.Button(menu_sub, text="Lidar Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=lidar)
+b1.pack(pady=3)
+b4 = ttk.Button(menu_sub, text="Loom Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=loom)
+b4.pack(pady=3)
+b2 = ttk.Button(menu_sub, text="Magnetometer Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=mag)
+b2.pack(pady=3)
+b3 = ttk.Button(menu_sub, text="Rear Switch Plate Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=switch_plate)
+b3.pack(pady=3)
+
+# --- group 2: build testing ---
+menu_build = _menu_group("BUILD TESTING")
+
+b5 = ttk.Button(menu_build, text="Body Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=body)
+b5.pack(pady=3)
+b6 = ttk.Button(menu_build, text="Voltage Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=volt)
+b6.pack(pady=3)
+b9 = ttk.Button(menu_build, text="Cv2_A06 Testing", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=cv2_a06)
+b9.pack(pady=3)
+b8 = ttk.Button(menu_build, text="Prop TEST V2", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=prop_v2)
+b8.pack(pady=3)
+
+# --- Arm Test: REMOVED from the menu --------------------------------------
+# Still built, never packed, so the Arm Test page and everything behind it
+# (Spin_test.py, toggle_power, INITIAL_PWM, SPIN, TOP_SPIN, BOT_SPIN,
+# PROP_SPIN, update_pwm_status, the Arm_f widgets) is intact and unreachable
+# rather than deleted.
+#
+# Built-but-not-packed rather than commented out because `arm()` and the Arm_f
 # widgets below still reference each other, and update_pwm_status() runs on a
-# timer from the bottom of this file. Leaving the whole page wired up and
-# simply not offering a way into it is a one-line change with nothing to
-# unpick - and re-packing this one line is all it takes to bring it back.
+# timer from the bottom of this file. Leaving the page wired up and simply not
+# offering a way into it is a one-line change with nothing to unpick - and
+# packing this one line into either group is all it takes to bring it back.
+#
+# Its parent is `main`, not one of the groups, so nothing has to be decided
+# about which group it would belong to until someone wants it back.
 #
 # Spin_test.py itself is untouched, as asked.
-b7 = ttk.Button(main, text="Arm Test", bootstyle=PRIMARY, width=30, command=arm)
-# b7.pack(expand=TRUE, pady=(0,50))     <- was the menu entry. Deliberately not packed.
-
-# Prop TEST V2 is now the last entry, so it carries the block's bottom padding
-# - b1 has the matching pady=(50,0) at the top, and the pair is what keeps the
-# button column visually centred. Cv2_A06 Testing moved up under Loom Test.
-b8 = ttk.Button(main, text="Prop TEST V2", bootstyle=PRIMARY, width=30, command=prop_v2)
-b8.pack(expand=TRUE, pady=(0, 50))
+b7 = ttk.Button(main, text="Arm Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=arm)
+# b7.pack(pady=3)     <- was the menu entry. Deliberately not packed.
 #####*****END CHANGES*****#####
 
 home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
