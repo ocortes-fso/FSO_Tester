@@ -13,7 +13,12 @@ import queue                    #####*****CHANGES*****##### worker -> Tk thread 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 #####*****CHANGES*****#####
 # Hobbywing_Prop_Test added for the new "Prop TEST V2" page.
-from Subcodes import reset, Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, Analog, Can_test, INF_SBUS, Spin_test, LED, Precharge, Batt_monitor, Hobbywing_Prop_Test
+# Manual_PWM_Test added for the new "Cv2_A06 Testing" page.
+#
+# Spin_test is still imported and still used by the Arm Test page's code, which
+# is kept but no longer reachable from the menu - see the main menu buttons at
+# the bottom of this file.
+from Subcodes import reset, Magnetometer, Lidar, Network_test, Arm_loom_test, Rear_switch_plate_test, Body_Serial_test, PWM_test, SBUS_test, Analog_port_test, Analog, Can_test, INF_SBUS, Spin_test, LED, Precharge, Batt_monitor, Hobbywing_Prop_Test, Manual_PWM_Test
 #####*****END CHANGES*****#####
 
 mag_after_id = None
@@ -84,6 +89,41 @@ body_thread = None
 BODY_LOCK_MAX_S = 180
 #####*****END CHANGES*****#####
 
+#####*****CHANGES*****#####
+# --- Cv2_A06 Testing page state ---
+# Manual PWM: two sliders and two canned 3-second nudges. See
+# Subcodes/Manual_PWM_Test.py for why it does not reuse the scripted test's
+# PWM class.
+#
+# Its own stop Event again, and registered with Manual_PWM_Test rather than
+# with Hobbywing_Prop_Test: that module already has propv2_stop registered
+# against it, and handing it a second event would quietly break cancelling on
+# the Prop TEST V2 page. The two pages abort independently.
+a06_stop = threading.Event()
+Manual_PWM_Test.register_stop_event(a06_stop)
+
+a06_after_id = None            # handle for the label refresh loop
+a06_state = "NO POWER"
+a06_running = False            # True while a timed spin worker thread is alive
+a06_spin_channel = None        # which channel that worker is driving
+a06_spin_remaining = 0.0       # countdown, written by the worker, read by the Tk loop
+a06_fault_latched = False      # so a guard trip is only escalated once
+a06_idle_watch = False         # see the identically-named Prop V2 flag
+a06_idle_note = ""
+a06_ui_queue = queue.Queue()   # worker -> Tk thread, same reason as Prop V2
+
+# True while THIS code is calling Scale.set(). ttk.Scale fires its `command`
+# for programmatic changes exactly as it does for a drag, so resetting a slider
+# would re-enter the move handler and command the PWM again. The guard makes
+# "reset" mean reset.
+a06_slider_echo = False
+
+# Whether each slider is off its resting position, i.e. commanding throttle.
+# Cached rather than read from the widget on every drag event, so the control
+# refresh only runs on the transition instead of once per pixel of travel.
+a06_hot = {"top": False, "bot": False}
+#####*****END CHANGES*****#####
+
 
 root = ttk.Window(themename="cyborg", size=[1280, 720], title="FSO Tester") 
 style = ttk.Style()
@@ -112,6 +152,18 @@ style.configure("Stop.TButton", font=(None, 20, "bold"), padding=10, background=
 style.configure("PropIdle.TButton", font=(None, 18, "bold"), padding=4, background="#0d6efd", foreground="white")
 style.configure("PropBusy.TButton", font=(None, 18, "bold"), padding=4, background="#fd7e14", foreground="white")
 style.configure("PropOn.TButton", font=(None, 18, "bold"), padding=4, background="#198754", foreground="white")
+
+# Cv2_A06 Testing page. Smaller than the Prop V2 styles because the power/LED
+# row sits side by side rather than stacked, and the page has to carry two
+# sliders as well as its buttons on a 480px-high screen.
+style.configure("A06Small.TButton", font=(None, 14, "bold"), padding=4, background="#0d6efd", foreground="white")
+style.configure("A06SmallOn.TButton", font=(None, 14, "bold"), padding=4, background="#198754", foreground="white")
+# Spin / STOP per channel. The STOP variants are red on purpose: the button
+# changes meaning when its slider is live, and colour is the fastest way to
+# notice that the thing you are about to press now does the opposite.
+style.configure("A06Spin.TButton", font=(None, 16, "bold"), padding=3, background="#0d6efd", foreground="white")
+style.configure("A06Stop.TButton", font=(None, 16, "bold"), padding=3, background="#dc3545", foreground="white")
+style.configure("A06Busy.TButton", font=(None, 16, "bold"), padding=3, background="#fd7e14", foreground="white")
 #####*****END CHANGES*****#####
 
 
@@ -129,6 +181,7 @@ SBUS_f_INF = ttk.Frame(root)
 Eth_f = ttk.Frame(root)
 Arm_f = ttk.Frame(root)
 PropV2_f = ttk.Frame(root)      #####*****CHANGES*****##### Prop TEST V2 page
+A06_f = ttk.Frame(root)         #####*****CHANGES*****##### Cv2_A06 Testing page
 
 # Labels
 l1 = ttk.Label(Mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
@@ -290,11 +343,124 @@ propv2_pwm_lbl.pack(anchor="e", pady=(10, 0))   #####*****CHANGES*****##### was 
 propv2_bar = ttk.Progressbar(propv2_side, maximum=100, bootstyle=INFO, length=220)
 #####*****END CHANGES*****#####
 
+#####*****CHANGES*****#####
+# --------------------------------------------------------------------------
+# Cv2_A06 Testing page - status / telemetry column
+# --------------------------------------------------------------------------
+# Same arrangement and the same colour language as the Prop TEST V2 page, so
+# an operator who knows one page can read the other without relearning it.
+# Separate widgets rather than shared ones because both pages can be left
+# half-torn-down and sharing labels would have each page's refresh loop
+# fighting over them.
+#
+# The voltage / current / temperature numbers come from Hobbywing_Prop_Test's
+# telemetry thread (the only thing on the GUI that reads the INA228), and the
+# PWM numbers come from Manual_PWM_Test, which owns the frames on this page.
+#
+# ONE DIFFERENCE FROM THE PROP V2 PAGE, and it is a deliberate fix rather than
+# a style choice: the status DETAIL line lives in the left-hand column here,
+# not in this one.
+#
+# Two reasons, both found by measuring the page at 800x480 rather than by
+# looking at it:
+#
+#   * every widget in this column is now a fixed height, so the column cannot
+#     grow. With the detail line in here it could: the messages run long
+#     ("bus only reached 14.00 V with the FETs on, needs at least 22 V...") and
+#     a wrapped second line pushed the PWM readout down into the round
+#     emergency stop in the bottom-right corner. Trimming padding would have
+#     bought 20px and left the same bug waiting for a longer message.
+#   * a 230px-wide column is a bad place to read a sentence anyway. The left
+#     column has over 400px, which is where a sentence belongs.
+#
+# So: numbers in the corner, prose on the left.
+
+a06_side = ttk.Frame(A06_f)
+a06_side.pack(side=RIGHT, anchor=NE, padx=20, pady=10)
+
+a06_dot = ttk.Label(a06_side, text="●", font=("Arial", 26, "bold"), foreground="white")
+a06_dot.pack(anchor="e")
+
+a06_state_lbl = ttk.Label(a06_side, text="NO POWER", bootstyle=SECONDARY, font=(None, 22, "bold"))
+a06_state_lbl.pack(anchor="e", pady=(0, 10))
+
+a06_v_lbl = ttk.Label(a06_side, text="Voltage:  --", bootstyle=SECONDARY, style='Sub.TLabel')
+a06_v_lbl.pack(anchor="e")
+a06_i_lbl = ttk.Label(a06_side, text="Current:  --", bootstyle=SECONDARY, style='Sub.TLabel')
+a06_i_lbl.pack(anchor="e")
+a06_w_lbl = ttk.Label(a06_side, text="Power:    --", bootstyle=SECONDARY, style='Sub.TLabel')
+a06_w_lbl.pack(anchor="e")
+a06_t_lbl = ttk.Label(a06_side, text="Temp:     --", bootstyle=SECONDARY, style='Sub.TLabel')
+a06_t_lbl.pack(anchor="e")
+
+# What is actually being transmitted, read back from the PWM layer rather than
+# from the slider position - so a clamp, or a channel switched off underneath
+# us by an emergency stop, shows up here instead of being hidden behind a
+# slider that is still sitting at 1250.
+a06_pwm_lbl = ttk.Label(a06_side, text="PWM TOP: off    BOT: off", bootstyle=INFO, font=(None, 17, "bold"))
+a06_pwm_lbl.pack(anchor="e", pady=(10, 0))
+
+# --- left-hand column -----------------------------------------------------
+# Built here rather than with the buttons at the bottom of the file because the
+# status detail label belongs to it and the refresh loop needs that label to
+# exist. The buttons and sliders pack into a06_main further down, after their
+# handlers have been defined - pack order inside a frame is just the order the
+# pack calls run in, so they land underneath this.
+
+a06_main = ttk.Frame(A06_f)
+a06_main.pack(side=LEFT, fill=BOTH, expand=TRUE, padx=40)
+
+# Title and the wiring summary share one row rather than stacking. Purely a
+# height decision: this page has to fit a power row, an LED row, two sliders
+# and their buttons into the 404px that A06_f gets once the Home button has
+# taken the bottom strip, and two header lines cost 24px that the sliders
+# needed more than the header did.
+a06_head = ttk.Frame(a06_main)
+a06_head.pack(anchor="w", fill=X)
+
+a06_title = ttk.Label(a06_head, text="Cv2_A06 TESTING", bootstyle=PRIMARY, font=(None, 21, "bold"))
+a06_title.pack(side=LEFT, anchor="s")
+
+a06_subtitle = ttk.Label(
+    a06_head,
+    text=f"TOP = GPIO{Manual_PWM_Test.PWM_TOP}   BOT = GPIO{Manual_PWM_Test.PWM_BOT}"
+         f"   {Manual_PWM_Test.PWM_FREQ_HZ} Hz frames",
+    bootstyle=SECONDARY, font=(None, 11),
+)
+a06_subtitle.pack(side=LEFT, anchor="s", padx=(14, 0), pady=(0, 4))
+
+# The status message: what is happening, or why we refused.
+#
+# It lives in a frame with pack_propagate(False), which is the point of the
+# extra frame. The label wraps, so the messages decide its height - and the
+# longest of them ("bus only reached 14.00 V with the FETs on, needs at least
+# 22 V. Check the battery, the fuse and the FET wiring") runs to three lines,
+# which would push the bottom slider off the page the moment a power-on failed.
+# Freezing the frame's height means a long message is bounded instead of being
+# allowed to rearrange the controls underneath it.
+#
+# Measured, not guessed: the longest message this page produces is 110
+# characters and asks for 40px at font 12 with this wrap width, so the reserve
+# is set above that. Too small a reserve does not rearrange the page any more -
+# it silently clips the end of the sentence instead, which on a FAULT is the
+# half that tells you what to go and check. The corner dot carries the colour
+# either way.
+A06_DETAIL_H = 44
+a06_detail_box = ttk.Frame(a06_main, height=A06_DETAIL_H)
+a06_detail_box.pack(anchor="w", fill=X, pady=(0, 1))
+a06_detail_box.pack_propagate(False)
+
+a06_detail_lbl = ttk.Label(a06_detail_box, text="press Power On", bootstyle=INFO,
+                           font=(None, 12), wraplength=430, justify="left")
+a06_detail_lbl.pack(anchor="w")
+#####*****END CHANGES*****#####
+
 # --- SCREENS ---
 
 def home():
     global mag_after_id, lidar_after_id, batt_after_id, pwr_after_id
     global propv2_after_id, propv2_idle_watch                #####*****CHANGES*****#####
+    global a06_after_id, a06_idle_watch                      #####*****CHANGES*****#####
 
     #####*****CHANGES*****#####
     # Belt and braces. The button is already disabled while the body test is
@@ -314,6 +480,29 @@ def home():
     # a valid gpiochip handle to drop the throttle frames cleanly.
     propv2_stop.set()
     propv2_idle_watch = False
+
+    #####*****CHANGES*****#####
+    # Cv2_A06 page teardown, and it has to come BEFORE the session power-off
+    # below, not after. Both pages take power through Hobbywing_Prop_Test's
+    # session, and session_power_off() closes the gpiochip - once it has run,
+    # Precharge.h is None and Manual_PWM_Test can no longer switch its own
+    # frames off, because there is no handle left to write to.
+    #
+    # Stopping the frames first and the power second is the same ordering the
+    # session teardown itself uses, and for the same reason: the signal should
+    # never outlive the thing that was meant to be controlling it.
+    #
+    # release() aborts a running spin and switches both channels off, so no
+    # navigation away from this page can leave throttle being transmitted.
+    a06_stop.set()
+    a06_idle_watch = False
+    if a06_after_id is not None:
+        root.after_cancel(a06_after_id)
+        a06_after_id = None
+    Manual_PWM_Test.release()
+    a06_reset_sliders()
+    #####*****END CHANGES*****#####
+
     if propv2_after_id is not None:
         root.after_cancel(propv2_after_id)
         propv2_after_id = None
@@ -353,8 +542,8 @@ def home():
         root.after_cancel(pwr_after_id)
         pwr_after_id = None
 
-    #####*****CHANGES*****##### PropV2_f added to the teardown list
-    for f in [Lidar_f, Mag_f, Switch_plate_f, loom_f, Body_f, Volt_f, SBUS_f, SBUS_f_INF, Eth_f, Arm_f, PropV2_f]:
+    #####*****CHANGES*****##### PropV2_f and A06_f added to the teardown list
+    for f in [Lidar_f, Mag_f, Switch_plate_f, loom_f, Body_f, Volt_f, SBUS_f, SBUS_f_INF, Eth_f, Arm_f, PropV2_f, A06_f]:
         f.pack_forget()
     main.pack(fill=BOTH, expand=TRUE)
     root.update()
@@ -1084,6 +1273,779 @@ def propv2_both():
 def propv2_pulse():
     propv2_run_phase("pulse", PV2_PULSE)
 #####*****END CHANGES*****#####
+
+
+#####*****CHANGES*****#####
+# ==========================================================================
+# Cv2_A06 Testing page - behaviour
+# ==========================================================================
+#
+# What this page is: manual throttle. Two sliders you can command by hand, and
+# two canned 3-second nudges for calling the direction of rotation. No
+# sequence, no pass/fail - see Subcodes/Manual_PWM_Test.py.
+#
+# Division of labour, same as the Prop TEST V2 page:
+#
+#   * Hobbywing_Prop_Test owns POWER and TELEMETRY. session_power_up() closes
+#     the FET and checks the bus came up, and its Telemetry thread is the only
+#     thing on the whole GUI that reads the INA228 (Batt_monitor shares one
+#     SMBus object, so two readers would race). Its over-current /
+#     under-voltage guards are armed by that same call, so they protect this
+#     page too without anything here having to arm them.
+#   * Manual_PWM_Test owns the THROTTLE FRAMES on this page.
+#   * update_a06() runs on the Tk thread and only paints labels.
+#   * a timed spin runs in a worker thread, because it blocks for 3 s and the
+#     event loop has to stay live for the emergency stop. Workers never touch
+#     widgets - they hand a callable to a06_post().
+#
+# ---------------------------------------------------------------------------
+# THE INTERLOCK, which is the part worth reading
+# ---------------------------------------------------------------------------
+# The sliders and the Spin buttons command the same two ESCs, so exactly one of
+# them may be in charge at a time. Rather than scatter enable/disable calls
+# through every handler - which is how this kind of thing ends up with a state
+# nobody tested - every handler just changes the underlying facts and then
+# calls a06_refresh_controls(), which recomputes all six controls from scratch:
+#
+#   a spin is running     -> both sliders disabled; the active channel's button
+#                            becomes CANCEL; the other channel's button is
+#                            disabled (two workers on two ESCs is exactly what
+#                            this prevents)
+#   a slider is off rest  -> that channel's button becomes STOP, which resets
+#                            the slider and the frames to 0 us; the OTHER
+#                            channel's Spin button is disabled, because an
+#                            automatic test while manual throttle is applied
+#                            anywhere is the conflict we are avoiding
+#   nothing commanded     -> both Spin buttons live, both sliders live
+#   not powered           -> everything but Power On is dead
+#
+# There is no state in which a slider and a Spin button can both act, and
+# there is nothing to get out of step because nothing is remembered: the
+# function reads the real slider positions and the real worker state every
+# time it runs.
+
+A06_COLOURS = PROPV2_COLOURS        # one colour language across both pages
+
+
+def a06_post(fn):
+    """Queue a UI update from a worker thread. See propv2_post()."""
+    a06_ui_queue.put(fn)
+
+
+def cv2_a06():
+    """Enter the Cv2_A06 Testing page."""
+    global a06_fault_latched, a06_idle_watch, a06_idle_note, a06_running
+
+    main.pack_forget()
+    home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
+    A06_f.pack(fill=BOTH, expand=TRUE)
+
+    a06_fault_latched = False
+    a06_running = False
+
+    # Drop anything a previous visit left queued, so a stale callback cannot
+    # repaint the page we are about to set up.
+    while not a06_ui_queue.empty():
+        try:
+            a06_ui_queue.get_nowait()
+        except queue.Empty:
+            break
+
+    # Open the gpiochip and force a known-safe state. No power yet - that is
+    # the operator's first button. The LED line is claimed by
+    # session_power_up(), so there is exactly one place that does it.
+    Precharge.INITIALIZE_SYSTEM()
+    Precharge.CLOSE_FET()
+
+    # Sliders back to rest and frames off before anything else, in case a
+    # previous visit left them somewhere. Done while unpowered, so this cannot
+    # command anything.
+    a06_stop.clear()
+    Manual_PWM_Test.clear_abort()
+    a06_reset_sliders()
+
+    # Start sampling straight away so SAFE is backed by a reading rather than
+    # an assumption - the bus should read ~0 V with the FETs open, and a bus
+    # that does not is something the operator needs to know before touching
+    # the rig. Same reasoning as the Prop V2 page.
+    a06_idle_note = ""
+    a06_idle_watch = True
+    Hobbywing_Prop_Test.session_clear_fault()
+    Hobbywing_Prop_Test.prune_logs()
+    Hobbywing_Prop_Test.session_start_monitor(quiet=True)
+
+    set_a06_state("SAFE", "reading bus...")
+    a06_refresh_controls()
+
+    # root.update() rather than update_idletasks(), and the monitor started on
+    # a delay: update_a06() stops itself when the page is not viewable, so if
+    # it ran before the frame was mapped it would kill its own refresh loop on
+    # the first tick. Same pattern as arm() and prop_v2().
+    root.update()
+    root.after(100, start_a06_monitor)
+
+
+def start_a06_monitor():
+    global a06_after_id
+    if a06_after_id is None:
+        update_a06()
+
+
+def set_a06_state(state, detail=""):
+    """Paint the status corner. Tk thread only."""
+    global a06_state
+    a06_state = state
+    a06_dot.config(foreground=A06_COLOURS.get(state, "white"))
+    a06_state_lbl.config(text=state)
+    a06_detail_lbl.config(text=detail)
+
+
+def a06_idle_readout(volts):
+    """
+    State for the unpowered page, decided by what the shunt actually reads.
+
+    Identical reasoning to propv2_idle_readout(): the battery monitor is on the
+    OUTPUT of the MOSFETs, so with them open it reads roughly nothing - which
+    makes the reading a direct answer to "is this rig de-energised?".
+    """
+    if volts is None:
+        return "FAULT", "no INA228 reading - check the I2C wiring"
+
+    if volts > Precharge.BUS_DEAD_MAX_V:
+        return "FAULT", f"bus still at {volts:.2f} V with the FETs off - do not touch"
+
+    note = f"{a06_idle_note} - " if a06_idle_note else ""
+    return "SAFE", f"{note}bus {volts:.2f} V - press Power On"
+
+
+def update_a06():
+    """
+    Refresh the labels at 10 Hz. Tk thread.
+
+    Hobbywing_Prop_Test.get_state() just copies a dict under a lock, and
+    Manual_PWM_Test.state() does the same - no I2C and no blocking in either,
+    so this is safe to run here.
+    """
+    global a06_after_id, a06_fault_latched
+
+    if not A06_f.winfo_viewable():
+        a06_after_id = None
+        return
+
+    # Apply whatever the worker threads handed over since the last tick.
+    while True:
+        try:
+            fn = a06_ui_queue.get_nowait()
+        except queue.Empty:
+            break
+        try:
+            fn()
+        except Exception as e:
+            print(f"[A06 UI ERROR] {e}")
+
+    try:
+        snap = Hobbywing_Prop_Test.get_state()       # volts / amps / temp / aborts
+        manual = Manual_PWM_Test.state()             # what is actually going out
+
+        V, I, T = snap["volts"], snap["amps"], snap["temp_c"]
+
+        a06_v_lbl.config(text=f"Voltage:  {V:.2f} V" if V is not None else "Voltage:  --")
+        a06_i_lbl.config(text=f"Current:  {I:.2f} A" if I is not None else "Current:  --")
+        a06_w_lbl.config(
+            text=f"Power:    {V * I:.0f} W" if (V is not None and I is not None) else "Power:    --"
+        )
+        a06_t_lbl.config(text=f"Temp:     {T:.1f} C" if T is not None else "Temp:     --")
+
+        # "off" means no frames at all, which is the ESC-beeping condition - a
+        # genuinely different state from 1000 us, so it is shown as such.
+        top = f"{manual['top_us']} us" if manual["top_us"] is not None else "off"
+        bot = f"{manual['bot_us']} us" if manual["bot_us"] is not None else "off"
+        a06_pwm_lbl.config(text=f"PWM TOP: {top}    BOT: {bot}")
+
+        # The per-channel readouts beside the Spin buttons, repainted from the
+        # SAME source as the corner readout above. This is what makes them
+        # follow the canned nudge as well as the sliders: the slider handler
+        # paints them too, for instant feedback mid-drag, but it is only ever
+        # painting what this loop would paint 100ms later anyway. One source of
+        # truth - the pulse width actually going out - and no way for the two
+        # readouts on screen to disagree.
+        for channel in ("top", "bot"):
+            a06_paint_value(channel, manual[f"{channel}_us"],
+                            auto=(a06_running and a06_spin_channel == channel))
+
+        if a06_idle_watch:
+            # Unpowered: the corner tracks the live reading, so SAFE keeps
+            # being re-confirmed rather than asserted once on page entry.
+            state, detail = a06_idle_readout(V)
+            set_a06_state(state, detail)
+
+        elif Hobbywing_Prop_Test.session_live():
+            # Powered. The detail line is derived here, at 10 Hz, rather than
+            # being pushed from each handler: it is a description of what the
+            # hardware is doing right now, and deriving it from the hardware
+            # means it cannot drift out of step with it.
+            if a06_running and a06_spin_channel is not None:
+                set_a06_state("RUNNING",
+                              f"{a06_spin_channel.upper()} spin {Manual_PWM_Test.SPIN_US} us"
+                              f" - {a06_spin_remaining:.1f}s left")
+            elif manual["top_us"] is not None or manual["bot_us"] is not None:
+                live = " ".join(f"{n.upper()} {manual[f'{n}_us']} us"
+                                for n in ("top", "bot") if manual[f"{n}_us"] is not None)
+                set_a06_state("RUNNING", f"manual: {live} - press STOP to reset")
+            else:
+                set_a06_state("LIVE", "ready - no signal, ESCs should beep 1/s")
+
+        # A guard trip happens on the telemetry thread, which can only flag it
+        # - it cannot cut power or touch widgets. So the Tk thread picks it up
+        # here and escalates to a full emergency stop. Latched so it fires once
+        # per power-up.
+        reason = snap["abort_reason"]
+        if (reason and not a06_fault_latched
+                and ("over-current" in reason or "under-voltage" in reason)):
+            a06_fault_latched = True
+            print(f"[A06] guard tripped: {reason}")
+            a06_estop(detail=reason)
+
+    except Exception as e:
+        a06_detail_lbl.config(text=f"telemetry error: {e}")
+
+    finally:
+        a06_after_id = root.after(100, update_a06)
+
+
+# --- sliders ---------------------------------------------------------------
+
+def a06_slider(channel):
+    return A06_TOP_SLIDER if channel == "top" else A06_BOT_SLIDER
+
+
+def a06_value_lbl(channel):
+    return A06_TOP_VALUE if channel == "top" else A06_BOT_VALUE
+
+
+def a06_spin_btn(channel):
+    return A06_TOP_SPIN if channel == "top" else A06_BOT_SPIN
+
+
+def a06_slider_us(channel):
+    """Where the slider physically is, as an int."""
+    return int(round(float(a06_slider(channel).get())))
+
+
+def a06_paint_value(channel, us, auto=False):
+    """
+    The number beside that channel's Spin button.
+
+    It reports THE PULSE WIDTH BEING TRANSMITTED, not the slider position. That
+    distinction is the whole reason it is also repainted from update_a06():
+    during a canned nudge the slider stays at rest while the channel is being
+    driven at SPIN_US, and a readout tied to the slider would sit there saying
+    OFF with a motor turning in front of it.
+
+    `us` is therefore allowed to be None - that is what the PWM layer reports
+    when a channel has no waveform at all, and it reads the same as the resting
+    position: OFF (0 us), not "1000 us". See the comment on
+    Manual_PWM_Test.SLIDER_MIN_US for why the bottom of the travel is mapped to
+    off rather than to the ESC's disarm value.
+
+    `auto` colours it differently when the value is coming from the canned
+    nudge rather than from the slider, so "the slider is doing this" and "the
+    automatic test is doing this" are not the same shade of blue.
+    """
+    if us is None or us <= Manual_PWM_Test.SLIDER_MIN_US:
+        a06_value_lbl(channel).config(text="OFF  (0 us)", bootstyle=SECONDARY)
+    else:
+        a06_value_lbl(channel).config(text=f"{us} us",
+                                      bootstyle=WARNING if auto else INFO)
+
+
+def a06_set_slider(channel, us):
+    """
+    Move a slider from code.
+
+    The echo guard is not optional. ttk.Scale fires its `command` callback for
+    a programmatic .set() exactly as it does for a drag, so without it this
+    would re-enter a06_slider_moved() and command the PWM again - which would
+    make "reset the slider to 0" command 0 and then immediately re-command
+    whatever rounding left behind.
+    """
+    global a06_slider_echo
+    a06_slider_echo = True
+    try:
+        a06_slider(channel).set(us)
+    finally:
+        a06_slider_echo = False
+    a06_paint_value(channel, us)
+
+
+def a06_reset_sliders():
+    """Both sliders back to rest, both readouts to OFF. Commands nothing."""
+    for channel in ("top", "bot"):
+        a06_set_slider(channel, Manual_PWM_Test.SLIDER_MIN_US)
+        a06_hot[channel] = False
+
+
+def a06_slider_moved(channel, raw):
+    """
+    The operator dragged a slider. Commands that channel directly.
+
+    Fires continuously while dragging, so this stays cheap: it only touches the
+    PWM layer and the value label, and only calls the full control refresh on
+    the transition between resting and live - not once per pixel of travel.
+    """
+    global a06_idle_watch
+
+    if a06_slider_echo:
+        return                      # our own .set(), not a drag
+
+    us = int(round(float(raw)))
+    a06_paint_value(channel, us)
+
+    # Both of these should be unreachable - the slider is disabled in both
+    # cases - but a disabled widget is a UI promise, not a hardware one, and
+    # the thing on the other end of it is a motor.
+    if not Hobbywing_Prop_Test.session_live():
+        a06_set_slider(channel, Manual_PWM_Test.SLIDER_MIN_US)
+        return
+    if a06_running:
+        a06_set_slider(channel, Manual_PWM_Test.SLIDER_MIN_US)
+        return
+
+    try:
+        sent = Manual_PWM_Test.set_channel(channel, us)
+    except Exception as e:
+        print(f"[A06 SLIDER ERROR] {e}")
+        a06_set_slider(channel, Manual_PWM_Test.SLIDER_MIN_US)
+        set_a06_state("FAULT", str(e))
+        a06_refresh_controls()
+        return
+
+    hot = sent is not None
+    if hot != a06_hot[channel]:
+        # Crossed between resting and live: the Spin buttons change meaning,
+        # so the controls need recomputing. This is the only time they do.
+        a06_hot[channel] = hot
+        a06_refresh_controls()
+
+
+# --- control enable/disable ------------------------------------------------
+# The emergency stop is never disabled. That is the whole point of it.
+
+def a06_refresh_controls():
+    """
+    Recompute every control on the page from the real current state.
+
+    Single source of truth for the interlock described at the top of this
+    section. Reads the actual slider positions and the actual worker state
+    rather than trusting a flag someone remembered to set, so there is no way
+    for the controls and the hardware to disagree.
+    """
+    live = Hobbywing_Prop_Test.session_live()
+    spinning = a06_running
+    hot = {c: (live and a06_slider_us(c) > Manual_PWM_Test.SLIDER_MIN_US)
+           for c in ("top", "bot")}
+    any_hot = hot["top"] or hot["bot"]
+
+    # --- power ---
+    A06_PWR_ON.config(state="normal" if not live else "disabled",
+                      text="Power On (FET)" if not live else "Powered")
+    A06_PWR_ON.configure(style="A06SmallOn.TButton" if live else "A06Small.TButton")
+
+    # Powering off is blocked while anything is commanded. Cutting power to a
+    # spinning motor is the emergency case, not the normal one, and the round
+    # red button in the corner is the one for that - it is the only control
+    # here that is never disabled. The normal route is STOP first, then
+    # Power Off, which drops the throttle before the rail.
+    A06_PWR_OFF.config(state="normal" if (live and not spinning and not any_hot) else "disabled")
+
+    # --- LED ---
+    # Available whenever the bus is live, including while a motor is turning.
+    # Deliberately looser than the Prop V2 page, which locks everything during
+    # a phase: the LED is a lamp on the same rail, it cannot interact with the
+    # throttle, and wanting to check it while something spins is reasonable.
+    A06_LED.config(state="normal" if live else "disabled")
+    A06_LED.configure(style="A06SmallOn.TButton" if A06_LED.cget("text") == "Turn LED Off"
+                      else "A06Small.TButton")
+
+    # --- per channel: the slider and its Spin/STOP/CANCEL button ---
+    for channel in ("top", "bot"):
+        other = "bot" if channel == "top" else "top"
+        slider = a06_slider(channel)
+        btn = a06_spin_btn(channel)
+        name = channel.upper()
+
+        # A slider may be dragged only when the bus is live and no timed spin
+        # is running. The other channel being manually hot does NOT lock this
+        # slider - running both by hand is a legitimate thing to want, and
+        # neither of them can start an automatic test while they are up.
+        slider.config(state="disabled" if (not live or spinning) else "normal")
+
+        if spinning and a06_spin_channel == channel:
+            # This channel's nudge is the one running: its button becomes the
+            # way to cut it short.
+            btn.config(state="normal", text=f"{name} CANCEL")
+            btn.configure(style="A06Busy.TButton")
+
+        elif spinning:
+            # The other channel's nudge is running. No second worker.
+            btn.config(state="disabled", text=f"{name} Spin")
+            btn.configure(style="A06Spin.TButton")
+
+        elif hot[channel]:
+            # This slider is commanding throttle, so the button's job changes
+            # from "start the canned nudge" to "put this channel back to 0".
+            btn.config(state="normal", text=f"{name} STOP")
+            btn.configure(style="A06Stop.TButton")
+
+        elif hot[other]:
+            # Manual throttle applied elsewhere: no automatic test may start.
+            btn.config(state="disabled", text=f"{name} Spin")
+            btn.configure(style="A06Spin.TButton")
+
+        else:
+            btn.config(state="normal" if live else "disabled", text=f"{name} Spin")
+            btn.configure(style="A06Spin.TButton")
+
+
+# --- handlers --------------------------------------------------------------
+
+def a06_power_on():
+    """
+    Close the FET and confirm the bus came up. No throttle frames.
+
+    Runs in a worker because session_power_up() waits for the bus to settle and
+    then samples it, and the window must not freeze while it does.
+
+    Straight through to Hobbywing_Prop_Test rather than reimplemented: one
+    power-up path, one place where the ordering (close FET -> settle -> measure
+    -> open again if it did not come up) has to be right.
+    """
+    global a06_fault_latched, a06_idle_watch, a06_idle_note
+
+    if Hobbywing_Prop_Test.session_live():
+        return
+
+    a06_fault_latched = False
+    a06_idle_watch = False          # the handler owns the status from here on
+    a06_idle_note = ""
+    a06_stop.clear()
+    Manual_PWM_Test.clear_abort()
+    set_a06_state("PRECHARGING", "closing FET, checking bus voltage...")
+    A06_PWR_ON.config(state="disabled")
+
+    def worker():
+        try:
+            csv_path = Hobbywing_Prop_Test.session_power_up(guards_enabled=True, quiet=True)
+
+            def done():
+                # Claim the two throttle lines on the handle that is now open,
+                # and make sure both are switched off. Re-claiming matters
+                # after a stop/restart cycle: an emergency stop closes the
+                # gpiochip, so any claim from before it died with the handle.
+                try:
+                    Manual_PWM_Test.claim()
+                    Manual_PWM_Test.all_off()
+                except Exception as e:
+                    print(f"[A06 CLAIM ERROR] {e}")
+
+                a06_reset_sliders()
+                set_a06_state("LIVE", "no signal - ESCs should beep 1/s")
+                a06_refresh_controls()
+                print(f"[A06] logging to {csv_path}")
+
+            a06_post(done)
+
+        except Exception as e:
+            # Bind the message NOW. Python deletes the `as e` name at the end
+            # of the except block, and this closure runs later off the UI
+            # queue - referencing `e` in there raises, which would leave the
+            # page stuck in PRECHARGING with every button locked out.
+            msg = str(e)
+            print(f"[A06 POWER ON ERROR] {msg}")
+
+            def failed():
+                # Pin the reason rather than handing the corner back to the
+                # idle readout, which repaints at 10 Hz and would wipe it
+                # before anyone could read it. Cleared on the next Power On or
+                # on re-entering the page.
+                global a06_idle_watch, a06_idle_note
+                a06_idle_watch = False
+                a06_idle_note = ""
+                set_a06_state("FAULT", msg)
+                a06_refresh_controls()
+
+            a06_post(failed)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def a06_power_off():
+    """
+    Normal end-of-test power-down. LIVE -> SAFE, nothing flagged as wrong, so a
+    clean session still bins its log.
+
+    Frames go off before the rail does: release() first, then the session
+    teardown, which is the same ordering _shutdown() uses internally and for
+    the same reason.
+    """
+    global a06_fault_latched, a06_idle_watch, a06_idle_note
+
+    if not Hobbywing_Prop_Test.session_live():
+        return
+
+    a06_stop.set()
+    Manual_PWM_Test.release()
+
+    try:
+        kept = Hobbywing_Prop_Test.session_power_off()
+    except Exception as e:
+        print(f"[A06 POWER OFF ERROR] {e}")
+        kept = None
+
+    A06_LED.config(text="Turn LED On")
+    a06_reset_sliders()
+
+    a06_fault_latched = False
+    note = "powered down"
+    if kept:
+        # Something earlier flagged itself, so the log survived a normal
+        # shutdown. Say so, or nobody will know it is there.
+        note += f", log: {os.path.basename(kept)}"
+    a06_idle_note = note
+    a06_idle_watch = True
+    set_a06_state("SAFE", f"{note} - reading bus...")
+
+    a06_refresh_controls()
+    root.update_idletasks()
+
+
+def a06_estop(detail="operator pressed STOP"):
+    """
+    Cut everything: frames off, LED off, FET off, gpiochip released.
+
+    Runs synchronously on the Tk thread on purpose - an emergency stop queued
+    behind a worker thread is not an emergency stop. Both
+    Manual_PWM_Test.release() and session_emergency_stop() are written to be
+    safe to call mid-spin and safe to call twice.
+    """
+    global a06_fault_latched, a06_idle_watch, a06_idle_note
+
+    a06_stop.set()
+    Manual_PWM_Test.release()       # frames die first, then the rail
+
+    try:
+        Hobbywing_Prop_Test.session_emergency_stop()
+    except Exception as e:
+        print(f"[A06 E-STOP ERROR] {e}")
+
+    A06_LED.config(text="Turn LED On")
+    a06_reset_sliders()
+
+    kept = Hobbywing_Prop_Test.session_csv_path()
+
+    if "over-current" in detail or "under-voltage" in detail:
+        # A guard trip stays pinned in red with its reason until the operator
+        # powers up again. Handing it to the idle readout would let it fade to
+        # SAFE as the bus decays, taking the reason off the screen before
+        # anyone had read it.
+        a06_idle_watch = False
+        log_note = f" - log: {os.path.basename(kept)}" if kept else ""
+        set_a06_state("FAULT", f"{detail}{log_note}")
+    else:
+        a06_fault_latched = False
+        a06_idle_note = detail if not kept else f"{detail}, log: {os.path.basename(kept)}"
+        a06_idle_watch = True
+        set_a06_state("SAFE", f"{detail} - reading bus...")
+
+    a06_refresh_controls()
+    # update_idletasks() and not update(): this can be reached from inside the
+    # update_a06() after-callback when a guard trips, and a full update() there
+    # would re-enter the event loop.
+    root.update_idletasks()
+
+
+def a06_led():
+    """LED on/off. Needs the bus live - the LED runs off the switched rail."""
+    if not Hobbywing_Prop_Test.session_live():
+        set_a06_state("FAULT", "power on before using the LED")
+        return
+
+    if A06_LED.cget("text") == "Turn LED On":
+        LED.LED_ON()
+        A06_LED.config(text="Turn LED Off")
+    else:
+        LED.LED_OFF()
+        A06_LED.config(text="Turn LED On")
+    a06_refresh_controls()
+
+
+def a06_spin(channel):
+    """
+    The per-channel button. Its job depends on what the page is doing, which is
+    exactly what a06_refresh_controls() has already encoded in its text:
+
+        "TOP Spin"    -> run the canned nudge
+        "TOP STOP"    -> a slider is live; put this channel back to 0 us
+        "TOP CANCEL"  -> a nudge is running; cut it short
+
+    Reading the intent off the button rather than re-deriving it means the
+    button can never do something other than what it says on it.
+    """
+    global a06_running, a06_spin_channel, a06_spin_remaining
+
+    btn = a06_spin_btn(channel)
+    label = btn.cget("text")
+
+    # --- CANCEL: stop the running nudge early ---
+    if label.endswith("CANCEL"):
+        Manual_PWM_Test.abort()     # the worker unwinds through its own finally
+        btn.config(text=f"{channel.upper()} stopping...", state="disabled")
+        return
+
+    # --- STOP: reset this channel's slider and frames ---
+    if label.endswith("STOP"):
+        try:
+            Manual_PWM_Test.off(channel)
+        except Exception as e:
+            print(f"[A06 STOP ERROR] {e}")
+        a06_set_slider(channel, Manual_PWM_Test.SLIDER_MIN_US)
+        a06_hot[channel] = False
+        a06_refresh_controls()
+        return
+
+    # --- Spin: the canned nudge ---
+    if a06_running:
+        return
+    if not Hobbywing_Prop_Test.session_live():
+        set_a06_state("FAULT", "power on first")
+        return
+    # Refuse if anything is already commanded by hand. The button should be
+    # disabled in that case, so this is the belt-and-braces copy of the
+    # interlock - the one that is enforced against the hardware rather than
+    # against the widget.
+    manual = Manual_PWM_Test.state()
+    if manual["top_us"] is not None or manual["bot_us"] is not None:
+        set_a06_state("RUNNING", "a slider is still commanding throttle - press STOP first")
+        return
+
+    a06_running = True
+    a06_spin_channel = channel
+    a06_spin_remaining = Manual_PWM_Test.SPIN_HOLD_S
+    a06_stop.clear()
+    Manual_PWM_Test.clear_abort()
+    a06_refresh_controls()          # locks the sliders and the other button
+
+    def tick(remaining):
+        # Worker thread. A plain float assignment, deliberately not a widget
+        # call and not even a queued closure: update_a06() is already painting
+        # at 10 Hz and will pick this up on its next tick, so pushing 10
+        # closures a second through the queue would buy nothing.
+        global a06_spin_remaining
+        a06_spin_remaining = remaining
+
+    def worker():
+        global a06_running, a06_spin_channel
+        completed = False
+        try:
+            completed = Manual_PWM_Test.spin(channel, on_tick=tick)
+        except Exception as e:
+            print(f"[A06 SPIN ERROR] {e}")
+            # Keeps the log: a nudge that threw is worth looking at the trace
+            # for, same rule as a failed phase on the Prop V2 page.
+            Hobbywing_Prop_Test.mark_log_keep(f"{channel} manual spin raised: {e}")
+        finally:
+            a06_running = False
+            a06_spin_channel = None
+
+            def finish():
+                # An emergency stop may have run while we were in here, in
+                # which case the page is already in SAFE/FAULT and must not be
+                # dragged back to LIVE.
+                if not Hobbywing_Prop_Test.session_live():
+                    a06_refresh_controls()
+                    return
+                a06_refresh_controls()
+                set_a06_state("LIVE",
+                              f"{channel.upper()} spin "
+                              f"{'complete' if completed else 'stopped'} - frames off")
+
+            a06_post(finish)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+# Thin wrappers so each control has its own command and there is no
+# late-binding trap on the loop variable.
+def a06_spin_top():
+    a06_spin("top")
+
+
+def a06_spin_bot():
+    a06_spin("bot")
+
+
+def a06_top_slider_moved(raw):
+    a06_slider_moved("top", raw)
+
+
+def a06_bot_slider_moved(raw):
+    a06_slider_moved("bot", raw)
+
+
+def make_estop_circle(parent, command, diameter=120):
+    """
+    The round emergency stop, pinned to the bottom-right corner.
+
+    A Canvas rather than a ttk.Button because ttk cannot draw a real circle,
+    and place() rather than pack() so it floats over the layout in the corner
+    instead of competing with the controls for vertical space - which is the
+    whole reason it was moved there: these pages have to fit a 480px-high
+    5-inch screen.
+
+    relx/rely 1.0 with anchor "se" keeps it in the corner at any resolution, so
+    the 5-inch and 7-inch screens both get it in the same place. Bottom-LEFT is
+    taken by the Home button and the status column hugs the top-right, so this
+    corner is free on both pages.
+
+    Factored out here for the Cv2_A06 page. The Prop TEST V2 page still builds
+    its own copy inline further down - left alone on purpose rather than
+    refactored onto this helper, because that code is working and committed and
+    there is nothing to gain from touching it.
+
+    Returns the Canvas, already placed.
+    """
+    canvas = tk.Canvas(parent, width=diameter, height=diameter,
+                       highlightthickness=0, bd=0,
+                       bg=style.colors.bg, cursor="hand2")
+
+    disc = canvas.create_oval(4, 4, diameter - 4, diameter - 4,
+                              fill="#b02a37", outline="#ff6b7a", width=3)
+    canvas.create_text(diameter / 2, diameter / 2 - 9, text="STOP",
+                       fill="white", font=(None, 17, "bold"))
+    canvas.create_text(diameter / 2, diameter / 2 + 13, text="EMERGENCY",
+                       fill="#ffd7db", font=(None, 8, "bold"))
+
+    def paint(fill):
+        canvas.itemconfigure(disc, fill=fill)
+        root.update_idletasks()     # paint before the teardown blocks
+
+    def press(event=None):
+        # Fires on PRESS, not release. Deliberate: this is the one control
+        # where the fastest possible response beats guarding against a stray
+        # touch, and a false trigger only powers the rig down safely. Sitting
+        # alone in a corner is what keeps it from being hit by accident.
+        paint("#7d1d26")
+        command()
+
+    def release(event=None):
+        paint("#b02a37")
+
+    canvas.bind("<Button-1>", press)
+    canvas.bind("<ButtonRelease-1>", release)
+    canvas.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")
+    return canvas
+#####*****END CHANGES*****#####
+
 
 def lidar():
     global lidar_after_id
@@ -1846,15 +2808,44 @@ def show_body_from_back():
 b1 = ttk.Button(main, text="Lidar Test", bootstyle=PRIMARY, width=30, command=lidar); b1.pack(expand=TRUE, pady=(50,0))
 b2 = ttk.Button(main, text="Magnetometer Test", bootstyle=PRIMARY, width=30, command=mag); b2.pack(expand=TRUE)
 b3 = ttk.Button(main, text="Rear Switch Plate Test", bootstyle=PRIMARY, width=30, command=switch_plate); b3.pack(expand=TRUE)
-b4 = ttk.Button(main, text="Loom Test", bootstyle=PRIMARY, width=30, command=loom); b4.pack(expand=TRUE) 
-b5 = ttk.Button(main, text="Body Test", bootstyle=PRIMARY, width=30, command=body); b5.pack(expand=TRUE) 
-b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=volt); b6.pack(expand=TRUE) 
-b7 = ttk.Button(main, text="Arm Test", bootstyle=PRIMARY, width=30, command=arm); b7.pack(expand=TRUE, pady=(0,50))
+b4 = ttk.Button(main, text="Loom Test", bootstyle=PRIMARY, width=30, command=loom); b4.pack(expand=TRUE)
 #####*****CHANGES*****#####
-# New entry on the home screen. b7's bottom padding moved onto b8 so the
-# button block stays centred the way it was.
-b7.pack_configure(pady=0)
-b8 = ttk.Button(main, text="Prop TEST V2", bootstyle=PRIMARY, width=30, command=prop_v2); b8.pack(expand=TRUE, pady=(0,50))
+# --- Cv2_A06 Testing, directly under Loom Test ----------------------------
+# Manual PWM page: two sliders, two canned 3-second nudges, LED, and an
+# emergency stop. See the "Cv2_A06 Testing page - behaviour" section above and
+# Subcodes/Manual_PWM_Test.py.
+#
+# Created here rather than at the end of the block with pack(before=b5) so the
+# order in the source matches the order on screen - a `before=` reference means
+# reading the whole block to work out what the menu actually looks like.
+# `cv2_a06` is already defined by this point, same as every other command here.
+b9 = ttk.Button(main, text="Cv2_A06 Testing", bootstyle=PRIMARY, width=30, command=cv2_a06)
+b9.pack(expand=TRUE)
+#####*****END CHANGES*****#####
+b5 = ttk.Button(main, text="Body Test", bootstyle=PRIMARY, width=30, command=body); b5.pack(expand=TRUE)
+b6 = ttk.Button(main, text="Voltage Test", bootstyle=PRIMARY, width=30, command=volt); b6.pack(expand=TRUE) 
+#####*****CHANGES*****#####
+# --- Arm Test REMOVED from the menu ---------------------------------------
+# The button is still built but never packed, so the Arm Test page and
+# everything behind it (Spin_test.py, toggle_power, INITIAL_PWM, SPIN,
+# TOP_SPIN, BOT_SPIN, PROP_SPIN, update_pwm_status, the Arm_f widgets) is
+# intact and unreachable instead of deleted.
+#
+# Why built-but-not-packed rather than commented out: `arm()` and the Arm_f
+# widgets below still reference each other, and update_pwm_status() runs on a
+# timer from the bottom of this file. Leaving the whole page wired up and
+# simply not offering a way into it is a one-line change with nothing to
+# unpick - and re-packing this one line is all it takes to bring it back.
+#
+# Spin_test.py itself is untouched, as asked.
+b7 = ttk.Button(main, text="Arm Test", bootstyle=PRIMARY, width=30, command=arm)
+# b7.pack(expand=TRUE, pady=(0,50))     <- was the menu entry. Deliberately not packed.
+
+# Prop TEST V2 is now the last entry, so it carries the block's bottom padding
+# - b1 has the matching pady=(50,0) at the top, and the pair is what keeps the
+# button column visually centred. Cv2_A06 Testing moved up under Loom Test.
+b8 = ttk.Button(main, text="Prop TEST V2", bootstyle=PRIMARY, width=30, command=prop_v2)
+b8.pack(expand=TRUE, pady=(0, 50))
 #####*****END CHANGES*****#####
 
 home_b = ttk.Button(root, text="Home", bootstyle=OUTLINE, command=home, width=10)
@@ -2015,6 +3006,162 @@ PV2_ESTOP.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")
 
 # Everything except the precharge starts locked out.
 propv2_buttons_idle()
+#####*****END CHANGES*****#####
+
+
+#####*****CHANGES*****#####
+# --------------------------------------------------------------------------
+# Cv2_A06 Testing page - the controls
+# --------------------------------------------------------------------------
+# Created down here rather than next to the status labels because `command=` is
+# evaluated immediately, so the handlers above have to already exist.
+#
+# Layout: status numbers in the top-right corner, title / status message /
+# controls on the left, emergency stop floating in the bottom-right corner.
+# a06_main, the title and the status message are built earlier, up with the
+# status column; these pack underneath them.
+#
+# Power On and Power Off share a row - they are the two halves of one decision,
+# and pairing them saves the height the sliders need on a 480px screen. The LED
+# gets a row of its own: it is a different kind of action and does not belong
+# in the power pair.
+
+# --- power ---
+a06_pwr_row = ttk.Frame(a06_main)
+a06_pwr_row.pack(anchor="w", pady=(0, 4))
+
+A06_PWR_ON = ttk.Button(a06_pwr_row, text="Power On (FET)", style="A06Small.TButton",
+                        width=16, command=a06_power_on)
+A06_PWR_ON.pack(side=LEFT, padx=(0, 6))
+
+A06_PWR_OFF = ttk.Button(a06_pwr_row, text="Power Off", style="A06Small.TButton",
+                         width=12, command=a06_power_off)
+A06_PWR_OFF.pack(side=LEFT)
+
+# --- LED, on its own line ---
+A06_LED = ttk.Button(a06_main, text="Turn LED On", style="A06Small.TButton",
+                     width=16, command=a06_led)
+A06_LED.pack(anchor="w", pady=(0, 8))
+
+
+def _a06_channel_box(parent, title):
+    """
+    One channel's controls: its Spin/STOP button, its slider, and its readout.
+
+    A Labelframe so the two channels are visibly separate groups - on a small
+    touchscreen it has to be obvious at a glance which slider belongs to which
+    motor, because getting that wrong means spinning the one you are holding.
+
+    The title carries the live numbers rather than hardcoded text, so changing
+    Manual_PWM_Test.SLIDER_MAX_US or SPIN_US updates what is on screen as well
+    as what the hardware will accept - no second place to forget.
+
+    Putting the explanatory text in the TITLE is not decoration. It started as
+    a label in the second grid column next to the readout, and on the 800x480
+    screen its natural width took the column from 240px to 280px - which left
+    the slider 97px of travel for a 400us band, against 321px on the 1024px
+    screen. Static prose does not belong in a column that a control has to
+    share. In the title it costs no width at all.
+    """
+    box = ttk.Labelframe(
+        parent,
+        text=(f"  {title}"
+              f"   -   Spin = {Manual_PWM_Test.SPIN_US} us for "
+              f"{Manual_PWM_Test.SPIN_HOLD_S:.0f}s"
+              f"   -   Slider = OFF .. {Manual_PWM_Test.SLIDER_MAX_US} us  "),
+        bootstyle=SECONDARY,
+    )
+    box.pack(fill=X, expand=FALSE, pady=7)
+    # Column 0 takes all the spare width, column 1 keeps its natural size.
+    # The slider ignores both: it spans the pair, so its travel is the full
+    # width of the box rather than whatever is left after the readout.
+    box.columnconfigure(0, weight=1)
+    return box
+
+
+def _a06_slider(parent, command):
+    """
+    One throttle slider.
+
+    A classic tk.Scale rather than a ttk.Scale, and that is the only reason
+    this function exists. ttk.Scale takes its trough thickness from the theme
+    and measures 22px tall - fine with a mouse, not fine as a touch target on
+    a 5-inch panel, and there is no supported way to thicken it. tk.Scale
+    exposes `width` (the trough) and `sliderlength` (the grab handle) directly,
+    so it can be made finger-sized.
+
+    Two other things come for free and are worth having:
+      * resolution=1 - values arrive as whole microseconds, so there is no
+        float rounding between what the slider says and what is transmitted
+      * showvalue=0 - the number lives in our own label instead, which can say
+        "OFF (0 us)" at the resting position where the raw value cannot
+
+    The cost is that tk widgets do not follow the ttk theme, so the colours are
+    taken from style.colors by hand to match the rest of the page.
+
+    from_ is the resting position AND means "frames off" - see the comment on
+    Manual_PWM_Test.SLIDER_MIN_US. Mapping the bottom of the travel to off
+    rather than to the ESC's 1000 us disarm value means the whole slider length
+    is the band that matters, instead of 71% of it sitting below the ESC's own
+    floor where nothing turns.
+    """
+    return tk.Scale(
+        parent,
+        from_=Manual_PWM_Test.SLIDER_MIN_US,
+        to=Manual_PWM_Test.SLIDER_MAX_US,
+        orient=HORIZONTAL,
+        resolution=1,
+        showvalue=0,
+        length=330,
+        width=34,               # trough thickness - the touch target
+        sliderlength=44,        # the grab handle, wide enough to find by feel
+        bd=0,
+        highlightthickness=0,
+        troughcolor=style.colors.dark,
+        bg=style.colors.info,
+        activebackground=style.colors.primary,
+        command=command,
+    )
+
+
+A06_TOP_BOX = _a06_channel_box(a06_main, "TOP MOTOR")
+
+A06_TOP_SPIN = ttk.Button(A06_TOP_BOX, text="TOP Spin", style="A06Spin.TButton",
+                          width=14, command=a06_spin_top)
+A06_TOP_SPIN.grid(row=0, column=0, sticky="w", padx=8, pady=(2, 2))
+
+A06_TOP_VALUE = ttk.Label(A06_TOP_BOX, text="OFF  (0 us)", bootstyle=SECONDARY,
+                          font=(None, 18, "bold"), width=12, anchor="e")
+A06_TOP_VALUE.grid(row=0, column=1, sticky="e", padx=8, pady=(2, 2))
+
+# columnspan=2: the slider gets the whole width of the box, not what is left
+# over beside the readout. See the note in _a06_channel_box().
+A06_TOP_SLIDER = _a06_slider(A06_TOP_BOX, a06_top_slider_moved)
+A06_TOP_SLIDER.grid(row=1, column=0, columnspan=2, sticky="ew", padx=14, pady=(8, 14))
+
+
+A06_BOT_BOX = _a06_channel_box(a06_main, "BOT MOTOR")
+
+A06_BOT_SPIN = ttk.Button(A06_BOT_BOX, text="BOT Spin", style="A06Spin.TButton",
+                          width=14, command=a06_spin_bot)
+A06_BOT_SPIN.grid(row=0, column=0, sticky="w", padx=8, pady=(2, 2))
+
+A06_BOT_VALUE = ttk.Label(A06_BOT_BOX, text="OFF  (0 us)", bootstyle=SECONDARY,
+                          font=(None, 18, "bold"), width=12, anchor="e")
+A06_BOT_VALUE.grid(row=0, column=1, sticky="e", padx=8, pady=(2, 2))
+
+A06_BOT_SLIDER = _a06_slider(A06_BOT_BOX, a06_bot_slider_moved)
+A06_BOT_SLIDER.grid(row=1, column=0, columnspan=2, sticky="ew", padx=14, pady=(8, 14))
+
+# The emergency stop, in case the controls above stop responding - a hung
+# worker thread, a slider that will not let go, a motor that is not doing what
+# it was told. It bypasses all of it: frames off, then FET off, then the
+# gpiochip released. Never disabled, under any state of this page.
+A06_ESTOP = make_estop_circle(A06_f, a06_estop)
+
+# Sliders at rest, and everything except Power On locked out.
+a06_reset_sliders()
+a06_refresh_controls()
 #####*****END CHANGES*****#####
 
 
