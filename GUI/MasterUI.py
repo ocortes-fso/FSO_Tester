@@ -170,8 +170,23 @@ style.configure("A06Busy.TButton", font=(None, 16, "bold"), padding=3, backgroun
 # 5-inch screen has - measured, not estimated. At font 17 a 22-character
 # button is about 295px, so the pair plus their gutters comes to roughly 650px
 # and still leaves room.
-style.configure("Menu.TButton", font=(None, 17, "bold"), padding=7, background="#0d6efd", foreground="white")
-style.configure("MenuHead.TLabel", font=(None, 17, "bold"))
+#
+# NAMED "Nav", NOT "Menu", AND THAT MATTERS.
+# ttkbootstrap works out which widget a custom style belongs to by searching
+# the style name for one of its widget-class words, and "menu" is one of them
+# (Keywords.CLASSES holds 'button', 'label', 'menubutton', 'optionmenu',
+# 'menu', ...). So "Menu.TButton" contains TWO of them, 'button' and 'menu',
+# and which one wins depends on the order ttkbootstrap happens to scan that
+# list in - i.e. on the installed version. Where 'menu' wins it then tries to
+# call StyleBuilderTTK.create_menu_style(), which does not exist, and the GUI
+# dies on this line at import time.
+#
+# The rule for any new style here: the name must contain exactly ONE of those
+# class words, the one for the widget it is actually for. "Nav" and "NavHead"
+# match only 'button' and 'label'. There is a check for this in the test
+# harness so it cannot come back.
+style.configure("Nav.TButton", font=(None, 17, "bold"), padding=7, background="#0d6efd", foreground="white")
+style.configure("NavHead.TLabel", font=(None, 17, "bold"))
 #####*****END CHANGES*****#####
 
 
@@ -2833,7 +2848,7 @@ def show_body_from_back():
 #
 # Two columns of four fit comfortably: about 200px tall, against 404px of usable
 # height. The buttons had to shrink from font 24 / width 30 to font 17 / width
-# 22 for the pair to fit the 800px width - see "Menu.TButton" up with the other
+# 22 for the pair to fit the 800px width - see "Nav.TButton" up with the other
 # styles.
 #
 # The b1..b9 names are kept, each still pointing at the page it always did, so
@@ -2855,7 +2870,7 @@ def _menu_group(title):
     """
     col = ttk.Frame(menu_row)
     col.pack(side=LEFT, anchor=N, padx=24)
-    ttk.Label(col, text=title, style="MenuHead.TLabel", bootstyle=INFO).pack(anchor=W)
+    ttk.Label(col, text=title, style="NavHead.TLabel", bootstyle=INFO).pack(anchor=W)
     ttk.Separator(col, bootstyle=INFO).pack(fill=X, pady=(2, 10))
     return col
 
@@ -2863,25 +2878,25 @@ def _menu_group(title):
 # --- group 1: sub-assemblies ---
 menu_sub = _menu_group("SUB-ASSEMBLIES")
 
-b1 = ttk.Button(menu_sub, text="Lidar Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=lidar)
+b1 = ttk.Button(menu_sub, text="Lidar Test", bootstyle=PRIMARY, style="Nav.TButton", width=22, command=lidar)
 b1.pack(pady=3)
-b4 = ttk.Button(menu_sub, text="Loom Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=loom)
+b4 = ttk.Button(menu_sub, text="Loom Test", bootstyle=PRIMARY, style="Nav.TButton", width=22, command=loom)
 b4.pack(pady=3)
-b2 = ttk.Button(menu_sub, text="Magnetometer Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=mag)
+b2 = ttk.Button(menu_sub, text="Magnetometer Test", bootstyle=PRIMARY, style="Nav.TButton", width=22, command=mag)
 b2.pack(pady=3)
-b3 = ttk.Button(menu_sub, text="Rear Switch Plate Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=switch_plate)
+b3 = ttk.Button(menu_sub, text="Rear Switch Plate Test", bootstyle=PRIMARY, style="Nav.TButton", width=22, command=switch_plate)
 b3.pack(pady=3)
 
 # --- group 2: build testing ---
 menu_build = _menu_group("BUILD TESTING")
 
-b5 = ttk.Button(menu_build, text="Body Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=body)
+b5 = ttk.Button(menu_build, text="Body Test", bootstyle=PRIMARY, style="Nav.TButton", width=22, command=body)
 b5.pack(pady=3)
-b6 = ttk.Button(menu_build, text="Voltage Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=volt)
+b6 = ttk.Button(menu_build, text="Voltage Test", bootstyle=PRIMARY, style="Nav.TButton", width=22, command=volt)
 b6.pack(pady=3)
-b9 = ttk.Button(menu_build, text="Cv2_A06 Testing", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=cv2_a06)
+b9 = ttk.Button(menu_build, text="Cv2_A06 Testing", bootstyle=PRIMARY, style="Nav.TButton", width=22, command=cv2_a06)
 b9.pack(pady=3)
-b8 = ttk.Button(menu_build, text="Prop TEST V2", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=prop_v2)
+b8 = ttk.Button(menu_build, text="Prop TEST V2", bootstyle=PRIMARY, style="Nav.TButton", width=22, command=prop_v2)
 b8.pack(pady=3)
 
 # --- Arm Test: REMOVED from the menu --------------------------------------
@@ -2900,7 +2915,7 @@ b8.pack(pady=3)
 # about which group it would belong to until someone wants it back.
 #
 # Spin_test.py itself is untouched, as asked.
-b7 = ttk.Button(main, text="Arm Test", bootstyle=PRIMARY, style="Menu.TButton", width=22, command=arm)
+b7 = ttk.Button(main, text="Arm Test", bootstyle=PRIMARY, style="Nav.TButton", width=22, command=arm)
 # b7.pack(pady=3)     <- was the menu entry. Deliberately not packed.
 #####*****END CHANGES*****#####
 
