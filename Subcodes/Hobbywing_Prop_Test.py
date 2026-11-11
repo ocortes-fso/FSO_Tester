@@ -78,7 +78,7 @@ PWM_FREQ_HZ = 400     # ESC frame rate
 
 # Throttle setpoints, in microseconds.
 US_SAFE = 1000       # safety / disarmed
-US_0 = 1100          # 0%
+US_0 = 1150          # 1%
 US_25 = 1310         # 25%
 US_50 = 1520         # 50%
 US_60 = 1600         # ~60%, interpolated, only used by the pulse test
