@@ -5,6 +5,7 @@ import sys
 import os
 import numpy as np
 from tkinter import BOTH, TRUE
+import tkinter as tk          #####*****CHANGES*****##### Canvas, for the round E-STOP
 import threading
 import queue                    #####*****CHANGES*****##### worker -> Tk thread handoff
 
@@ -102,10 +103,15 @@ style.configure("Stop.TButton", font=(None, 20, "bold"), padding=10, background=
 #####*****CHANGES*****#####
 # Deliberately the loudest thing on the Prop TEST V2 page: bigger font and far
 # more padding than any other button, so it is the one you hit without looking.
-style.configure("EStop.TButton", font=(None, 28, "bold"), padding=22, background="#b02a37", foreground="white")
-style.configure("PropIdle.TButton", font=(None, 18, "bold"), padding=8, background="#0d6efd", foreground="white")
-style.configure("PropBusy.TButton", font=(None, 18, "bold"), padding=8, background="#fd7e14", foreground="white")
-style.configure("PropOn.TButton", font=(None, 18, "bold"), padding=8, background="#198754", foreground="white")
+#####*****CHANGES*****#####
+# NO LONGER USED - the emergency stop is a Canvas circle in the bottom-right
+# corner now, not a ttk button, so it paints its own colours. Kept in case it
+# goes back to being a normal button.
+# style.configure("EStop.TButton", font=(None, 28, "bold"), padding=22, background="#b02a37", foreground="white")
+#####*****END CHANGES*****#####
+style.configure("PropIdle.TButton", font=(None, 18, "bold"), padding=4, background="#0d6efd", foreground="white")
+style.configure("PropBusy.TButton", font=(None, 18, "bold"), padding=4, background="#fd7e14", foreground="white")
+style.configure("PropOn.TButton", font=(None, 18, "bold"), padding=4, background="#198754", foreground="white")
 #####*****END CHANGES*****#####
 
 
@@ -254,9 +260,9 @@ spin_bar = ttk.Progressbar(status_container,maximum=100,bootstyle=INFO,length=16
 # the handler functions do not exist yet at this point in the file.
 
 propv2_side = ttk.Frame(PropV2_f)
-propv2_side.pack(side=RIGHT, anchor=NE, padx=25, pady=20)
+propv2_side.pack(side=RIGHT, anchor=NE, padx=20, pady=10)   #####*****CHANGES*****##### was padx=25 pady=20
 
-propv2_dot = ttk.Label(propv2_side, text="●", font=("Arial", 34, "bold"), foreground="white")
+propv2_dot = ttk.Label(propv2_side, text="●", font=("Arial", 26, "bold"), foreground="white")   #####*****CHANGES*****##### was 34
 propv2_dot.pack(anchor="e")
 
 propv2_state_lbl = ttk.Label(propv2_side, text="NO POWER", bootstyle=SECONDARY, font=(None, 22, "bold"))
@@ -264,7 +270,7 @@ propv2_state_lbl.pack(anchor="e")
 
 # Second line of the status: which phase/step, or why we faulted.
 propv2_detail_lbl = ttk.Label(propv2_side, text="press Power On", bootstyle=INFO, font=(None, 13))
-propv2_detail_lbl.pack(anchor="e", pady=(0, 18))
+propv2_detail_lbl.pack(anchor="e", pady=(0, 10))   #####*****CHANGES*****##### was 18
 
 propv2_v_lbl = ttk.Label(propv2_side, text="Voltage:  --", bootstyle=SECONDARY, style='Sub.TLabel')
 propv2_v_lbl.pack(anchor="e")
@@ -279,7 +285,7 @@ propv2_t_lbl.pack(anchor="e")
 # from whatever the GUI last asked for - so a clamp or a safety drop shows up
 # here instead of being hidden.
 propv2_pwm_lbl = ttk.Label(propv2_side, text="PWM TOP: off    BOT: off", bootstyle=INFO, font=(None, 17, "bold"))
-propv2_pwm_lbl.pack(anchor="e", pady=(16, 0))
+propv2_pwm_lbl.pack(anchor="e", pady=(10, 0))   #####*****CHANGES*****##### was 16
 
 propv2_bar = ttk.Progressbar(propv2_side, maximum=100, bootstyle=INFO, length=220)
 #####*****END CHANGES*****#####
@@ -1912,41 +1918,100 @@ propv2_btns = ttk.Frame(PropV2_f)
 propv2_btns.pack(side=LEFT, fill=BOTH, expand=TRUE, padx=50)
 
 propv2_title = ttk.Label(propv2_btns, text="PROP TEST V2", bootstyle=PRIMARY, font=(None, 26, "bold"))
-propv2_title.pack(pady=(25, 5))
+propv2_title.pack(pady=(4, 0))        #####*****CHANGES*****##### was (25, 5)
 
 # 1. Power on. Named "precharge" in the identifiers for history - precharge
 #    itself is disabled (faulty hardware); this now checks the input voltage
 #    and closes the main FET. See Precharge.py.
 PV2_PRECHARGE = ttk.Button(propv2_btns, text="Power On (FET)", style="PropIdle.TButton", width=26, command=propv2_precharge)
-PV2_PRECHARGE.pack(expand=TRUE, pady=6)
+PV2_PRECHARGE.pack(expand=TRUE, pady=2)
 
 # 2. Power off - the opposite of precharge, so it sits next to it. Normal
 #    end-of-test shutdown: de-energises just as hard as the emergency stop but
 #    without flagging a fault, so a clean run still bins its log.
 PV2_POWEROFF = ttk.Button(propv2_btns, text="Power Off", style="PropIdle.TButton", width=26, command=propv2_power_off)
-PV2_POWEROFF.pack(expand=TRUE, pady=6)
+PV2_POWEROFF.pack(expand=TRUE, pady=2)
 
-# 3. Emergency stop. Bigger style and extra padding above/below so it is hard
-#    to hit by accident and impossible to miss when you need it.
-PV2_ESTOP = ttk.Button(propv2_btns, text="EMERGENCY STOP", style="EStop.TButton", width=22, command=propv2_estop)
-PV2_ESTOP.pack(expand=TRUE, pady=(18, 18))
+#####*****CHANGES*****#####
+# 3. Emergency stop - MOVED out of this column, see the round button further
+#    down. It used to live here at font 28 with padding 22 and 18px above and
+#    below, about 125px of vertical space, which pushed the Pulse Test button
+#    off the bottom of the 5-inch screen (it fitted on the 7-inch one).
+#####*****END CHANGES*****#####
 
 # 4. LED
 PV2_LED = ttk.Button(propv2_btns, text="Turn LED On", style="PropIdle.TButton", width=26, command=propv2_led)
-PV2_LED.pack(expand=TRUE, pady=6)
+PV2_LED.pack(expand=TRUE, pady=2)
 
 # 5-8. The four phases from Hobbywing_Prop_Test.SEQUENCE
 PV2_TOP = ttk.Button(propv2_btns, text="TOP Motor Test", style="PropIdle.TButton", width=26, command=propv2_top)
-PV2_TOP.pack(expand=TRUE, pady=6)
+PV2_TOP.pack(expand=TRUE, pady=2)
 
 PV2_BOT = ttk.Button(propv2_btns, text="BOT Motor Test", style="PropIdle.TButton", width=26, command=propv2_bot)
-PV2_BOT.pack(expand=TRUE, pady=6)
+PV2_BOT.pack(expand=TRUE, pady=2)
 
 PV2_BOTH = ttk.Button(propv2_btns, text="BOTH Motors Test", style="PropIdle.TButton", width=26, command=propv2_both)
-PV2_BOTH.pack(expand=TRUE, pady=6)
+PV2_BOTH.pack(expand=TRUE, pady=2)
 
 PV2_PULSE = ttk.Button(propv2_btns, text="Pulse Test", style="PropIdle.TButton", width=26, command=propv2_pulse)
-PV2_PULSE.pack(expand=TRUE, pady=(6, 25))
+PV2_PULSE.pack(expand=TRUE, pady=(2, 4))   #####*****CHANGES*****##### was (6, 25)
+
+#####*****CHANGES*****#####
+# --------------------------------------------------------------------------
+# Emergency stop - round, pinned to the bottom-right corner
+# --------------------------------------------------------------------------
+# A Canvas rather than a ttk.Button because ttk cannot draw a real circle, and
+# place() rather than pack() so it floats over the layout in the corner instead
+# of competing with the button column for vertical space. That is the point of
+# the move: the column has to fit eight items on a 480px-high 5-inch screen.
+#
+# relx/rely 1.0 with anchor "se" keeps it in the corner at any resolution, so
+# the 5-inch and 7-inch screens both get it in the same place. Bottom-LEFT is
+# taken by the Home button, and the status column hugs the top-right, so this
+# corner is free.
+
+ESTOP_D = 96            # diameter in px. 112 covered the Temp and PWM lines
+                        # on the 800x480 screen; this clears them.
+
+
+def _estop_paint(fill):
+    PV2_ESTOP.itemconfigure(_estop_disc, fill=fill)
+    root.update_idletasks()     # paint before the teardown blocks
+
+
+def _estop_press(event=None):
+    """
+    Fires on PRESS, not release.
+
+    Deliberate: this is the one control where the fastest possible response
+    beats guarding against a stray touch, and a false trigger only powers the
+    rig down safely. Sitting in a corner on its own is what keeps it from being
+    hit by accident.
+    """
+    _estop_paint("#7d1d26")
+    propv2_estop()
+
+
+def _estop_release(event=None):
+    _estop_paint("#b02a37")
+
+
+PV2_ESTOP = tk.Canvas(PropV2_f, width=ESTOP_D, height=ESTOP_D,
+                      highlightthickness=0, bd=0,
+                      bg=style.colors.bg, cursor="hand2")
+
+_estop_disc = PV2_ESTOP.create_oval(4, 4, ESTOP_D - 4, ESTOP_D - 4,
+                                    fill="#b02a37", outline="#ff6b7a", width=3)
+PV2_ESTOP.create_text(ESTOP_D / 2, ESTOP_D / 2 - 9, text="STOP",
+                      fill="white", font=(None, 17, "bold"))
+PV2_ESTOP.create_text(ESTOP_D / 2, ESTOP_D / 2 + 13, text="EMERGENCY",
+                      fill="#ffd7db", font=(None, 8, "bold"))
+
+PV2_ESTOP.bind("<Button-1>", _estop_press)
+PV2_ESTOP.bind("<ButtonRelease-1>", _estop_release)
+
+PV2_ESTOP.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")
+#####*****END CHANGES*****#####
 
 # Everything except the precharge starts locked out.
 propv2_buttons_idle()
