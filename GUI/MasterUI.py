@@ -3365,7 +3365,7 @@ PV2_PULSE.pack(expand=TRUE, pady=(2, 4))   #####*****CHANGES*****##### was (6, 2
 # taken by the Home button, and the status column hugs the top-right, so this
 # corner is free.
 
-ESTOP_D = 120           # diameter in px. 112 covered the Temp and PWM lines in Simulator
+ESTOP_D = 150           # diameter in px. 112 covered the Temp and PWM lines in Simulator
                         # on the 800x480 screen; this clears them.
 
 
