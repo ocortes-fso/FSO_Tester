@@ -6,7 +6,15 @@ def run_pwm_test():
     serial_port = "/dev/ttyAMA10"
     baud_rate = 57600
     master = mavutil.mavlink_connection(serial_port, baud_rate)
-    master.wait_heartbeat()
+
+    #####*****CHANGES*****#####
+    # wait_heartbeat() used to be called with no timeout, so an unresponsive
+    # flight controller blocked here forever and hung the whole body test.
+    # ([], False) reads as a FAIL with no results in the GUI.
+    if not master.wait_heartbeat(timeout=5):
+        print("[PWM TEST] no heartbeat in 5 s - cannot write params")
+        return [], False
+    #####*****END CHANGES*****#####
 
     Param_set = {
         "SERVO9_FUNCTION": 0,
