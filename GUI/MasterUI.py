@@ -122,6 +122,43 @@ a06_slider_echo = False
 # Cached rather than read from the widget on every drag event, so the control
 # refresh only runs on the transition instead of once per pixel of travel.
 a06_hot = {"top": False, "bot": False}
+
+#####*****CHANGES*****#####
+# True while the arming worker is in its hold. Its own flag rather than reading
+# Manual_PWM_Test.is_armed(), because during the hold neither "armed" nor "not
+# armed" is the useful answer - the controls have to stay locked either way.
+a06_arming = False
+
+# --- slider rate limiting -------------------------------------------------
+# The slider handler used to call lgpio straight through on every motion
+# event, on the Tk thread. On the Pi that made the slider crawl at roughly
+# 5 us/second: each event tore the software waveform down and built a new one
+# (because the resting position used to mean "frames off", so dragging near
+# the bottom crossed that boundary over and over), and the widget could not
+# track the finger while it waited.
+#
+# Now a drag only records where the finger is and schedules one flush. The
+# hardware write happens at most every A06_SLIDER_FLUSH_MS, decoupled from how
+# fast the events arrive, so finger tracking never waits on lgpio. 40ms is
+# 25 Hz - far finer than anyone can aim on a touchscreen, and the ESC is only
+# reading one frame every 2.5ms anyway.
+a06_slider_pending = {}        # channel -> us waiting to go to the hardware
+a06_slider_flush_id = None     # the scheduled flush, or None if none is due
+A06_SLIDER_FLUSH_MS = 40
+#####*****END CHANGES*****#####
+
+#####*****CHANGES*****#####
+# --- Loom test state ---
+# The loom test is a continuity scan, so what you want while wiggling a
+# connector is a reading that keeps refreshing, not one you have to re-request.
+# Start puts it on a 2s repeat; Stop ends it. Nothing runs on page entry, and
+# the results are cleared when you arrive so a reading from a previous visit
+# cannot be mistaken for a live one - which is what made it look like it was
+# running by itself.
+loom_after_id = None           # the scheduled next pass, or None if stopped
+loom_running = False
+LOOM_PERIOD_MS = 2000
+#####*****END CHANGES*****#####
 #####*****END CHANGES*****#####
 
 
@@ -441,16 +478,16 @@ a06_main.pack(side=LEFT, fill=BOTH, expand=TRUE, padx=40)
 a06_head = ttk.Frame(a06_main)
 a06_head.pack(anchor="w", fill=X)
 
-a06_title = ttk.Label(a06_head, text="Cv2_A06 TESTING", bootstyle=PRIMARY, font=(None, 21, "bold"))
+a06_title = ttk.Label(a06_head, text="Cv2_A06 TESTING", bootstyle=PRIMARY, font=(None, 19, "bold"))
 a06_title.pack(side=LEFT, anchor="s")
 
 a06_subtitle = ttk.Label(
     a06_head,
     text=f"TOP = GPIO{Manual_PWM_Test.PWM_TOP}   BOT = GPIO{Manual_PWM_Test.PWM_BOT}"
          f"   {Manual_PWM_Test.PWM_FREQ_HZ} Hz frames",
-    bootstyle=SECONDARY, font=(None, 11),
+    bootstyle=SECONDARY, font=(None, 10),
 )
-a06_subtitle.pack(side=LEFT, anchor="s", padx=(14, 0), pady=(0, 4))
+a06_subtitle.pack(side=LEFT, anchor="s", padx=(14, 0), pady=(0, 3))
 
 # The status message: what is happening, or why we refused.
 #
@@ -468,13 +505,13 @@ a06_subtitle.pack(side=LEFT, anchor="s", padx=(14, 0), pady=(0, 4))
 # it silently clips the end of the sentence instead, which on a FAULT is the
 # half that tells you what to go and check. The corner dot carries the colour
 # either way.
-A06_DETAIL_H = 44
+A06_DETAIL_H = 38
 a06_detail_box = ttk.Frame(a06_main, height=A06_DETAIL_H)
 a06_detail_box.pack(anchor="w", fill=X, pady=(0, 1))
 a06_detail_box.pack_propagate(False)
 
 a06_detail_lbl = ttk.Label(a06_detail_box, text="press Power On", bootstyle=INFO,
-                           font=(None, 12), wraplength=430, justify="left")
+                           font=(None, 11), wraplength=430, justify="left")
 a06_detail_lbl.pack(anchor="w")
 #####*****END CHANGES*****#####
 
@@ -524,6 +561,11 @@ def home():
         a06_after_id = None
     Manual_PWM_Test.release()
     a06_reset_sliders()
+
+    # Stop the loom scan loop. It opens and closes gpiochip 4 on every pass, so
+    # leaving it running after the page is gone would have it fighting whatever
+    # the next page claims.
+    loom_stop_test()
     #####*****END CHANGES*****#####
 
     if propv2_after_id is not None:
@@ -1347,7 +1389,15 @@ def propv2_pulse():
 # function reads the real slider positions and the real worker state every
 # time it runs.
 
-A06_COLOURS = PROPV2_COLOURS        # one colour language across both pages
+#####*****CHANGES*****#####
+# Same colour language as the Prop V2 page, plus two states that only exist
+# here because only this page arms the ESCs as a separate operator step:
+#   ARMING - in the US_ARM hold, same yellow as any other transition
+#   ARMED  - frames live at idle, ESCs quiet and ready, nothing turning
+A06_COLOURS = dict(PROPV2_COLOURS)
+A06_COLOURS["ARMING"] = "yellow"
+A06_COLOURS["ARMED"] = "cyan"
+#####*****END CHANGES*****#####
 
 
 def a06_post(fn):
@@ -1507,16 +1557,29 @@ def update_a06():
             # being pushed from each handler: it is a description of what the
             # hardware is doing right now, and deriving it from the hardware
             # means it cannot drift out of step with it.
-            if a06_running and a06_spin_channel is not None:
+            #####*****CHANGES*****#####
+            # Arming is now part of the ladder: powered -> armed -> driving.
+            # The ARMING branch is left to the handler, which owns the status
+            # for the length of the hold.
+            if a06_arming:
+                pass
+            elif a06_running and a06_spin_channel is not None:
                 set_a06_state("RUNNING",
                               f"{a06_spin_channel.upper()} spin {Manual_PWM_Test.SPIN_US} us"
                               f" - {a06_spin_remaining:.1f}s left")
-            elif manual["top_us"] is not None or manual["bot_us"] is not None:
-                live = " ".join(f"{n.upper()} {manual[f'{n}_us']} us"
-                                for n in ("top", "bot") if manual[f"{n}_us"] is not None)
-                set_a06_state("RUNNING", f"manual: {live} - press STOP to reset")
+            elif not manual["armed"]:
+                set_a06_state("LIVE", "no signal - ESCs beep 1/s - press Init PWM")
+            elif any((manual[f"{n}_us"] or 0) > Manual_PWM_Test.SLIDER_MIN_US
+                     for n in ("top", "bot")):
+                driving = " ".join(
+                    f"{n.upper()} {manual[f'{n}_us']} us" for n in ("top", "bot")
+                    if (manual[f"{n}_us"] or 0) > Manual_PWM_Test.SLIDER_MIN_US)
+                set_a06_state("RUNNING", f"manual: {driving} - press STOP for idle")
             else:
-                set_a06_state("LIVE", "ready - no signal, ESCs should beep 1/s")
+                set_a06_state("ARMED",
+                              f"armed, idling at {Manual_PWM_Test.SLIDER_MIN_US} us"
+                              f" - ESCs quiet and ready")
+            #####*****END CHANGES*****#####
 
         # A guard trip happens on the telemetry thread, which can only flag it
         # - it cannot cut power or touch widgets. So the Tk thread picks it up
@@ -1575,11 +1638,20 @@ def a06_paint_value(channel, us, auto=False):
     nudge rather than from the slider, so "the slider is doing this" and "the
     automatic test is doing this" are not the same shade of blue.
     """
-    if us is None or us <= Manual_PWM_Test.SLIDER_MIN_US:
+    #####*****CHANGES*****#####
+    # Three states now, not two. "no frames" and "idle" used to read the same
+    # because the resting position WAS no frames - and that was the bug: an ESC
+    # with no signal is disarmed and will refuse the next throttle command.
+    # They are different things and the readout has to say which one it is,
+    # because one of them beeps at you and the other is ready to go.
+    if us is None:
         a06_value_lbl(channel).config(text="OFF  (0 us)", bootstyle=SECONDARY)
+    elif us <= Manual_PWM_Test.SLIDER_MIN_US:
+        a06_value_lbl(channel).config(text=f"{us} us  (idle)", bootstyle=SECONDARY)
     else:
         a06_value_lbl(channel).config(text=f"{us} us",
                                       bootstyle=WARNING if auto else INFO)
+    #####*****END CHANGES*****#####
 
 
 def a06_set_slider(channel, us):
@@ -1598,6 +1670,12 @@ def a06_set_slider(channel, us):
         a06_slider(channel).set(us)
     finally:
         a06_slider_echo = False
+    #####*****CHANGES*****#####
+    # Drop any drag value still waiting to be flushed for this channel. Without
+    # this, a reset could be undone a few milliseconds later by the last
+    # position the finger was at before it let go.
+    a06_slider_pending.pop(channel, None)
+    #####*****END CHANGES*****#####
     a06_paint_value(channel, us)
 
 
@@ -1610,13 +1688,14 @@ def a06_reset_sliders():
 
 def a06_slider_moved(channel, raw):
     """
-    The operator dragged a slider. Commands that channel directly.
+    The operator dragged a slider.
 
-    Fires continuously while dragging, so this stays cheap: it only touches the
-    PWM layer and the value label, and only calls the full control refresh on
-    the transition between resting and live - not once per pixel of travel.
+    Fires once per motion event, so it does the absolute minimum: paint the
+    label and remember where the finger is. The hardware write is handed to
+    a06_slider_flush() on a timer - see the rate-limiting note up with
+    a06_slider_pending for why calling lgpio from here made the slider crawl.
     """
-    global a06_idle_watch
+    global a06_slider_flush_id
 
     if a06_slider_echo:
         return                      # our own .set(), not a drag
@@ -1624,30 +1703,59 @@ def a06_slider_moved(channel, raw):
     us = int(round(float(raw)))
     a06_paint_value(channel, us)
 
-    # Both of these should be unreachable - the slider is disabled in both
-    # cases - but a disabled widget is a UI promise, not a hardware one, and
-    # the thing on the other end of it is a motor.
-    if not Hobbywing_Prop_Test.session_live():
+    # All three of these should be unreachable - the slider is disabled in each
+    # case - but a disabled widget is a UI promise, not a hardware one, and the
+    # thing on the other end of it is a motor.
+    if not Hobbywing_Prop_Test.session_live() or not Manual_PWM_Test.is_armed():
         a06_set_slider(channel, Manual_PWM_Test.SLIDER_MIN_US)
         return
-    if a06_running:
+    if a06_running or a06_arming:
         a06_set_slider(channel, Manual_PWM_Test.SLIDER_MIN_US)
         return
 
-    try:
-        sent = Manual_PWM_Test.set_channel(channel, us)
-    except Exception as e:
-        print(f"[A06 SLIDER ERROR] {e}")
-        a06_set_slider(channel, Manual_PWM_Test.SLIDER_MIN_US)
-        set_a06_state("FAULT", str(e))
-        a06_refresh_controls()
+    a06_slider_pending[channel] = us
+    if a06_slider_flush_id is None:
+        a06_slider_flush_id = root.after(A06_SLIDER_FLUSH_MS, a06_slider_flush)
+
+
+def a06_slider_flush():
+    """
+    Push the latest slider positions to the hardware. Tk thread, on a timer.
+
+    Only the LAST value per channel is sent, however many motion events piled
+    up in the interval - which is the whole point. Intermediate positions of a
+    finger are not throttle settings anybody asked for, and skipping them is
+    what keeps the widget tracking the drag.
+    """
+    global a06_slider_flush_id
+
+    a06_slider_flush_id = None
+    if not a06_slider_pending:
         return
 
-    hot = sent is not None
-    if hot != a06_hot[channel]:
-        # Crossed between resting and live: the Spin buttons change meaning,
-        # so the controls need recomputing. This is the only time they do.
-        a06_hot[channel] = hot
+    pending = dict(a06_slider_pending)
+    a06_slider_pending.clear()
+
+    changed = False
+    for channel, us in pending.items():
+        try:
+            sent = Manual_PWM_Test.set_channel(channel, us)
+        except Exception as e:
+            print(f"[A06 SLIDER ERROR] {e}")
+            a06_set_slider(channel, Manual_PWM_Test.SLIDER_MIN_US)
+            set_a06_state("FAULT", str(e))
+            a06_refresh_controls()
+            return
+
+        hot = sent is not None and sent > Manual_PWM_Test.SLIDER_MIN_US
+        if hot != a06_hot[channel]:
+            # Crossed between idle and commanding throttle: the Spin buttons
+            # change meaning, so the controls need recomputing. This is the
+            # only time they do.
+            a06_hot[channel] = hot
+            changed = True
+
+    if changed:
         a06_refresh_controls()
 
 
@@ -1664,14 +1772,23 @@ def a06_refresh_controls():
     for the controls and the hardware to disagree.
     """
     live = Hobbywing_Prop_Test.session_live()
+    #####*****CHANGES*****#####
+    # `armed` is now a third gate alongside `live`. The ESCs need the US_ARM
+    # hold before they will accept throttle at all, so every throttle control
+    # stays locked until arming has happened - which is also what stops the
+    # first press of a Spin button getting the fast refusal beep instead of a
+    # turning motor.
+    armed = Manual_PWM_Test.is_armed()
+    arming = a06_arming
     spinning = a06_running
-    hot = {c: (live and a06_slider_us(c) > Manual_PWM_Test.SLIDER_MIN_US)
+    hot = {c: (live and armed and a06_slider_us(c) > Manual_PWM_Test.SLIDER_MIN_US)
            for c in ("top", "bot")}
     any_hot = hot["top"] or hot["bot"]
+    busy = spinning or arming or any_hot
 
     # --- power ---
     A06_PWR_ON.config(state="normal" if not live else "disabled",
-                      text="Power On (FET)" if not live else "Powered")
+                      text="Power On" if not live else "Powered")
     A06_PWR_ON.configure(style="A06SmallOn.TButton" if live else "A06Small.TButton")
 
     # Powering off is blocked while anything is commanded. Cutting power to a
@@ -1679,7 +1796,25 @@ def a06_refresh_controls():
     # red button in the corner is the one for that - it is the only control
     # here that is never disabled. The normal route is STOP first, then
     # Power Off, which drops the throttle before the rail.
-    A06_PWR_OFF.config(state="normal" if (live and not spinning and not any_hot) else "disabled")
+    A06_PWR_OFF.config(state="normal" if (live and not busy) else "disabled")
+
+    # --- initialise / disarm the PWM ---
+    # Reads as the next step after Power On, which is why it sits in that row:
+    # Power On -> Init PWM -> drive -> Disarm -> Power Off, left to right in
+    # the order they get pressed.
+    if arming:
+        A06_ARM.config(state="disabled", text="arming...")
+        A06_ARM.configure(style="A06Small.TButton")
+    elif not armed:
+        A06_ARM.config(state="normal" if live else "disabled", text="Init PWM")
+        A06_ARM.configure(style="A06Small.TButton")
+    else:
+        # Disarming mid-throttle would drop the signal with the motor turning,
+        # so it waits for idle - the corner stop is there for the other case.
+        A06_ARM.config(state="normal" if not (spinning or any_hot) else "disabled",
+                       text="Disarm")
+        A06_ARM.configure(style="A06SmallOn.TButton")
+    #####*****END CHANGES*****#####
 
     # --- LED ---
     # Available whenever the bus is live, including while a motor is turning.
@@ -1697,11 +1832,13 @@ def a06_refresh_controls():
         btn = a06_spin_btn(channel)
         name = channel.upper()
 
-        # A slider may be dragged only when the bus is live and no timed spin
-        # is running. The other channel being manually hot does NOT lock this
-        # slider - running both by hand is a legitimate thing to want, and
-        # neither of them can start an automatic test while they are up.
-        slider.config(state="disabled" if (not live or spinning) else "normal")
+        # A slider may be dragged only when the bus is live, the ESCs are
+        # armed, and no timed spin is running. The other channel being manually
+        # hot does NOT lock this slider - running both by hand is a legitimate
+        # thing to want, and neither of them can start an automatic test while
+        # they are up.
+        slider.config(state="normal" if (live and armed and not spinning and not arming)
+                      else "disabled")
 
         if spinning and a06_spin_channel == channel:
             # This channel's nudge is the one running: its button becomes the
@@ -1726,8 +1863,14 @@ def a06_refresh_controls():
             btn.configure(style="A06Spin.TButton")
 
         else:
-            btn.config(state="normal" if live else "disabled", text=f"{name} Spin")
+            #####*****CHANGES*****#####
+            # Needs `armed`, not just `live`. Offering this button to an
+            # unarmed ESC is what produced the fast refusal beep on the first
+            # press - the button looked available and the hardware disagreed.
+            btn.config(state="normal" if (live and armed and not arming) else "disabled",
+                       text=f"{name} Spin")
             btn.configure(style="A06Spin.TButton")
+            #####*****END CHANGES*****#####
 
 
 # --- handlers --------------------------------------------------------------
@@ -1887,6 +2030,90 @@ def a06_estop(detail="operator pressed STOP"):
     root.update_idletasks()
 
 
+#####*****CHANGES*****#####
+def a06_arm_toggle():
+    """
+    Initialise the PWM, or stop it again.
+
+    THE FIX FOR THE FIRST-PRESS BEEP. An ESC refuses to arm when the first
+    signal it ever sees is above its zero point: it emits a fast error beep and
+    will not turn. The page used to jump straight from no frames to 1200 us, so
+    the first press of a Spin button always got that refusal and only the
+    second one worked, once the ESC had been through its startup.
+
+    So arming is now its own step the operator takes deliberately: hold
+    US_ARM (1000 us) on both channels for ARM_HOLD_S, which is what the
+    scripted test has always done, and only then unlock the throttle controls.
+    You should hear the ESCs stop their once-a-second beep and run their arming
+    tones while this is in the hold.
+
+    Pressing it again disarms: frames off, and the 1/s beep comes back. That is
+    the end-of-session state, and it is deliberately the only thing that
+    switches the waveform off, because anything else doing it silently would
+    leave the next command to be refused all over again.
+
+    Arming runs in a worker because the hold blocks for two seconds and the
+    emergency stop has to stay live throughout.
+    """
+    global a06_arming, a06_idle_watch
+
+    if not Hobbywing_Prop_Test.session_live():
+        set_a06_state("FAULT", "power on first")
+        return
+
+    if Manual_PWM_Test.is_armed():
+        try:
+            Manual_PWM_Test.disarm()
+        except Exception as e:
+            print(f"[A06 DISARM ERROR] {e}")
+        a06_reset_sliders()
+        set_a06_state("LIVE", "PWM off - ESCs should beep 1/s")
+        a06_refresh_controls()
+        return
+
+    a06_arming = True
+    a06_idle_watch = False
+    a06_stop.clear()
+    Manual_PWM_Test.clear_abort()
+    set_a06_state("ARMING",
+                  f"holding {Manual_PWM_Test.US_ARM} us for "
+                  f"{Manual_PWM_Test.ARM_HOLD_S:.0f}s - ESCs should stop beeping")
+    a06_refresh_controls()
+
+    def worker():
+        global a06_arming
+        ok = False
+        msg = ""
+        try:
+            ok = Manual_PWM_Test.arm()
+        except Exception as e:
+            msg = str(e)
+            print(f"[A06 ARM ERROR] {msg}")
+        finally:
+            a06_arming = False
+
+            def finish():
+                # An emergency stop may have landed while we were in the hold.
+                if not Hobbywing_Prop_Test.session_live():
+                    a06_refresh_controls()
+                    return
+                a06_reset_sliders()
+                if msg:
+                    set_a06_state("FAULT", f"could not initialise the PWM: {msg}")
+                elif not ok:
+                    set_a06_state("LIVE", "arming was interrupted - frames off")
+                else:
+                    set_a06_state("ARMED",
+                                  f"armed, idling at {Manual_PWM_Test.SLIDER_MIN_US} us"
+                                  f" - sliders and Spin are live")
+                a06_refresh_controls()
+
+            a06_post(finish)
+
+    threading.Thread(target=worker, daemon=True).start()
+#####*****END CHANGES*****#####
+
+
 def a06_led():
     """LED on/off. Needs the bus live - the LED runs off the switched rail."""
     if not Hobbywing_Prop_Test.session_live():
@@ -1925,12 +2152,19 @@ def a06_spin(channel):
         btn.config(text=f"{channel.upper()} stopping...", state="disabled")
         return
 
-    # --- STOP: reset this channel's slider and frames ---
+    # --- STOP: return this channel's slider and throttle to idle ---
     if label.endswith("STOP"):
+        #####*****CHANGES*****#####
+        # Back to SLIDER_MIN_US with the frames still running, NOT off. Below
+        # the ESC's 0% point the motor stops either way, but keeping the signal
+        # alive keeps the ESC armed, so the next command works immediately
+        # instead of being refused. Switching the frames off is the Disarm
+        # button's job now - see a06_arm_toggle().
         try:
-            Manual_PWM_Test.off(channel)
+            Manual_PWM_Test.set_channel(channel, Manual_PWM_Test.SLIDER_MIN_US)
         except Exception as e:
             print(f"[A06 STOP ERROR] {e}")
+        #####*****END CHANGES*****#####
         a06_set_slider(channel, Manual_PWM_Test.SLIDER_MIN_US)
         a06_hot[channel] = False
         a06_refresh_controls()
@@ -1942,14 +2176,29 @@ def a06_spin(channel):
     if not Hobbywing_Prop_Test.session_live():
         set_a06_state("FAULT", "power on first")
         return
-    # Refuse if anything is already commanded by hand. The button should be
+    #####*****CHANGES*****#####
+    # Needs arming first, or the ESC answers with its refusal beep instead of
+    # turning. The button is locked until then, so this is the hardware-side
+    # copy of that interlock.
+    if not Manual_PWM_Test.is_armed():
+        set_a06_state("LIVE", "press Init PWM first - the ESCs are not armed")
+        return
+
+    # Refuse if a slider is already commanding throttle. The button should be
     # disabled in that case, so this is the belt-and-braces copy of the
-    # interlock - the one that is enforced against the hardware rather than
-    # against the widget.
+    # interlock - the one enforced against the hardware rather than the widget.
+    #
+    # "> SLIDER_MIN_US", not "is not None". An armed channel ALWAYS has live
+    # frames now, so "is not None" was true the moment arming finished and this
+    # guard refused every single spin - the button did nothing at all. Idle and
+    # "commanding throttle" are different things and this has to compare the
+    # value, not merely its presence.
     manual = Manual_PWM_Test.state()
-    if manual["top_us"] is not None or manual["bot_us"] is not None:
+    if any((manual[f"{n}_us"] or 0) > Manual_PWM_Test.SLIDER_MIN_US
+           for n in ("top", "bot")):
         set_a06_state("RUNNING", "a slider is still commanding throttle - press STOP first")
         return
+    #####*****END CHANGES*****#####
 
     a06_running = True
     a06_spin_channel = channel
@@ -2098,7 +2347,91 @@ def loom():
     main.pack_forget()
     home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
     loom_f.pack(fill=BOTH, expand=TRUE)
-    
+    #####*****CHANGES*****#####
+    # Clear last visit's result. Without this the old matrix and its Pass!/Fail!
+    # were still on screen when you walked back in, which reads as a live
+    # reading for the loom you are holding now - and it is not.
+    loom_stop_test()
+    loom_reset_labels()
+    #####*****END CHANGES*****#####
+
+
+#####*****CHANGES*****#####
+def loom_reset_labels():
+    """Back to the "nothing measured yet" state."""
+    l20.config(text="Ready to test", bootstyle=PRIMARY)
+    l21.config(text="")
+    lloom_note.config(text="")
+
+
+def loom_start():
+    """Start the repeating scan."""
+    global loom_running
+    if loom_running:
+        return
+    loom_running = True
+    LOOM_START.config(state="disabled")
+    LOOM_STOP.config(state="normal")
+    l21.config(text="")
+    loom_tick()
+
+
+def loom_stop_test():
+    """Stop the repeating scan. Leaves the last reading on screen."""
+    global loom_after_id, loom_running
+    if loom_after_id is not None:
+        root.after_cancel(loom_after_id)
+        loom_after_id = None
+    was_running = loom_running
+    loom_running = False
+    LOOM_START.config(state="normal")
+    LOOM_STOP.config(state="disabled")
+    if was_running:
+        # Say the reading is frozen. A static matrix with no note is exactly
+        # what was confusing before.
+        lloom_note.config(text="stopped - reading below is frozen")
+
+
+def loom_once():
+    """One scan, no repeat. Says so, so it cannot be mistaken for a live one."""
+    loom_stop_test()
+    try:
+        loom_test()
+        lloom_note.config(text="single reading - press Start to keep refreshing")
+    except Exception as e:
+        print(f"[LOOM] scan error: {e}")
+        l20.config(text="ERROR", bootstyle=DANGER)
+        l21.config(text="")
+        lloom_note.config(text=f"scan failed: {e}")
+
+
+def loom_tick():
+    """
+    One pass of the scan, then reschedule.
+
+    Deliberately on the Tk thread rather than in a worker. arm_loom() is 12
+    iterations with a 10ms settle each, so about 150ms - a visible hiccup but
+    not a freeze, and at one pass every 2s that is well under a tenth of the
+    time. Running it in a worker would buy smoothness and cost cross-thread
+    widget access, which is not a trade worth making for 150ms.
+    """
+    global loom_after_id
+    if not loom_running:
+        return
+    try:
+        loom_test()
+        lloom_note.config(text=f"running - refreshing every {LOOM_PERIOD_MS / 1000:.0f}s")
+    except Exception as e:
+        # A scan that throws must not kill the loop silently, and must not
+        # leave a stale matrix looking current either.
+        print(f"[LOOM] scan error: {e}")
+        l20.config(text="ERROR", bootstyle=DANGER)
+        l21.config(text="")
+        lloom_note.config(text=f"scan failed: {e}")
+    loom_after_id = root.after(LOOM_PERIOD_MS, loom_tick)
+#####*****END CHANGES*****#####
+
+
 def body():
     #####*****CHANGES*****#####
     # Opening the page no longer starts the test. It used to, which meant the
@@ -3097,22 +3430,39 @@ propv2_buttons_idle()
 # gets a row of its own: it is a different kind of action and does not belong
 # in the power pair.
 
-# --- power ---
+# --- power, and initialising the PWM ---
+#####*****CHANGES*****#####
+# Three buttons on this row now, in the order they get pressed:
+#
+#     Power On  ->  Init PWM  ->  (drive)  ->  Disarm  ->  Power Off
+#
+# "Init PWM" is here rather than on a line of its own because arming is part of
+# the power-up sequence, and because there was no height left for a fourth row:
+# A06_f gets 404px on the 5-inch screen and the controls already filled it to
+# within 7px. The labels shortened from "Power On (FET)" so all three fit the
+# width - the wiring summary under the title still names the FET.
+#
+# The LED keeps its own line, as asked.
 a06_pwr_row = ttk.Frame(a06_main)
-a06_pwr_row.pack(anchor="w", pady=(0, 4))
+a06_pwr_row.pack(anchor="w", pady=(0, 3))
 
-A06_PWR_ON = ttk.Button(a06_pwr_row, text="Power On (FET)", style="A06Small.TButton",
-                        width=16, command=a06_power_on)
+A06_PWR_ON = ttk.Button(a06_pwr_row, text="Power On", style="A06Small.TButton",
+                        width=11, command=a06_power_on)
 A06_PWR_ON.pack(side=LEFT, padx=(0, 6))
 
 A06_PWR_OFF = ttk.Button(a06_pwr_row, text="Power Off", style="A06Small.TButton",
-                         width=12, command=a06_power_off)
-A06_PWR_OFF.pack(side=LEFT)
+                         width=11, command=a06_power_off)
+A06_PWR_OFF.pack(side=LEFT, padx=(0, 6))
+
+A06_ARM = ttk.Button(a06_pwr_row, text="Init PWM", style="A06Small.TButton",
+                     width=11, command=a06_arm_toggle)
+A06_ARM.pack(side=LEFT)
+#####*****END CHANGES*****#####
 
 # --- LED, on its own line ---
 A06_LED = ttk.Button(a06_main, text="Turn LED On", style="A06Small.TButton",
                      width=16, command=a06_led)
-A06_LED.pack(anchor="w", pady=(0, 8))
+A06_LED.pack(anchor="w", pady=(0, 4))
 
 
 def _a06_channel_box(parent, title):
@@ -3240,7 +3590,31 @@ a06_refresh_controls()
 # Loom test page
 l20 = ttk.Label(loom_f, text="Ready to test", bootstyle=PRIMARY, font=(None, 24)); l20.pack(pady=20)
 l21 = ttk.Label(loom_f, text="", bootstyle=PRIMARY); l21.pack(expand=TRUE)
-ttk.Button(loom_f, text="Run Test", bootstyle=SECONDARY, width=15, command=loom_test).pack(pady=25)
+#####*****CHANGES*****#####
+# Says whether what is on screen is live or frozen. The matrix on its own
+# cannot tell you that, which is what made a leftover reading confusing.
+lloom_note = ttk.Label(loom_f, text="", bootstyle=SECONDARY, font=(None, 13, "italic"))
+lloom_note.pack()
+
+# Start / Stop instead of the old single "Run Test". Start repeats the scan
+# every LOOM_PERIOD_MS so you can wiggle a connector and watch the matrix
+# change; Stop freezes it. "Run Test" is kept as the single-shot, because
+# sometimes one reading is all you want.
+loom_btns = ttk.Frame(loom_f)
+loom_btns.pack(pady=25)
+
+LOOM_START = ttk.Button(loom_btns, text="Start", bootstyle=SUCCESS, width=12, command=loom_start)
+LOOM_START.pack(side=LEFT, padx=5)
+
+LOOM_STOP = ttk.Button(loom_btns, text="Stop", bootstyle=DANGER, width=12, command=loom_stop_test)
+LOOM_STOP.pack(side=LEFT, padx=5)
+
+LOOM_ONCE = ttk.Button(loom_btns, text="Run Once", bootstyle=SECONDARY, width=12, command=loom_once)
+LOOM_ONCE.pack(side=LEFT, padx=5)
+
+# Nothing running yet, so Stop starts out dead.
+LOOM_STOP.config(state="disabled")
+#####*****END CHANGES*****#####
 
 main.pack(fill=BOTH, expand=True)
 update_pwm_status()

@@ -78,25 +78,49 @@ PWM_FREQ_HZ = 400
 
 # --- the slider band ------------------------------------------------------
 #
-# SLIDER_MIN_US is the slider's resting position AND means "frames off".
-# Mapping the bottom of the travel to no-waveform rather than to 1000 us is
-# deliberate:
+# --- ARMING, and why the resting value is NOT 0 us ------------------------
 #
-#   * it is what the operator asked for - the reset position is 0 us out
-#   * 1000 us is the ESC's disarm value, so it would not spin there anyway;
-#     the only difference between "1000 us frames" and "no frames" is the
-#     once-per-second beep, and that beep is a useful, audible "not armed"
-#   * it means the whole slider travel is the useful band. A 0..1400 slider
-#     would waste 71% of its length on throttle values below the ESC's own
-#     floor, leaving the part that matters squeezed into the last few pixels
-#     of a touchscreen.
+# This was wrong in the first version and it is worth writing down, because
+# both bugs it caused looked like different problems.
+#
+# An ESC will not arm if the first throttle signal it ever sees is above its
+# zero point. It emits a fast error beep and refuses. The first version jumped
+# straight from "no frames at all" to 1200 us, so the first press of a Spin
+# button always got the fast beep and never turned the motor; by the second
+# press the ESC had been through its startup and behaved. That is exactly the
+# sequence the scripted test gets right (prime 1000 us, enable, hold, then
+# move) and this module skipped.
+#
+# So: US_ARM is sent and HELD first, by arm(), and only then is throttle
+# available. And once armed, the resting value of a channel is live frames at
+# SLIDER_MIN_US - NOT no frames. Dropping the frames disarms the ESC and the
+# next command hits the same refusal all over again. "No frames" is now its
+# own explicit action, disarm(), which is the end-of-session step where you
+# want to hear the 1/s beep come back.
+#
+# That also fixed the slider crawling at about 5 us/second near the bottom of
+# its travel. With no-frames mapped to the resting position, every drag event
+# down there crossed the boundary: tx_servo(pin, 0) to tear the software
+# waveform down, then tx_servo(pin, us) to build a new one, on the Tk thread,
+# once per motion event. Above the boundary consecutive events only change the
+# pulse width, which is cheap - which is why it freed up the moment the motor
+# started turning. Keeping the frames live across the whole slider range
+# removes the expensive path; the GUI additionally rate-limits the writes so
+# finger tracking never waits on lgpio at all.
+US_ARM = 1000           # what arm() sends and holds - the ESC's disarm/zero
+ARM_HOLD_S = 2.0        # long enough for the ESC to run its arming tones
+
+# SLIDER_MIN_US is the slider's resting position: live frames, armed, and
+# below the ESC's 0% point (1100 us) so nothing turns there. 1080 keeps a
+# small margin under 1100 while wasting almost none of the travel on values
+# that cannot move the motor.
 #
 # SLIDER_MAX_US is the manual ceiling. THIS IS THE ONE TO CHANGE if you want
 # more or less headroom. 1400 us is roughly 40% throttle on this ESC
 # (1100 = 0%, 1310 = 25%, 1520 = 50%), which is enough to see direction,
 # hear a bearing and watch the current draw, and low enough that a slip of
 # the finger on a bench with props fitted is not an event.
-SLIDER_MIN_US = 1000
+SLIDER_MIN_US = 1080
 SLIDER_MAX_US = 1400
 
 # Hard ceiling enforced in code, independent of whatever the widget allows.
@@ -132,6 +156,7 @@ _state = {
     "top_us": None,     # what is actually going out, None = no frames
     "bot_us": None,
     "busy": None,       # which channel a timed spin is running on, if any
+    "armed": False,     # frames have been started and held at US_ARM
 }
 
 
@@ -219,27 +244,22 @@ def _clamp(us):
     return clamped
 
 
-def set_channel(channel, us):
+def _emit(channel, us):
     """
-    Command one channel. Returns the value actually transmitted, or None if the
-    channel ended up off.
+    Put `us` on the wire, with no slider clamp. Internal.
 
-    Anything at or below SLIDER_MIN_US turns the frames off rather than sending
-    a floor value - see the comment on SLIDER_MIN_US. That is what makes the
-    bottom of the slider a real resting position instead of a quiet throttle.
+    Separate from set_channel() because arm() has to send US_ARM (1000 us),
+    which is BELOW SLIDER_MIN_US and would otherwise be clamped up to the
+    slider floor - and an ESC armed at 1080 instead of its zero point is the
+    bug this whole arming path exists to avoid.
+
+    Returns the value transmitted, or None if the handle has gone.
     """
-    if channel not in CHANNELS:
-        raise ValueError(f"unknown channel {channel!r}")
-
-    if us is None or us <= SLIDER_MIN_US:
-        off(channel)
-        return None
-
     h = _handle()
     if h is None:
         raise RuntimeError("GPIO not initialised - power on first")
 
-    us = _clamp(us)
+    us = int(round(us))
     try:
         lgpio.tx_servo(h, CHANNELS[channel], us, PWM_FREQ_HZ)
     except lgpio.error as e:
@@ -253,6 +273,24 @@ def set_channel(channel, us):
 
     _set_state(**{f"{channel}_us": us})
     return us
+
+
+def set_channel(channel, us):
+    """
+    Command one channel. Returns the value actually transmitted.
+
+    Values are CLAMPED into [SLIDER_MIN_US, US_MAX_ALLOWED] - they are never
+    turned into "frames off". Switching the waveform off is disarm()'s job and
+    nothing else's, because an ESC that loses its signal disarms and has to be
+    armed again before it will turn. See the arming note at the top of the file.
+    """
+    if channel not in CHANNELS:
+        raise ValueError(f"unknown channel {channel!r}")
+
+    if us is None:
+        us = SLIDER_MIN_US
+
+    return _emit(channel, _clamp(us))
 
 
 def off(channel):
@@ -275,6 +313,7 @@ def all_off():
     """Both channels off. The safe state, and where every path here ends up."""
     for channel in CHANNELS:
         off(channel)
+    _set_state(armed=False)
 
 
 def release():
@@ -287,6 +326,71 @@ def release():
     abort()
     all_off()
     _set_state(busy=None)
+
+
+# ---------------------------------------------------------------------------
+# Arming
+# ---------------------------------------------------------------------------
+
+def is_armed():
+    with _lock:
+        return _state["armed"]
+
+
+def arm():
+    """
+    Start the throttle frames and hold them at US_ARM so the ESCs can arm.
+
+    BLOCKING for ARM_HOLD_S - call it from a worker thread.
+
+    This is the step the first version was missing. An ESC refuses to arm if
+    the first signal it ever sees is above its zero point, so going straight to
+    1200 us got a fast error beep and a motor that would not turn. Holding
+    US_ARM (1000 us) first is what the scripted test does, and it is not
+    optional.
+
+    Both channels are armed together, even for a one-motor test: the idle ESC
+    then sits on live frames at its zero point rather than losing its signal,
+    so switching which motor you are testing does not mean arming again.
+
+    Ends with both channels at SLIDER_MIN_US, which is the sliders' resting
+    position, so what the hardware is doing and what the GUI shows agree from
+    the moment this returns.
+
+    Returns True if the hold completed, False if it was cut short.
+    """
+    claim()
+
+    clear_abort()
+    print(f"[MANUAL PWM] arming both channels at {US_ARM} us for {ARM_HOLD_S:.1f}s")
+
+    for channel in CHANNELS:
+        _emit(channel, US_ARM)
+
+    if _interruptible_sleep(ARM_HOLD_S):
+        print("[MANUAL PWM] arming aborted - switching the frames off again")
+        all_off()
+        return False
+
+    # Settle on the sliders' resting value, not on US_ARM, so the readouts and
+    # the hardware start out in step.
+    for channel in CHANNELS:
+        _emit(channel, SLIDER_MIN_US)
+
+    _set_state(armed=True)
+    print(f"[MANUAL PWM] armed - both channels idling at {SLIDER_MIN_US} us")
+    return True
+
+
+def disarm():
+    """
+    Stop the frames on both channels. The ESCs go back to beeping once a second.
+
+    The deliberate counterpart to arm(), and the only thing besides the
+    teardown paths that switches the waveform off - see set_channel().
+    """
+    print("[MANUAL PWM] disarming - frames off, ESCs should beep 1/s")
+    all_off()
 
 
 # ---------------------------------------------------------------------------
@@ -331,11 +435,20 @@ def spin(channel, us=SPIN_US, hold_s=SPIN_HOLD_S, on_tick=None):
     operator, or by the telemetry guards tripping.
 
     The try/finally is the whole safety story: no matter how this exits -
-    normal end, abort, or an exception out of tx_servo - the channel's frames
-    are switched off on the way out.
+    normal end, abort, or an exception out of tx_servo - the channel comes back
+    to SLIDER_MIN_US on the way out.
+
+    Note "back to SLIDER_MIN_US", not "frames off", which is what it used to
+    do. Below the ESC's 0% point the motor stops either way, but keeping the
+    frames alive keeps the ESC ARMED - so the next press of this button spins
+    straight away instead of having to go through arming again. Requires arm()
+    to have run first; the GUI keeps this button locked until it has.
     """
     if channel not in CHANNELS:
         raise ValueError(f"unknown channel {channel!r}")
+
+    if not is_armed():
+        raise RuntimeError("not armed - run arm() first or the ESC will refuse")
 
     clear_abort()
     _set_state(busy=channel)
@@ -360,10 +473,18 @@ def spin(channel, us=SPIN_US, hold_s=SPIN_HOLD_S, on_tick=None):
                 break
 
     finally:
-        off(channel)
+        # Back to idle with the frames still running, so the ESC stays armed.
+        # Wrapped because an emergency stop on another thread may already have
+        # closed the handle under us, in which case the frames are gone anyway
+        # and there is nothing left to set.
+        try:
+            set_channel(channel, SLIDER_MIN_US)
+            rest = f"idling at {SLIDER_MIN_US} us"
+        except Exception as e:
+            rest = f"frames gone ({e})"
         _set_state(busy=None)
         print(f"[MANUAL PWM] {channel.upper()} spin {'complete' if completed else 'stopped'}"
-              f" - frames off")
+              f" - {rest}")
 
     return completed
 
@@ -401,7 +522,11 @@ def main():
     print(f"Powering up (bus must reach {Precharge.BUS_MIN_VOLTAGE:.0f} V)")
     Hobbywing_Prop_Test.session_power_up(guards_enabled=True, quiet=False)
     try:
-        claim()
+        # arm() before spin(), not optional - see the arming note at the top.
+        # It claims the pins itself, so there is no separate claim() here.
+        if not arm():
+            print("arming was interrupted - nothing to spin")
+            return
         spin(args.channel, us=args.us, hold_s=args.hold,
              on_tick=lambda r: print(f"  {r:4.1f}s left", end="\r"))
     finally:
