@@ -252,11 +252,11 @@ A06_f = ttk.Frame(root)         #####*****CHANGES*****##### Cv2_A06 Testing page
 l1 = ttk.Label(Mag_f, text="Waiting for Magnetometer...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
 l1.pack(fill=BOTH, expand=TRUE)
 
-l_sbus = ttk.Label(SBUS_f, text="Waiting for SBUS signal...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER, font=(None, 24, 'bold'))
+l_sbus = ttk.Label(SBUS_f, text="Waiting for IFV SBUS signal...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER, font=(None, 24, 'bold'))
 l_sbus.pack(fill=BOTH, expand=TRUE)
 
-# INF SBUS Label (Mirroring the normal SBUS style)
-l_sbus_inf = ttk.Label(SBUS_f_INF, text="Waiting for INF SBUS signal...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER, font=(None, 24, 'bold'))
+# STD SBUS Label (Mirroring the normal SBUS style)
+l_sbus_inf = ttk.Label(SBUS_f_INF, text="Waiting for SBUS signal...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER, font=(None, 24, 'bold'))
 l_sbus_inf.pack(fill=BOTH, expand=TRUE)
 
 l2 = ttk.Label(Lidar_f, text="Waiting for Lidar...", bootstyle=PRIMARY, justify=CENTER, anchor=CENTER)
@@ -2488,14 +2488,14 @@ def Eth():
 # --- Functions ---
 
 def INF_SBUS_run_test():
-    l_sbus_inf.after(0, lambda: l_sbus_inf.config(text="Scanning for signal...", bootstyle=INFO, font=(None, 24, 'bold')))
+    l_sbus_inf.after(0, lambda: l_sbus_inf.config(text="Scanning for SBUS signal...", bootstyle=INFO, font=(None, 24, 'bold')))
     if INF_sbus_stop.is_set():
         return
     result = INF_SBUS.test_sbus() 
     if INF_sbus_stop.is_set():
         return
     l_sbus_inf.after(0, lambda: l_sbus_inf.config(
-        text="INF SBUS Signal Detected - PASS" if result else "No INF SBUS Signal - FAIL", 
+        text="SBUS Signal Detected - PASS" if result else "No SBUS Signal - FAIL", 
         bootstyle=SUCCESS if result else DANGER, 
         font=(None, 24, 'bold')))
 
@@ -2506,7 +2506,7 @@ def SBUS_run_test():
     result = SBUS_test.test_sbus()
     if sbus_stop.is_set():
         return
-    l_sbus.after(0, lambda: l_sbus.config(text="SBUS Signal Detected - PASS" if result else "No SBUS Signal - FAIL", bootstyle=SUCCESS if result else DANGER, font=(None, 24, 'bold')))
+    l_sbus.after(0, lambda: l_sbus.config(text="IFV SBUS Signal Detected - PASS" if result else "No IFV SBUS Signal - FAIL", bootstyle=SUCCESS if result else DANGER, font=(None, 24, 'bold')))
 
 def update_mag():
     global mag_after_id
@@ -3083,7 +3083,18 @@ def body_test():
         return
 
     la.after(0, lambda: la.config(text="Running Analog Port test (Rebooting)...", bootstyle=INFO, font=(None, 14)))
-    output = Analog_port_test.analog_port_run()
+    #####*****CHANGES*****#####
+    # The analog test writes parameters, reboots and re-reads, and retries the
+    # whole thing if the reading is not there - up to ~75 s. Showing one static
+    # label for all of it made a working test look frozen, so it now reports
+    # each step. after() because this callback runs on the test's worker
+    # thread, and Tk may only be touched from the main one.
+    def _analog_note(text):
+        la.after(0, lambda t=text: la.config(
+            text=f"Analog Port: {t}", bootstyle=INFO, font=(None, 14)))
+
+    output = Analog_port_test.analog_port_run(on_status=_analog_note)
+    #####*****END CHANGES*****#####
     if body_stop.is_set():
         return
     
@@ -3262,8 +3273,8 @@ back_b = ttk.Button(root, text="Back", bootstyle=OUTLINE, command=show_body_from
 
 # Body buttons
 eth1 = ttk.Button(Body_f, text="Ethernet Test", bootstyle=SECONDARY, width=20, command=Eth); eth1.pack(expand=TRUE, anchor=E, padx=75)
-SB1 = ttk.Button(Body_f, text="Infravision SBUS (15-pin)", bootstyle=SECONDARY, width=20, command=SBUS_INF); SB1.pack(expand=TRUE, anchor=E, padx=75)
-SB2 = ttk.Button(Body_f, text="Standard SBUS (9-pin)", bootstyle=SECONDARY, width=20, command=SBUS); SB2.pack(expand=TRUE, anchor=E, padx=75)
+SB1 = ttk.Button(Body_f, text="SBUS Test", bootstyle=SECONDARY, width=20, command=SBUS_INF); SB1.pack(expand=TRUE, anchor=E, padx=75)
+SB2 = ttk.Button(Body_f, text="IFV SBUS Test", bootstyle=SECONDARY, width=20, command=SBUS); SB2.pack(expand=TRUE, anchor=E, padx=75)
 Debug = ttk.Button(Body_f, text="Debug Mode", bootstyle=SECONDARY, width=20); #Debug.pack(expand=TRUE, anchor=E, padx=75)   #hidden for now until we work this out
 
 #####*****CHANGES*****#####

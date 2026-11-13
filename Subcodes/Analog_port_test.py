@@ -81,7 +81,53 @@ SAMPLES_WANTED = 5              # per channel, median taken
 VOLTAGE_UNKNOWN = 65535         # UINT16_MAX in mV - MAVLink "not known"
 
 NO_READING = -1.0               # what the GUI already understands as a failure
+
+# ---------------------------------------------------------------------------
+# FORCING THE REBOOT: configure, reboot, and keep going until the reading is
+# actually there.
+#
+# The bench symptom was: the first run sits there and then says CHECK CFG, the
+# second run is perfect, and the reboot is heard LATER, during the PWM test.
+# That is the signature of aborting before the reboot was ever sent - which is
+# what the previous version did whenever a parameter could not be CONFIRMED.
+#
+# Why confirmation failed on a real first run is still not pinned down (a
+# genuine buffer-overflow defect in the send loop has been fixed since, but on
+# a clean link the read-back recovered from it, so it does not explain it on
+# its own). The point of the design below is that it does not matter: the
+# reading is the verification, so nothing is decided on the strength of a
+# missing acknowledgement.
+#
+# Two things had to change:
+#
+#   * An unconfirmed parameter no longer ABORTS. It used to return [-1, -1]
+#     without ever sending the reboot - which is exactly the observed symptom,
+#     and why the reboot was then heard later during the PWM test instead. The
+#     writes had landed; what went missing was the confirmation (see
+#     Mav_util._pump_param_values). Aborting on missing evidence turned a
+#     healthy board into a failure.
+#
+#   * If the reading comes back unusable, the whole thing is RETRIED -
+#     parameters, reboot, read. Both known failure modes produce an obviously
+#     impossible number rather than a wrong-looking one: UINT16_MAX when the
+#     monitor has nothing to report, and ~0.01 V when the configuration has not
+#     been applied to the pin yet. Anything under PLAUSIBLE_MIN_V means the
+#     analog monitor is not reading the pin, so it is worth another reboot.
+#     The pass/fail windows stay in the GUI - this only decides whether to try
+#     again, never whether the board is good.
+# ---------------------------------------------------------------------------
+ANALOG_ATTEMPTS = 2
+PLAUSIBLE_MIN_V = 0.05          # below this the monitor is not reading the pin
+
+# Do not START another attempt once this much time has gone. Bounds the whole
+# test so a sick link cannot run the body test past its navigation lock.
+ANALOG_RETRY_DEADLINE_S = 75.0
 #####*****END CHANGES*****#####
+
+
+def _usable(reading):
+    """True when both channels produced a voltage the ADC could really see."""
+    return all(v > PLAUSIBLE_MIN_V for v in reading)
 
 
 def _median(values):
@@ -161,7 +207,22 @@ def _collect_voltages(master):
     return out
 
 
-def analog_port_run():
+def analog_port_run(on_status=None):
+    """
+    Configure the ADC monitors, reboot, and return [BATT8_V, BATT9_V].
+
+    on_status is an optional callback taking one short string, so the GUI can
+    say what it is doing instead of sitting on "Rebooting..." for half a minute
+    and looking frozen.
+    """
+    def say(text):
+        print(f"[ANALOG PORT] {text}")
+        if on_status is not None:
+            try:
+                on_status(text)
+            except Exception as e:        # a dead callback must not fail a test
+                print(f"[ANALOG PORT] status callback: {e}")
+
     Param_set = {
         "BATT8_OPTIONS": 1,
         "BATT8_VOLT_MULT": 1,
@@ -177,32 +238,58 @@ def analog_port_run():
     # Mav_util.connect() does the open + wait_heartbeat and returns None on a
     # dead link. [-1, -1] is the "could not configure" signal the GUI already
     # renders as "COULDNT WRITE PARAMS - CHECK CFG".
-    master = Mav_util.connect(tag="ANALOG PORT")
-    if master is None:
-        return [NO_READING, NO_READING]
+    master = None
+    reading = [NO_READING, NO_READING]
+    started = time.time()
 
     try:
-        # Every write is read back and retried. If the configuration cannot be
-        # confirmed we stop HERE rather than rebooting into a half-applied
-        # state and reporting whatever it happens to read - which is the bug.
-        failed = Mav_util.set_params(master, Param_set, tag="ANALOG PORT")
-        if failed:
-            print(f"[ANALOG PORT] could not confirm {failed} - not rebooting, "
-                  f"the reading would be meaningless")
-            return [NO_READING, NO_READING]
+        for attempt in range(1, ANALOG_ATTEMPTS + 1):
+            if attempt > 1:
+                say(f"reading was not there - configuring and rebooting again "
+                    f"(attempt {attempt}/{ANALOG_ATTEMPTS})")
 
-        # BATTx_MONITOR and BATTx_VOLT_PIN only take effect at boot. The new
-        # connection comes back from here: the old one is closed, so no frame
-        # from before the reboot can be read as a result.
-        # min_total_s=20 reproduces the original `time.sleep(20)` exactly, so
-        # this can never settle for less than the code it replaced; the
-        # heartbeat check is on top of it, not instead of it.
-        master = Mav_util.reboot(master, tag="ANALOG PORT",
-                                 min_total_s=20.0, min_after_boot_s=8.0)
-        if master is None:
-            return [NO_READING, NO_READING]
+            Mav_util.close(master)
+            master = Mav_util.connect(tag="ANALOG PORT")
+            if master is None:
+                return [NO_READING, NO_READING]
 
-        return _collect_voltages(master)
+            # Every write is read back. A name that cannot be CONFIRMED is
+            # reported and then ignored: the write itself almost certainly
+            # landed, and refusing to reboot over missing evidence is what
+            # produced "CHECK CFG on the first run, perfect on the second".
+            say("writing the ADC monitor parameters")
+            failed = Mav_util.set_params(master, Param_set, tag="ANALOG PORT")
+            if failed:
+                print(f"[ANALOG PORT] could not confirm {failed} - rebooting "
+                      f"anyway, the reading below is the real check")
+
+            # BATTx_MONITOR and BATTx_VOLT_PIN only take effect at boot. The
+            # new connection comes back from here: the old one is closed, so no
+            # frame from before the reboot can be read as a result.
+            # min_total_s=20 reproduces the original `time.sleep(20)` exactly,
+            # so this can never settle for less than the code it replaced.
+            # strict=False because an unconfirmed reboot is not evidence of a
+            # bad board - if it really did not restart, the reading says so and
+            # we come round again.
+            say("rebooting the flight controller to apply them")
+            master = Mav_util.reboot(master, tag="ANALOG PORT",
+                                     min_total_s=20.0, min_after_boot_s=8.0,
+                                     strict=False, attempts=2)
+            if master is None:
+                # Did not come back at all - another reboot will not help.
+                return [NO_READING, NO_READING]
+
+            say("reading the ADC voltages")
+            reading = _collect_voltages(master)
+            if _usable(reading):
+                return reading
+
+            if time.time() - started > ANALOG_RETRY_DEADLINE_S:
+                print(f"[ANALOG PORT] {time.time() - started:.0f} s gone - not "
+                      f"starting another attempt")
+                break
+
+        return reading
 
     finally:
         Mav_util.close(master)
