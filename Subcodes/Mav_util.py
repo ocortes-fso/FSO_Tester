@@ -60,6 +60,13 @@ BAUD_RATE = 57600
 # The original slept 1 s between opening the port and waiting for a heartbeat,
 # in both Body_Serial_test and Analog_port_test. Removing it caused spurious
 # heartbeat failures. One place does it now. See rule 1 above.
+# ---------------------------------------------------------------------------
+# ALL of these are read at CALL time, never used as default argument values.
+# Python evaluates a default once, at def time, so `def f(t=TIMEOUT)` freezes a
+# copy and makes the constant above unchangeable - which silently defeated a
+# test that thought it had shortened a timeout. If you add a knob here, read it
+# inside the function.
+# ---------------------------------------------------------------------------
 PORT_SETTLE_S = 1.0
 HEARTBEAT_TIMEOUT_S = 5.0
 
@@ -77,8 +84,16 @@ REBOOT_DOWN_S = 2.0             # let it actually go down before looking
 REBOOT_RETRY_S = 1.5            # between reconnect attempts - NOT a tight loop
 REBOOT_WAIT_S = 40.0            # ceiling on waiting for it to come back
 
+# Confirming the reboot really happened. ArduPilot heartbeats at 1 Hz on a
+# telemetry serial, so REBOOT_SILENCE_S has to tolerate a couple of missed ones
+# without calling it a reboot - 3 s is three heartbeat periods. The FC is down
+# for several seconds anyway, so waiting that long to be sure costs nothing.
+REBOOT_COMMAND_ATTEMPTS = 3
+REBOOT_SILENCE_S = 3.0          # no heartbeat for this long = it really went down
+REBOOT_DOWN_WAIT_S = 10.0       # how long to give it to go down at all
 
-def connect(timeout=HEARTBEAT_TIMEOUT_S, tag="MAV", settle_s=PORT_SETTLE_S):
+
+def connect(timeout=None, tag="MAV", settle_s=None):
     """
     Open the port, let it settle, wait for a heartbeat. Returns it, or None.
 
@@ -87,6 +102,11 @@ def connect(timeout=HEARTBEAT_TIMEOUT_S, tag="MAV", settle_s=PORT_SETTLE_S):
     None rather than an exception because every caller in the body test turns a
     dead link into a FAIL, not a crash.
     """
+    # Read at call time, NOT as default arguments - see the note above the
+    # constants. A default is evaluated once at import and then frozen.
+    timeout = HEARTBEAT_TIMEOUT_S if timeout is None else timeout
+    settle_s = PORT_SETTLE_S if settle_s is None else settle_s
+
     master = mavutil.mavlink_connection(SERIAL_PORT, BAUD_RATE)
     time.sleep(settle_s)
     if not master.wait_heartbeat(timeout=timeout):
@@ -120,8 +140,9 @@ def _param_name(msg):
     return pid.replace("\x00", "").strip()
 
 
-def read_param(master, name, timeout=PARAM_READ_TIMEOUT_S):
+def read_param(master, name, timeout=None):
     """Ask for one parameter by name. Returns its value, or None."""
+    timeout = PARAM_READ_TIMEOUT_S if timeout is None else timeout
     master.mav.param_request_read_send(
         master.target_system, master.target_component,
         name.encode("utf-8"), -1,           # -1 = look it up by name
@@ -134,7 +155,7 @@ def read_param(master, name, timeout=PARAM_READ_TIMEOUT_S):
     return None
 
 
-def _harvest_param_values(master, wanted, timeout=PARAM_HARVEST_S):
+def _harvest_param_values(master, wanted, timeout=None):
     """
     Listen for PARAM_VALUE and return the names from `wanted` that came back
     carrying the value we asked for.
@@ -145,6 +166,7 @@ def _harvest_param_values(master, wanted, timeout=PARAM_HARVEST_S):
     no extra requests and no extra traffic. Only parameters that do NOT turn up
     here need chasing.
     """
+    timeout = PARAM_HARVEST_S if timeout is None else timeout
     confirmed = set()
     deadline = time.time() + timeout
     while time.time() < deadline and len(confirmed) < len(wanted):
@@ -157,7 +179,7 @@ def _harvest_param_values(master, wanted, timeout=PARAM_HARVEST_S):
     return confirmed
 
 
-def set_params(master, params, tag="MAV", rounds=PARAM_ROUNDS):
+def set_params(master, params, tag="MAV", rounds=None):
     """
     Write a dict of parameters and confirm every one of them.
 
@@ -169,6 +191,7 @@ def set_params(master, params, tag="MAV", rounds=PARAM_ROUNDS):
     Rounds, not per-parameter retries - see rule 4 at the top of this file. On a
     healthy link this is one message per parameter and one round.
     """
+    rounds = PARAM_ROUNDS if rounds is None else rounds
     pending = {name: float(value) for name, value in params.items()}
 
     for round_no in range(1, rounds + 1):
@@ -204,7 +227,7 @@ def set_params(master, params, tag="MAV", rounds=PARAM_ROUNDS):
     return sorted(pending)
 
 
-def send_command(master, command, *params, timeout=ACK_TIMEOUT_S, tag="MAV"):
+def send_command(master, command, *params, timeout=None, tag="MAV"):
     """
     Send a COMMAND_LONG and report whether it was acknowledged.
 
@@ -214,6 +237,7 @@ def send_command(master, command, *params, timeout=ACK_TIMEOUT_S, tag="MAV"):
     correct results with no ack at all, so treating a missing ack as a failure
     can only ever be worse than the status quo.
     """
+    timeout = ACK_TIMEOUT_S if timeout is None else timeout
     args = list(params) + [0] * (7 - len(params))
     master.mav.command_long_send(
         master.target_system, master.target_component,
@@ -228,6 +252,31 @@ def send_command(master, command, *params, timeout=ACK_TIMEOUT_S, tag="MAV"):
             print(f"[{tag}] command {command} rejected, result={ack.result}")
             return False
     print(f"[{tag}] no ACK for command {command} - carrying on anyway")
+    return False
+
+
+def _wait_for_silence(master, silence_s=None, timeout=None, tag="MAV"):
+    """
+    Wait until the link goes quiet, i.e. the flight controller really went down.
+
+    Returns True once no heartbeat has arrived for `silence_s`. Returns False if
+    it kept heartbeating for the whole `timeout`, which means the reboot command
+    had no effect - and that is the whole point of this function. A reboot and a
+    lost reboot command look identical from the "wait for a heartbeat" side,
+    because a heartbeat comes back either way. Silence is the only positive
+    evidence that it actually restarted.
+    """
+    silence_s = REBOOT_SILENCE_S if silence_s is None else silence_s
+    timeout = REBOOT_DOWN_WAIT_S if timeout is None else timeout
+
+    deadline = time.time() + timeout
+    last_seen = time.time()
+    while time.time() < deadline:
+        if master.recv_match(type="HEARTBEAT", blocking=True, timeout=0.3) is not None:
+            last_seen = time.time()
+        elif time.time() - last_seen >= silence_s:
+            print(f"[{tag}] link went quiet - the FC is rebooting")
+            return True
     return False
 
 
@@ -259,15 +308,59 @@ def reboot(master, tag="MAV", min_total_s=20.0, min_after_boot_s=5.0):
     print(f"[{tag}] rebooting the flight controller")
     t_command = time.time()
 
-    master.mav.command_long_send(
-        master.target_system, master.target_component,
-        mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
-        0,
-        1,                      # param1 = 1 -> reboot autopilot
-        0, 0, 0, 0, 0, 0,
-    )
-    if master.recv_match(type="COMMAND_ACK", blocking=True, timeout=1.0) is None:
-        print(f"[{tag}] no reboot ACK (normal - the FC often goes down first)")
+    #####*****CHANGES*****#####
+    # CONFIRM THE REBOOT BY WATCHING THE LINK GO SILENT, and re-send if it
+    # does not. This is the hole that produced "the Durandal does not reboot,
+    # the ADC test says CHECK CFG, and then I hear it reboot when the PWM test
+    # starts writing parameters".
+    #
+    # The previous version sent the command once, closed the port, and then
+    # waited for a heartbeat. But a heartbeat comes back in BOTH cases - whether
+    # the FC rebooted or never went down at all - so a lost reboot command was
+    # indistinguishable from a successful one. The code then waited out its 20 s,
+    # read the battery monitors while the OLD configuration was still running,
+    # got UINT16_MAX from them, and reported no-reading. The reboot heard later
+    # was the PWM test's, which is a separate command that did get through.
+    #
+    # An FC that is rebooting stops talking, so silence is the one positive
+    # signal that it really went down. The connection is deliberately kept open
+    # until then - it has to be, to hear the silence - and only closed
+    # afterwards, which still means the reading below happens on a fresh file
+    # descriptor that cannot hold a pre-reboot frame.
+    went_down = False
+    for attempt in range(1, REBOOT_COMMAND_ATTEMPTS + 1):
+        master.mav.command_long_send(
+            master.target_system, master.target_component,
+            mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+            0,
+            1,                      # param1 = 1 -> reboot autopilot
+            0, 0, 0, 0, 0, 0,
+        )
+
+        ack = master.recv_match(type="COMMAND_ACK", blocking=True, timeout=1.0)
+        if ack is None:
+            print(f"[{tag}] no reboot ACK (normal - the FC often goes down first)")
+        elif (ack.command == mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN
+                and ack.result != mavutil.mavlink.MAV_RESULT_ACCEPTED):
+            # Worth saying out loud: ArduPilot refuses to reboot when armed,
+            # and that is a different problem from a lost message.
+            print(f"[{tag}] the FC REFUSED the reboot, result={ack.result}")
+
+        if _wait_for_silence(master, tag=tag):
+            went_down = True
+            break
+
+        print(f"[{tag}] still talking {REBOOT_DOWN_WAIT_S:.0f} s after the reboot "
+              f"command - it did not take (attempt {attempt}/"
+              f"{REBOOT_COMMAND_ATTEMPTS})")
+
+    if not went_down:
+        print(f"[{tag}] could NOT get the flight controller to reboot. The "
+              f"parameters are stored but not applied, so any reading now "
+              f"would describe the old configuration")
+        close(master)
+        return None
+    #####*****END CHANGES*****#####
 
     close(master)
 
