@@ -80,13 +80,18 @@ body_result_note = ""
 # The running worker, so Start can refuse to launch a second one.
 body_thread = None
 
-# Hard ceiling on the lock, because two of the four sections can block forever:
-# Analog_port_test and PWM_test both call master.wait_heartbeat() with no
-# timeout, so a flight controller that never answers hangs the worker thread and
-# body_pwm_done is never set. A healthy full run is about 55 s (20 s settle in
-# the analog port test, 15 s in the PWM test, plus the param writes), so 180 s
-# is roughly 3x headroom and still bounded - the operator always gets back out.
-BODY_LOCK_MAX_S = 180
+# Hard ceiling on the lock, so a section that never finishes cannot strand the
+# operator on this page.
+#
+# Raised from 180 s to 300 s because the MAVLink subcodes now VERIFY their work
+# instead of writing blind: each parameter is read back and retried, and the
+# wait after a reboot is "until the link comes back" rather than a fixed sleep.
+# On a healthy link that is FASTER than before (the blind sleep(20) and
+# sleep(15) are gone - a full run is nearer 50 s). On a degraded link the
+# retries make the worst case about 165 s across the three subcodes, and a
+# ceiling below that would release the lock mid-reboot, which is the exact thing
+# the lock is for. 300 s keeps the margin without being unbounded.
+BODY_LOCK_MAX_S = 300
 #####*****END CHANGES*****#####
 
 #####*****CHANGES*****#####

@@ -2,20 +2,27 @@ import lgpio
 import time
 from pymavlink import mavutil
 
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from Subcodes import Mav_util
+
+#####*****CHANGES*****#####
+# Same treatment as Analog_port_test, and for the same reason: SERVOx_FUNCTION
+# writes were fire-and-forget and the reboot was followed by a blind
+# sleep(15). A dropped write left that channel on its old function, so the PWM
+# readback measured a channel the FC was never asked to drive - a FAIL with no
+# hint that the cause was a lost message rather than bad hardware.
+#
+# Now every write is read back and retried, the reboot is confirmed by the link
+# coming back rather than by a fixed sleep, and the reading happens on a FRESH
+# connection so nothing queued before the reboot can be mistaken for a result.
+# See Subcodes/Mav_util.py.
+#####*****END CHANGES*****#####
+
+
 def run_pwm_test():
-    serial_port = "/dev/ttyAMA10"
-    baud_rate = 57600
-    master = mavutil.mavlink_connection(serial_port, baud_rate)
-
-    #####*****CHANGES*****#####
-    # wait_heartbeat() used to be called with no timeout, so an unresponsive
-    # flight controller blocked here forever and hung the whole body test.
-    # ([], False) reads as a FAIL with no results in the GUI.
-    if not master.wait_heartbeat(timeout=5):
-        print("[PWM TEST] no heartbeat in 5 s - cannot write params")
-        return [], False
-    #####*****END CHANGES*****#####
-
     Param_set = {
         "SERVO9_FUNCTION": 0,
         "SERVO10_FUNCTION": 0,
@@ -24,24 +31,26 @@ def run_pwm_test():
         "SERVO13_FUNCTION": 0,
     }
 
-    for name, value in Param_set.items():
-        master.mav.param_set_send(
-            master.target_system,
-            master.target_component,
-            name.encode('utf-8'),
-            value,
-            mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
-        )
-        time.sleep(0.1)
+    #####*****CHANGES*****#####
+    # ([], False) reads as a FAIL with no results in the GUI.
+    master = Mav_util.connect(tag="PWM TEST")
+    if master is None:
+        return [], False
 
-    master.mav.command_long_send(
-        master.target_system,
-        master.target_component,
-        mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
-        0, 1, 0, 0, 0, 0, 0, 0
-    )
+    failed = Mav_util.set_params(master, Param_set, tag="PWM TEST")
+    if failed:
+        print(f"[PWM TEST] could not confirm {failed} - not rebooting, "
+              f"the readback would be meaningless")
+        Mav_util.close(master)
+        return [], False
 
-    time.sleep(15)
+    # SERVOx_FUNCTION needs a reboot to take effect. The settle wait is shorter
+    # than the analog test's because nothing here has to filter an ADC - the
+    # servo outputs are driven on command.
+    master = Mav_util.reboot(master, tag="PWM TEST", settle_s=3.0)
+    if master is None:
+        return [], False
+    #####*****END CHANGES*****#####
 
     PWM_1, PWM_2, PWM_3, PWM_4, PWM_5 = 17, 18, 27, 23, 22
     PWMs = [PWM_1, PWM_2, PWM_3, PWM_4, PWM_5]
@@ -82,5 +91,7 @@ def run_pwm_test():
 
     test_passed = (final_values == [High]*5) #returns true if passed, otherwise will be false 
     lgpio.gpiochip_close(h)
+
+    Mav_util.close(master)      #####*****CHANGES*****##### was never closed
 
     return final_values, test_passed
