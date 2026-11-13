@@ -101,12 +101,19 @@ def _collect_voltages(master):
     sample. "Usable" excludes UINT16_MAX, which is MAVLink's way of saying the
     monitor has no value for this - not a 65 V measurement.
     """
+    #####*****CHANGES*****#####
+    # ADVISORY, not fatal. This used to `return [-1, -1]` when no COMMAND_ACK
+    # arrived, which failed the whole ADC test with "CHECK CFG" on a single
+    # dropped ack - and the code this replaced got correct readings without ever
+    # asking for an ack at all. A missing ack is worth printing and nothing more;
+    # if the stream really did not start, the read loop below says so by timing
+    # out, which is a true statement about the data rather than a guess.
     if not Mav_util.send_command(
             master, mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
             BATT_MSG_ID, BATT_INTERVAL_US, tag="ANALOG PORT"):
-        print("[ANALOG PORT] the FC never acknowledged the BATTERY_STATUS "
-              "request - no stream to read")
-        return [NO_READING, NO_READING]
+        print("[ANALOG PORT] BATTERY_STATUS request not acknowledged - "
+              "reading anyway, the FC may still be streaming")
+    #####*****END CHANGES*****#####
 
     samples = {INSTANCE_BATT8: [], INSTANCE_BATT9: []}
     ignored = {}
@@ -187,7 +194,11 @@ def analog_port_run():
         # BATTx_MONITOR and BATTx_VOLT_PIN only take effect at boot. The new
         # connection comes back from here: the old one is closed, so no frame
         # from before the reboot can be read as a result.
-        master = Mav_util.reboot(master, tag="ANALOG PORT")
+        # min_total_s=20 reproduces the original `time.sleep(20)` exactly, so
+        # this can never settle for less than the code it replaced; the
+        # heartbeat check is on top of it, not instead of it.
+        master = Mav_util.reboot(master, tag="ANALOG PORT",
+                                 min_total_s=20.0, min_after_boot_s=8.0)
         if master is None:
             return [NO_READING, NO_READING]
 

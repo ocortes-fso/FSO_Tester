@@ -44,10 +44,16 @@ def run_pwm_test():
         Mav_util.close(master)
         return [], False
 
-    # SERVOx_FUNCTION needs a reboot to take effect. The settle wait is shorter
-    # than the analog test's because nothing here has to filter an ADC - the
-    # servo outputs are driven on command.
-    master = Mav_util.reboot(master, tag="PWM TEST", settle_s=3.0)
+    # SERVOx_FUNCTION needs a reboot to take effect.
+    #
+    # min_total_s=15 reproduces the original `time.sleep(15)` exactly. An
+    # earlier version of this used 3 s and it broke the test: ArduPilot's servo
+    # outputs were not live yet, so the first four passes of the readback below
+    # measured low and only the last one - by which time the FC had finished
+    # booting - read 1900. If this number is ever changed again it must only go
+    # UP.
+    master = Mav_util.reboot(master, tag="PWM TEST",
+                             min_total_s=15.0, min_after_boot_s=5.0)
     if master is None:
         return [], False
     #####*****END CHANGES*****#####
