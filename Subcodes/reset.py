@@ -11,9 +11,13 @@ from Subcodes import Mav_util
 def run_reset():
     #####*****CHANGES*****#####
     # Verified writes and a closed connection, same as the other two subcodes.
-    # This one runs right after the PWM test's reboot, so it is the most likely
-    # of the three to be talking to a flight controller that is still settling -
-    # which makes it the most likely to have had a write silently dropped.
+    #
+    # Called TWICE per body test now: once as soon as the heartbeat is
+    # confirmed, to give the run a known starting configuration, and once at
+    # the end, so a board that passes does not ship in test configuration. The
+    # second call runs right after the PWM test's reboot, so it is the most
+    # likely of the three subcodes to be talking to a flight controller that is
+    # still settling - which makes it the most likely to have a write dropped.
     #
     # Mav_util.connect() returns None on a dead link instead of blocking.
     master = Mav_util.connect(tag="RESET")

@@ -1415,7 +1415,21 @@ def cv2_a06():
     global a06_fault_latched, a06_idle_watch, a06_idle_note, a06_running
 
     main.pack_forget()
-    home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=20)
+    #####*****CHANGES*****#####
+    # pady=(6, 14) instead of 20, on THIS page only.
+    #
+    # home_b is packed to the bottom first, so its padding is taken out of the
+    # page frame above it: pady=20 cost A06_f 40 px of its 480 and left it
+    # 404 px to fit the two channel groups in. With the taller sliders the
+    # bottom group needed 415, so the group's own bottom border was being
+    # clipped off - the slider fitted but the box around it did not.
+    #
+    # Those 20 px were empty screen between the page and the Home button, which
+    # is the cheapest place on the page to find them. 6 above still keeps the
+    # button visually separate, and the other pages are untouched - they have
+    # room to spare and no reason to move.
+    home_b.pack(side=BOTTOM, anchor=SW, padx=20, pady=(6, 14))
+    #####*****END CHANGES*****#####
     A06_f.pack(fill=BOTH, expand=TRUE)
 
     a06_fault_latched = False
@@ -3035,6 +3049,26 @@ def loom_test():
     l20.config(text="Pass!" if np.array_equal(matrix, pass_matrix) else "Fail!",
                bootstyle=SUCCESS if np.array_equal(matrix, pass_matrix) else DANGER)
     
+#####*****CHANGES*****#####
+def _analog_board(values):
+    """
+    Which board variant this analog port reading matches, or None.
+
+    The SINGLE definition of an acceptable reading. The analog port test is
+    given this as a callback so that "retry until the reading is correct" and
+    "render PASS" can never drift apart - previously the only acceptance rule
+    lived inline inside body_test(), and the test itself had to guess with a
+    plausibility floor.
+    """
+    a1, a2 = values[0], values[1]
+    if (0.7 <= a1 <= 0.9) and (1.5 <= a2 <= 1.7):
+        return 1
+    if (1.1 <= a1 <= 1.3) and (2.3 <= a2 <= 2.5):
+        return 2
+    return None
+#####*****END CHANGES*****#####
+
+
 def body_test(): 
     if body_stop.is_set():
         return
@@ -3078,6 +3112,32 @@ def body_test():
         return
     #####*****END CHANGES*****#####
 
+    #####*****CHANGES*****#####
+    # RESET THE PARAMETERS AS SOON AS THERE IS A LINK.
+    #
+    # This used to run only at the very END of the body test, after the PWM
+    # test. That meant every run inherited whatever the PREVIOUS run had left
+    # in the flight controller, and reset.py does not reboot, so those values
+    # were stored but not applied - a configuration in a half-known state was
+    # the starting point of every first run.
+    #
+    # Here is the right place for it: the heartbeat has just been confirmed, so
+    # there IS a link to write over, and nothing in this run has configured
+    # anything yet. The analog port test immediately overwrites BATT8/BATT9 and
+    # reboots, so its own configuration is applied by a reboot we control.
+    #
+    # Kept at the end as well, deliberately - see the note down there.
+    ls.after(0, lambda: ls.config(text="Heartbeat received - restoring params...",
+                                  bootstyle=INFO, font=(None, 14)))
+    if not reset.run_reset():
+        print("[BODY] reset.run_reset() could not confirm every parameter - "
+              "carrying on, the analog port test rewrites what it needs")
+    if body_stop.is_set():
+        return
+    ls.after(0, lambda: ls.config(text="Heartbeat received - PASS",
+                                  bootstyle=SUCCESS, font=(None, 14)))
+    #####*****END CHANGES*****#####
+
     time.sleep(0.5)
     if body_stop.is_set():
         return
@@ -3093,15 +3153,24 @@ def body_test():
         la.after(0, lambda t=text: la.config(
             text=f"Analog Port: {t}", bootstyle=INFO, font=(None, 14)))
 
-    output = Analog_port_test.analog_port_run(on_status=_analog_note)
+    # The acceptance windows live HERE, in one place, and the test reconfigures
+    # and reboots again whenever a reading misses them. "Wait until the reading
+    # is correct" needs to mean correct by the same rule that renders PASS -
+    # the test cannot know about the two board variants, and duplicating the
+    # numbers into the subcode would be two places to keep in step.
+    def _analog_ok(values):
+        return _analog_board(values) is not None
+
+    output = Analog_port_test.analog_port_run(on_status=_analog_note,
+                                              is_good=_analog_ok)
     #####*****END CHANGES*****#####
     if body_stop.is_set():
         return
-    
+
     combined_output = f"Results: A1={output[0]:.2f} V, A2={output[1]:.2f} V"
 
-    board1 = (0.7 <= output[0] <= 0.9) and (1.5 <= output[1] <= 1.7)
-    board2 = (1.1 <= output[0] <= 1.3) and (2.3 <= output[1] <= 2.5)
+    board1 = _analog_board(output) == 1
+    board2 = _analog_board(output) == 2
 
     if board1 or board2:
         la.after(0, lambda: la.config(text=f"PASS -- {combined_output}", bootstyle=SUCCESS, font=(None, 14)))
@@ -3137,7 +3206,18 @@ def body_test():
     combined_text = f"{status_str}!  Results: {pwm_result[0]}"
     lpwm.after(0, lambda: lpwm.config(text=combined_text, bootstyle=SUCCESS if pwm_result[1] else DANGER, font=(None, 14)))
 
+    #####*****CHANGES*****#####
+    # Still here as well as at the heartbeat, and on purpose.
+    #
+    # The analog port test leaves BATT8/BATT9 configured as ADC voltage
+    # monitors on pins 14/15, and the PWM test leaves SERVO9-13 reassigned.
+    # That is TEST configuration, not flight configuration. If this call goes
+    # away, every board that passes the body test ships in test configuration -
+    # so the one at the heartbeat is a starting point, not a replacement.
+    #
+    # One line to delete if that is not wanted.
     reset.run_reset()
+    #####*****END CHANGES*****#####
 
 def ADC_test():
     labels_map = {
@@ -3478,7 +3558,11 @@ A06_ARM.pack(side=LEFT)
 # --- LED, on its own line ---
 A06_LED = ttk.Button(a06_main, text="Turn LED On", style="A06Small.TButton",
                      width=16, command=a06_led)
-A06_LED.pack(anchor="w", pady=(0, 4))
+#####*****CHANGES*****#####
+# 4 -> 2. Part of the 12 px the bottom slider needed; see the note on the
+# slider grid padding below.
+A06_LED.pack(anchor="w", pady=(0, 2))
+#####*****END CHANGES*****#####
 
 
 def _a06_channel_box(parent, title):
@@ -3550,7 +3634,7 @@ def _a06_slider(parent, command):
         resolution=1,
         showvalue=0,
         length=330,
-        width=34,               # trough thickness - the touch target
+        width=50,               # trough thickness - the touch target
         sliderlength=44,        # the grab handle, wide enough to find by feel
         bd=0,
         highlightthickness=0,
@@ -3573,8 +3657,24 @@ A06_TOP_VALUE.grid(row=0, column=1, sticky="e", padx=8, pady=(2, 2))
 
 # columnspan=2: the slider gets the whole width of the box, not what is left
 # over beside the readout. See the note in _a06_channel_box().
+#
+#####*****CHANGES*****#####
+# pady was (8, 14) and the BOTTOM slider overflowed A06_f by 12 px at 800x480 -
+# it ran to y=416 against a page that ends at y=404, so the bottom of the
+# travel was under the Home button row.
+#
+# The 12 px come from the padding INSIDE the two Labelframes, deliberately not
+# from either of the two things that were asked for: the sliders keep their
+# full height (50 px as drawn), and box.pack(pady=7) - the gap BETWEEN the two
+# channel groups - is untouched. The Labelframe border already separates the
+# slider from the box edge, so the 14 px under it was the cheapest 12 px on the
+# page.
+#
+# Only padding above the BOTTOM slider can move it up, which is why the TOP
+# box's figures matter here as much as its own.
+#####*****END CHANGES*****#####
 A06_TOP_SLIDER = _a06_slider(A06_TOP_BOX, a06_top_slider_moved)
-A06_TOP_SLIDER.grid(row=1, column=0, columnspan=2, sticky="ew", padx=14, pady=(8, 14))
+A06_TOP_SLIDER.grid(row=1, column=0, columnspan=2, sticky="ew", padx=14, pady=(6, 6))
 
 
 A06_BOT_BOX = _a06_channel_box(a06_main, "BOT MOTOR")
@@ -3588,7 +3688,7 @@ A06_BOT_VALUE = ttk.Label(A06_BOT_BOX, text="OFF  (0 us)", bootstyle=SECONDARY,
 A06_BOT_VALUE.grid(row=0, column=1, sticky="e", padx=8, pady=(2, 2))
 
 A06_BOT_SLIDER = _a06_slider(A06_BOT_BOX, a06_bot_slider_moved)
-A06_BOT_SLIDER.grid(row=1, column=0, columnspan=2, sticky="ew", padx=14, pady=(8, 14))
+A06_BOT_SLIDER.grid(row=1, column=0, columnspan=2, sticky="ew", padx=14, pady=(6, 6))
 
 # The emergency stop, in case the controls above stop responding - a hung
 # worker thread, a slider that will not let go, a motor that is not doing what

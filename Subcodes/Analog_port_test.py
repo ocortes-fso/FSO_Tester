@@ -68,7 +68,16 @@ from Subcodes import Mav_util
 # How long to wait for BATTERY_STATUS on both channels after the reboot before
 # giving up. The FC has already had its settle time by then, so if nothing is
 # coming it is not going to.
-BATT_STATUS_TIMEOUT_S = 10
+BATT_STATUS_TIMEOUT_S = 20      # ceiling only - the loop leaves when steady
+
+#####*****CHANGES*****#####
+# "Steady" = this many consecutive samples of one channel within this much of
+# each other. 0.04 V is tighter than the +/-0.1 V windows the GUI validates
+# against, so a channel that passes this cannot still be drifting enough to
+# change the verdict. Three samples at 4 Hz is under a second.
+STEADY_SAMPLES = 3
+STEADY_TOLERANCE_V = 0.04
+#####*****END CHANGES*****#####
 
 BATT_MSG_ID = 147               # BATTERY_STATUS
 BATT_INTERVAL_US = 250000       # 4 Hz - 5 samples in ~1.25 s
@@ -77,7 +86,9 @@ BATT_INTERVAL_US = 250000       # 4 Hz - 5 samples in ~1.25 s
 INSTANCE_BATT8 = 7
 INSTANCE_BATT9 = 8
 
-SAMPLES_WANTED = 5              # per channel, median taken
+# SAMPLES_WANTED is gone: a fixed sample count is what made the reading
+# depend on luck. The loop now leaves when both channels are STEADY, however
+# many samples that took. See STEADY_SAMPLES below.
 VOLTAGE_UNKNOWN = 65535         # UINT16_MAX in mV - MAVLink "not known"
 
 NO_READING = -1.0               # what the GUI already understands as a failure
@@ -117,7 +128,16 @@ NO_READING = -1.0               # what the GUI already understands as a failure
 #     again, never whether the board is good.
 # ---------------------------------------------------------------------------
 ANALOG_ATTEMPTS = 2
-PLAUSIBLE_MIN_V = 0.05          # below this the monitor is not reading the pin
+
+# The lowest divider output ANY supported board produces is 0.7 V (board 1's
+# A1). A channel reading less than this is not reading a divider at all - it is
+# an unconfigured or wrongly-pinned ADC input sitting near zero.
+#
+# This floor was 0.05 V, and that was useless: the bench reported A2 = 0.08 V,
+# which cleared 0.05 and so counted as a usable reading. The retry never ran.
+# 0.30 V is comfortably below every real reading and comfortably above every
+# not-really-reading one.
+PLAUSIBLE_MIN_V = 0.30
 
 # Do not START another attempt once this much time has gone. Bounds the whole
 # test so a sick link cannot run the body test past its navigation lock.
@@ -128,6 +148,19 @@ ANALOG_RETRY_DEADLINE_S = 75.0
 def _usable(reading):
     """True when both channels produced a voltage the ADC could really see."""
     return all(v > PLAUSIBLE_MIN_V for v in reading)
+
+
+def _steady(values):
+    """
+    True once the last STEADY_SAMPLES readings of a channel agree.
+
+    Nothing about whether the value is RIGHT - only that it has stopped
+    changing, so that waiting longer would tell us nothing new.
+    """
+    if len(values) < STEADY_SAMPLES:
+        return False
+    recent = values[-STEADY_SAMPLES:]
+    return max(recent) - min(recent) <= STEADY_TOLERANCE_V
 
 
 def _median(values):
@@ -166,8 +199,31 @@ def _collect_voltages(master):
     deadline = time.time() + BATT_STATUS_TIMEOUT_S
 
     while time.time() < deadline:
-        if all(len(s) >= SAMPLES_WANTED for s in samples.values()):
+        #####*****CHANGES*****#####
+        # Wait for the readings to STOP MOVING, instead of grabbing the first
+        # five samples that turn up.
+        #
+        # This is what produced A1 = 1.16 V and A2 = 0.08 V on the first run
+        # and correct values on the second. ArduPilot's analog battery monitor
+        # reports a running AVERAGE of its ADC channel, and that average starts
+        # from nothing when the monitor is created at boot. Read it while it is
+        # still filling and you get a number part-way up the ramp - which is
+        # exactly what 0.08 V on a 1.6 V divider is. The previous code waited a
+        # fixed 8 s after the heartbeat and then took whatever arrived, so
+        # whether it was settled was luck.
+        #
+        # Steadiness is the thing we actually need, so it is the thing to wait
+        # for. The healthy case gets FASTER - it leaves as soon as both
+        # channels are stable, usually in a couple of seconds, rather than
+        # sitting out a fixed timeout.
+        #
+        # Note the test is steady, NOT steady-and-correct. A channel sitting
+        # firmly at 0.08 V is settled, and the right thing to do is stop
+        # waiting and let the caller reconfigure and reboot - not keep
+        # listening to a number that is never going to change.
+        if all(_steady(s) for s in samples.values()):
             break
+        #####*****END CHANGES*****#####
 
         msg = master.recv_match(type='BATTERY_STATUS', blocking=True, timeout=1)
         if msg is None:
@@ -199,21 +255,39 @@ def _collect_voltages(master):
                   f"{BATT_STATUS_TIMEOUT_S} s")
             out.append(NO_READING)
         else:
-            value = _median(got)
-            print(f"[ANALOG PORT] {name}: {len(got)} samples, median "
-                  f"{value:.3f} V (raw {['%.3f' % v for v in got]})")
+            # Median of the LAST few, not of everything: the early samples
+            # are the average still filling up, and including them drags the
+            # answer back down the ramp we just waited out.
+            recent = got[-STEADY_SAMPLES:]
+            value = _median(recent)
+            print(f"[ANALOG PORT] {name}: {len(got)} samples, settled "
+                  f"{'yes' if _steady(got) else 'NO'}, median of last "
+                  f"{len(recent)} = {value:.3f} V "
+                  f"(raw {['%.3f' % v for v in got]})")
             out.append(value)
 
     return out
 
 
-def analog_port_run(on_status=None):
+def analog_port_run(on_status=None, is_good=None):
     """
     Configure the ADC monitors, reboot, and return [BATT8_V, BATT9_V].
 
     on_status is an optional callback taking one short string, so the GUI can
     say what it is doing instead of sitting on "Rebooting..." for half a minute
     and looking frozen.
+
+    #####*****CHANGES*****#####
+    is_good is an optional callback taking the [v8, v9] reading and returning
+    whether it is a PASS. It decides whether to configure-reboot-read again.
+
+    It is a callback rather than a pair of constants here on purpose: the
+    acceptance windows belong to the caller (there are two board variants, and
+    the GUI already knows them), and copying them into this file would mean two
+    places to change and two chances to disagree. Without it, the retry falls
+    back to PLAUSIBLE_MIN_V, which only catches a channel that is not reading
+    at all.
+    #####*****END CHANGES*****#####
     """
     def say(text):
         print(f"[ANALOG PORT] {text}")
@@ -274,15 +348,28 @@ def analog_port_run(on_status=None):
             say("rebooting the flight controller to apply them")
             master = Mav_util.reboot(master, tag="ANALOG PORT",
                                      min_total_s=20.0, min_after_boot_s=8.0,
-                                     strict=False, attempts=2)
+                                     # ONE command. Re-sending it inside
+                                     # reboot() is what rebooted a healthy FC
+                                     # twice and put the reading in the middle
+                                     # of the second boot. The outer loop here
+                                     # already retries the whole sequence, so
+                                     # there is nothing to gain by also
+                                     # retrying the command in there.
+                                     strict=False, attempts=1)
             if master is None:
                 # Did not come back at all - another reboot will not help.
                 return [NO_READING, NO_READING]
 
             say("reading the ADC voltages")
             reading = _collect_voltages(master)
-            if _usable(reading):
+
+            # "Wait until the reading is correct" - so the caller's own
+            # acceptance windows are what decides, falling back to "is this
+            # channel reading anything at all" when it did not give any.
+            accepted = is_good(reading) if is_good is not None else _usable(reading)
+            if accepted:
                 return reading
+            print(f"[ANALOG PORT] {reading} is not an acceptable reading")
 
             if time.time() - started > ANALOG_RETRY_DEADLINE_S:
                 print(f"[ANALOG PORT] {time.time() - started:.0f} s gone - not "

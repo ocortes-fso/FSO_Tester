@@ -84,13 +84,28 @@ REBOOT_DOWN_S = 2.0             # let it actually go down before looking
 REBOOT_RETRY_S = 1.5            # between reconnect attempts - NOT a tight loop
 REBOOT_WAIT_S = 40.0            # ceiling on waiting for it to come back
 
-# Confirming the reboot really happened. ArduPilot heartbeats at 1 Hz on a
-# telemetry serial, so REBOOT_SILENCE_S has to tolerate a couple of missed ones
-# without calling it a reboot - 3 s is three heartbeat periods. The FC is down
-# for several seconds anyway, so waiting that long to be sure costs nothing.
-REBOOT_COMMAND_ATTEMPTS = 3
-REBOOT_SILENCE_S = 3.0          # no heartbeat for this long = it really went down
-REBOOT_DOWN_WAIT_S = 10.0       # how long to give it to go down at all
+#####*****CHANGES*****#####
+# Confirming the reboot. These numbers were wrong in a way that cost 20 s and
+# an unwanted SECOND reboot on every run of the analog port test.
+#
+# A Durandal is an STM32H7: it goes down and is back on the air in roughly
+# 2-6 s. REBOOT_SILENCE_S was 3.0 s, so on a fast boot the longest gap in the
+# heartbeat stream was SHORTER than the window required to call it a reboot -
+# the silence check could not succeed no matter how well the reboot worked. It
+# then waited out REBOOT_DOWN_WAIT_S (10 s), declared the command lost, and
+# sent another one, which rebooted a perfectly healthy flight controller a
+# second time - and that second reboot is what the ADC reading then landed in
+# the middle of.
+#
+# So: a shorter window, a shorter budget, and - for callers that re-read and
+# retry - ONE command only. Silence is now an early exit that saves time when
+# it is seen, not a verdict. Being wrong about it costs nothing, because the
+# code below still closes, reconnects and waits out the full settling time
+# exactly as the original fixed sleep did.
+REBOOT_COMMAND_ATTEMPTS = 2
+REBOOT_SILENCE_S = 1.5          # no heartbeat for this long = it went down
+REBOOT_DOWN_WAIT_S = 6.0        # how long to look for that before shrugging
+#####*****END CHANGES*****#####
 
 
 def connect(timeout=None, tag="MAV", settle_s=None):
