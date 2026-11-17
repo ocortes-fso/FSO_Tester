@@ -2,11 +2,12 @@
 Repository of all the codes used for the testing boxes.
 
 ## Setup
-1. Add add to "/boot/firmware/config.txt" the following strings: 
-    - "under all dtoverlay=mcp2515-can0, oscillator=16000000, interrupt=4, spimaxfrequency=10000000"
-    - "enable_uart=1"
-    - "dtoverlay=spi0-1cs"
-2. Remove the following string from "/boot/firmware/cmdline.txt":
+1. Use "sudo nano /boot/firmware/config.txt" and add the following strings: 
+    - under all:
+        - "dtoverlay=mcp2515-can0, oscillator=16000000, interrupt=4, spimaxfrequency=10000000"
+        - "enable_uart=1"
+        - "dtoverlay=spi0-1cs"
+2. Use "sudo nano /boot/firmware/cmdline.txt" to remove the following string:
     - "console=serial0,115200 "
 3. Enable I2C
 4. Enable SPI
