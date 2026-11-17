@@ -12,7 +12,12 @@ Repository of all the codes used for the testing boxes.
 3. Enable I2C
 4. Enable SPI
 5. Enable Serial Port
-6. Static IP has to be set on 144 gateway
+6. Use "sudo nmtui" to;
+    - Navigate to "Edit a connection"
+    - Select "Wired connection 1"
+    - Set "IPv4 CONFIGURATION" as "Manual"
+    - Set "Adresses" to "192.168.144.200"
+    - Set "Gateway" to "192.168.144.1"
 
 ## Pins and Connections
 - Plug in the HAT with a 40Pin 20mm header.
