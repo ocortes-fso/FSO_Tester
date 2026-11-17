@@ -55,5 +55,5 @@ After installation of all libraries:
        Exec=python3 /home/fso/Desktop/FSO_Tester/GUI/MasterUI.py
        X-GNOME-Autostart-enabled=true
        ```
-    7. Save
+ 7. Save
        
