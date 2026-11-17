@@ -33,4 +33,12 @@ Repository of all the codes used for the testing boxes.
 6. ttkbootstrap        
 7. python-can           
 8. Pillow
-9. DroneCAN  
+9. DroneCAN
+
+## Program Setup
+- After installation of all libraries:
+    1. "cd Desktop"
+    2. "git clone https://github.com/ocortes-fso/FSO_Tester.git"
+    3. "sudo crontab -e"
+    4. [IF RPI Username=fso] "@reboot /usr/bin/python3 /home/fso/Desktop/FSO_Tester/GUI/MasterUI.py >> /home/fso/cron.log 2>&1"
+    5. Leave a blank space at the final line
