@@ -34,7 +34,7 @@ Repository of all the codes used for the testing boxes.
 7. python-can           
 8. Pillow
 9. DroneCAN
-- If when using pip there is an error "externally-managed-environment", use "pip install --break-system-packages <package-name>"
+- If when using pip there is an error "externally-managed-environment", use "pip install --break-system-packages package-name"
 
 ## Program Setup
 - After installation of all libraries:
