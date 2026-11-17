@@ -44,6 +44,16 @@ Not Normally Preinstalled:
 - After installation of all libraries:
     1. "cd Desktop"
     2. "git clone https://github.com/ocortes-fso/FSO_Tester.git"
-    3. "sudo crontab -e"
-    4. [IF RPI Username=fso] "@reboot /usr/bin/python3 /home/fso/Desktop/FSO_Tester/GUI/MasterUI.py >> /home/fso/cron.log 2>&1"
-    5. Leave a blank space at the final line
+    3. "cd"
+    4. "mkdir -p ~/.config/autostart"
+    5. "sudo nano ~/.config/autostart/fsotester.desktop"
+    6. Add the next lines:
+       '''
+       [Desktop Entry]
+       Type=Application
+       Name=FSO Tester
+       Exec=python3 /home/fso/Desktop/FSO_Tester/GUI/MasterUI.py
+       X-GNOME-Autostart-enabled=true
+       '''
+    7. Save
+       
