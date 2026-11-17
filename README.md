@@ -41,13 +41,13 @@ Not Normally Preinstalled:
 - If when using pip there is an error "externally-managed-environment", use "pip install --break-system-packages package-name"
 
 ## Program Setup
-- After installation of all libraries:
-    1. "cd Desktop"
-    2. "git clone https://github.com/ocortes-fso/FSO_Tester.git"
-    3. "cd"
-    4. "mkdir -p ~/.config/autostart"
-    5. "sudo nano ~/.config/autostart/fsotester.desktop"
-    6. Add the next lines:
+After installation of all libraries:
+ 1. "cd Desktop"
+ 2. "git clone https://github.com/ocortes-fso/FSO_Tester.git"
+ 3. "cd"
+ 4. "mkdir -p ~/.config/autostart"
+ 5. "sudo nano ~/.config/autostart/fsotester.desktop"
+ 6. Add the next lines:
        ```
        [Desktop Entry]
        Type=Application
