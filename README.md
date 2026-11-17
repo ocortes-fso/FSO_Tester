@@ -25,15 +25,19 @@ Repository of all the codes used for the testing boxes.
 - Plug the touchscreen to the CAM/DISP 1 or 0.
 
 ## Used Libraries
-1. PyMavlink     
-2. lgpio         
-3. NumPy         
-4. Pyserial      
-5. smbus2        
-6. ttkbootstrap        
-7. python-can           
-8. Pillow
-9. DroneCAN
+Normally Preinstallded
+1. NumPy
+2. lgpio
+3. Pyserial
+4. smbus2
+
+Not Normally Preinstalled:
+1. PyMavlink
+2. tkbootstrap        
+3. python-can           
+4. Pillow
+5. DroneCAN
+
 - If when using pip there is an error "externally-managed-environment", use "pip install --break-system-packages package-name"
 
 ## Program Setup
