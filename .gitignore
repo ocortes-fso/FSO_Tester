@@ -2,6 +2,11 @@
 # survive are fault logs, pruned after Hobbywing_Prop_Test.LOG_RETENTION_DAYS.
 Logs/
 
+# ESC serial telemetry logs and raw captures (ESC_Serial/). Kept out of the
+# repo for the same reason: they are bench data, not source.
+ESC_Serial/logs/
+*.bin
+
 Simulator/
 
 __pycache__/
