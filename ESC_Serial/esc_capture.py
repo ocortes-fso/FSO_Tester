@@ -237,7 +237,7 @@ def run(args):
         print("=" * 64)
         if st["frames"] == 0 and os.path.getsize(bin_path) == 0:
             print("\nNothing arrived at all. See README section 2 - the serial"
-                  "\nconsole on /dev/ttyAMA0 is the usual cause.")
+                  "\nconsole on /dev/ttyAMA10 is the usual cause.")
         else:
             print(f"\nNext: python3 ESC_Serial/esc_sniff.py --analyze "
                   f"{bin_path}")

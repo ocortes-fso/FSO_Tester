@@ -37,16 +37,30 @@ back. Two wires:
 | telemetry / TLM (signal out) | **RX** on the UART debug connector |
 | GND | GND on the same connector |
 
+For `--control` / `esc_capture.py` (battery wired straight to the ESC — no FET,
+no precharge, no INA228/I²C), add the throttle signal:
+
+| ESC | Raspberry Pi 5 |
+|---|---|
+| white (PWM throttle in) | **GPIO7, pin 26** (`top`) or **GPIO5, pin 29** (`bot`) — software PWM, 400 Hz |
+| black (signal GND) | GND, pin 25 or 30 |
+
+`esc_arm.py` drives these lines itself with `lgpio.tx_servo` (same 1000 µs arm hold
+and 1080–1400 µs band as `Manual_PWM_Test`); it no longer calls `Precharge` or
+`Hobbywing_Prop_Test`. There are no current/voltage guards, so E-STOP only cuts the
+PWM — unplug the battery to remove power.
+
 Do **not** connect the Pi's TX to the ESC. One UART reads one ESC; to read the other
 one, move the single wire across.
 
-## 2. The port: `/dev/ttyAMA0`, and turn the console off first
+## 2. The port: `/dev/ttyAMA10`, and turn the console off first
 
 This uses the Pi 5's dedicated **UART debug connector** — the 3-pin JST header on the
-board, which is `/dev/ttyAMA0`. That choice avoids both collisions on this hardware:
+board, which is `/dev/ttyAMA10`. That choice avoids both collisions on this hardware:
 
-- `/dev/ttyAMA10` (GPIO14/15) is the flight-controller MAVLink link the Body test
-  uses, so it has to stay clear.
+- **Confirmed on the bench:** the debug connector is `/dev/ttyAMA10` on a Pi 5
+  (`/dev/ttyAMA0` is the GPIO14/15 UART). The Body test also uses this connector,
+  so only one of the two can be plugged in at a time.
 - the spare GPIO UART overlays (`dtoverlay=uart2`/`uart3`) put RX on **GPIO5 and
   GPIO7 — the testbox's BOT and TOP throttle outputs**. The debug connector is not on
   the GPIO header at all, so nothing is shared.
@@ -56,17 +70,17 @@ the tty open and transmits boot and login chatter on it. Disable it, or captures
 either fail to open the port or be full of console text:
 
 ```bash
-sudo systemctl disable --now serial-getty@ttyAMA0.service
+sudo systemctl disable --now serial-getty@ttyAMA10.service
 ```
 
-and check `/boot/firmware/cmdline.txt` has no `console=ttyAMA0,...` or
+and check `/boot/firmware/cmdline.txt` has no `console=ttyAMA10,...` or
 `console=serial0,...` on it (the main README already has you removing the `serial0`
 one). `enable_uart=1` should be in `config.txt` — it already is on this build. Reboot,
 then:
 
 ```bash
-ls -l /dev/serial* /dev/ttyAMA*          # /dev/ttyAMA0 should be there
-sudo fuser -v /dev/ttyAMA0               # should print nothing holding it
+ls -l /dev/serial* /dev/ttyAMA*          # /dev/ttyAMA10 should be there
+sudo fuser -v /dev/ttyAMA10               # should print nothing holding it
 ```
 
 Add yourself to the `dialout` group if you get a permission error:
@@ -129,14 +143,14 @@ python3 ESC_Serial/esc_sniff.py --analyze spin50.bin \
 ## 4. Live logging
 
 ```bash
-# the normal case: one ESC on /dev/ttyAMA0, X8 pole count, logging to logs/
+# the normal case: one ESC on /dev/ttyAMA10, X8 pole count, logging to logs/
 python3 ESC_Serial/esc_monitor.py
 
 # named, and stop after 60 s
-python3 ESC_Serial/esc_monitor.py -p top=/dev/ttyAMA0 -t 60
+python3 ESC_Serial/esc_monitor.py -p top=/dev/ttyAMA10 -t 60
 
 # two at once, if you ever add a second UART or a USB-TTL adapter
-python3 ESC_Serial/esc_monitor.py -p top=/dev/ttyAMA0 -p bot=/dev/ttyUSB0
+python3 ESC_Serial/esc_monitor.py -p top=/dev/ttyAMA10 -p bot=/dev/ttyUSB0
 ```
 
 ```
@@ -295,8 +309,8 @@ again rather than re-run on the bench.
 
 ## If nothing arrives
 
-- **Is the serial console still holding `/dev/ttyAMA0`?** This is the usual answer on
-  a Pi 5 — see §2. `sudo fuser -v /dev/ttyAMA0` tells you.
+- **Is the serial console still holding `/dev/ttyAMA10`?** This is the usual answer on
+  a Pi 5 — see §2. `sudo fuser -v /dev/ttyAMA10` tells you.
 - Telemetry wire on the debug connector's **RX**, and a common ground?
 - Is the ESC powered? The telemetry stream only exists when the ESC is up.
 - Is something else holding the port? The monitor opens exclusively and will say so.

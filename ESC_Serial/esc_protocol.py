@@ -41,44 +41,45 @@ from collections import namedtuple
 # ---------------------------------------------------------------------------
 
 HEADER = 0x9B           # first byte of every frame
-LEN_BYTE = 0x16         # second byte: 22, and the total frame length
-FRAME_LEN = 22
+LEN_BYTE = 0x16         # second byte: 22 = everything before the checksum
+FRAME_LEN = 24          # 22 + 2-byte checksum. CONFIRMED on the bench.
 
-# Default line settings for Hobbywing telemetry. 19200 8N1 is what the
-# X-series / DataLink stream is reported to use; esc_sniff.py --sweep checks.
+# 19200 8N1 - CONFIRMED on the bench (Pi 5 debug connector, ESC spinning).
 DEFAULT_BAUD = 19200
 
-# /dev/ttyAMA0 is the Pi 5's dedicated UART debug connector - a separate 3-pin
-# header, not GPIO. Two reasons it is the right port here:
-#
-#   * /dev/ttyAMA10 (GPIO14/15) is the flight-controller MAVLink link the Body
-#     test uses, and must stay clear.
-#   * the spare GPIO UART overlays put RX on GPIO5 and GPIO7, which on a test
-#     box are the BOT and TOP ESC throttle outputs. Using the debug connector
-#     avoids that collision entirely.
+# /dev/ttyAMA10 is the Pi 5's 3-pin JST UART debug connector (CONFIRMED - the
+# ESC frames arrive there). /dev/ttyAMA0 is the GPIO14/15 UART, not this one.
+# The Body test also uses this connector, so the two tests cannot share it at
+# the same time - unplug one before the other.
 #
 # ONE SETUP STEP: the serial console usually owns this port. It has to be off
 # or it holds the tty and transmits on it. See README.md section 2.
-DEFAULT_PORT = "/dev/ttyAMA0"
+DEFAULT_PORT = "/dev/ttyAMA10"
 
 # A field is (name, offset, size, signed). Offsets are from the header byte.
 # Multi-byte integers are big-endian unless the name ends in "_le".
 Field = namedtuple("Field", "name offset size signed")
 
+# Layout from a bench capture (24-byte frames, sum16 checksum closes on every
+# frame) and the HW-FOC protocol order. Example frame, motor at low throttle:
+#   9b 16 01 02 | 11 8b | 00 73 | 00 73 | 01 a4 | 00 e4 | 00 04 | 00 2f | cf | d2 | 00 00 | 93 05
+#   hdr len ver cmd  seq   thr_in  thr_out  rpm    volts   amps   phase   mos  cap  status  sum16 LE
+# Offsets/sizes: CONFIRMED by structure. Field meanings past the counter and
+# the scale factors: still to calibrate (multimeter / tachometer).
 SPEC = (
-    Field("counter", 2, 3, False),          # increments once per frame
-    Field("throttle_req_raw", 5, 1, False),  # commanded throttle, 0-255
-    Field("throttle_raw", 6, 1, False),      # throttle the ESC is applying
-    Field("erpm_raw", 7, 2, False),          # electrical RPM
-    Field("voltage_raw", 9, 2, False),
-    Field("phase_current_raw", 11, 2, True),  # motor phase current
-    Field("current_raw", 13, 2, True),        # bus / battery current
-    Field("mos_temp_raw", 15, 1, False),      # FET thermistor
-    Field("cap_temp_raw", 16, 1, False),      # capacitor thermistor
-    Field("status_raw", 17, 2, False),        # fault / status bits
-    # 19 is unaccounted for in the candidate layout - logged as reserved_raw
-    Field("reserved_raw", 19, 1, False),
-    Field("crc_raw", 20, 2, False),
+    Field("version_raw", 2, 1, False),       # 0x01
+    Field("cmd_raw", 3, 1, False),           # 0x02 = real-time data
+    Field("counter", 4, 2, False),           # +1 per frame
+    Field("throttle_req_raw", 6, 2, False),  # throttle input
+    Field("throttle_raw", 8, 2, False),      # throttle output
+    Field("erpm_raw", 10, 2, False),
+    Field("voltage_raw", 12, 2, False),      # 0x00e4 = 228 -> 22.8 V on 6S
+    Field("current_raw", 14, 2, True),       # bus / battery current
+    Field("phase_current_raw", 16, 2, True),  # motor phase current
+    Field("mos_temp_raw", 18, 1, False),      # FET thermistor
+    Field("cap_temp_raw", 19, 1, False),      # capacitor thermistor
+    Field("status_raw", 20, 2, False),        # fault / status bits
+    Field("crc_raw", 22, 2, False),           # stored little-endian
 )
 
 CRC_FIELD = "crc_raw"
@@ -93,7 +94,7 @@ SCALES = {
     "voltage": 0.1,          # V per count
     "current": 0.1,          # A per count
     "phase_current": 0.1,    # A per count
-    "throttle": 100.0 / 255,  # percent per count
+    "throttle": 100.0 / 1024,  # percent per count - UNVERIFIED (0-1024?)
 }
 
 # eRPM -> mechanical RPM needs the motor's magnet POLE count (not the stator
@@ -224,9 +225,10 @@ CRC_FUNCS = {
 # None = "unconfirmed, do not check". Set this to a key of CRC_FUNCS once
 # esc_sniff.py tells you which one matches, together with CRC_SPAN and
 # CRC_ENDIAN from the same report.
-CRC_NAME = None
+# CONFIRMED: 16-bit sum of bytes 0..21, stored little-endian at 22..23.
+CRC_NAME = "sum16"
 CRC_SPAN = (0, FRAME_LEN - 2)    # byte range the checksum covers
-CRC_ENDIAN = "big"               # how the checksum itself is stored
+CRC_ENDIAN = "little"            # how the checksum itself is stored
 
 
 def _read_int(buf, field):
