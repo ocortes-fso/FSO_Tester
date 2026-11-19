@@ -229,6 +229,14 @@ def claim():
     if h is None:
         raise RuntimeError("GPIO not initialised - power on first")
 
+    #####*****CHANGES*****#####
+    # Claiming a line drives it low, so whatever we thought was being
+    # transmitted is not any more. lgpio hands out small integer handles and
+    # reuses them, so a reopened chip CAN come back with the same number - the
+    # handle comparison in _emit() would then wrongly match. Clearing here
+    # closes that.
+    _wire.clear()
+    #####*****END CHANGES*****#####
     for pin in CHANNELS.values():
         try:
             lgpio.gpio_claim_output(h, pin, level=0)
@@ -244,7 +252,26 @@ def _clamp(us):
     return clamped
 
 
-def _emit(channel, us):
+#####*****CHANGES*****#####
+# What is ACTUALLY on the wire: channel -> (handle, us).
+#
+# Every lgpio.tx_servo() call replaces the running software waveform, so a call
+# that commands a value already being transmitted cannot improve anything and
+# can only interrupt the pulse that happens to be in flight. At 25% throttle
+# the ESC shrugs that off; down at 1%-25%, where it is commutating open-loop on
+# the weakest back-EMF it will ever see, a truncated frame is the difference
+# between staying in sync and skipping - which is audible on an unloaded motor
+# and inaudible with a prop on. So a redundant call is worth not making.
+#
+# Keyed on the HANDLE as well as the value, so a gpiochip that was closed and
+# reopened (every emergency stop does that) invalidates this automatically.
+# There is no lock: the entry is written only AFTER tx_servo() has returned,
+# and dropped if it raises, so the worst a race can do is cause one extra
+# emit - never a skipped one.
+_wire = {}
+
+
+def _emit(channel, us, force=False):
     """
     Put `us` on the wire, with no slider clamp. Internal.
 
@@ -254,12 +281,27 @@ def _emit(channel, us):
     bug this whole arming path exists to avoid.
 
     Returns the value transmitted, or None if the handle has gone.
+
+    force=True transmits even if that value is already going out. Used by the
+    arming path, which must put a real frame on the wire rather than assume one
+    is there.
     """
     h = _handle()
     if h is None:
         raise RuntimeError("GPIO not initialised - power on first")
 
     us = int(round(us))
+
+    #####*****CHANGES*****#####
+    # Skip a duplicate - but ONLY above the idle floor. Anything at or below
+    # SLIDER_MIN_US is a command into the band where the motor does not turn,
+    # i.e. a de-escalation, and those always reach the hardware whether or not
+    # we believe they are already there. A redundant frame at idle is
+    # inaudible; a skipped one could be a motor that keeps spinning.
+    if (not force and us > SLIDER_MIN_US and _wire.get(channel) == (h, us)):
+        return us
+    #####*****END CHANGES*****#####
+
     try:
         lgpio.tx_servo(h, CHANNELS[channel], us, PWM_FREQ_HZ)
     except lgpio.error as e:
@@ -268,9 +310,11 @@ def _emit(channel, us):
         # gone by then, so there is nothing left to fail at - say so and carry
         # on rather than raising into the worker's teardown.
         print(f"[MANUAL PWM] tx_servo pin={CHANNELS[channel]}: {e}")
+        _wire.pop(channel, None)        # we no longer know what is out there
         _set_state(**{f"{channel}_us": None})
         return None
 
+    _wire[channel] = (h, us)            # only now is it true
     _set_state(**{f"{channel}_us": us})
     return us
 
@@ -296,6 +340,7 @@ def set_channel(channel, us):
 def off(channel):
     """Stop the frames on one channel and leave the line low. ESC goes back to beeping."""
     h = _handle()
+    _wire.pop(channel, None)        #####*****CHANGES*****##### nothing is out there now
     _set_state(**{f"{channel}_us": None})
 
     if h is None:
@@ -365,7 +410,11 @@ def arm():
     print(f"[MANUAL PWM] arming both channels at {US_ARM} us for {ARM_HOLD_S:.1f}s")
 
     for channel in CHANNELS:
-        _emit(channel, US_ARM)
+        # force: arming must put a real frame on the wire, never assume one is
+        # already there. claim() above cleared the cache and US_ARM is below
+        # the idle floor so it would not be skipped anyway - this says so
+        # explicitly, and keeps being true if those constants ever move.
+        _emit(channel, US_ARM, force=True)       #####*****CHANGES*****#####
 
     if _interruptible_sleep(ARM_HOLD_S):
         print("[MANUAL PWM] arming aborted - switching the frames off again")

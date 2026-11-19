@@ -15,7 +15,9 @@ unchanged:
   * if this page throws, or wedges on a port that never answers, MasterUI is
     not in the traceback and the test box keeps running;
   * if MasterUI is restarted, this keeps logging;
-  * it still never transmits, and still touches no GPIO and no I2C.
+  * it never transmits on the UART and touches no I2C. Without --control it
+    touches no GPIO either; with --control it drives only the throttle PWM on
+    GPIO7 (top) or GPIO5 (bot), via esc_arm.py.
 
 A page inside MasterUI would have given up all of that: one process, one
 crash, one stuck read() blocking the Tk thread that is also responsible for
@@ -168,16 +170,9 @@ class EscGui:
         self.rpm_lbl, self.rpm_peak = self._big_panel(
             big, "RPM", "", side="left")
 
-        # The independent measurement, shown next to the ESC's own figure
-        # rather than buried in the log. Two readings of the same current that
-        # agree are two readings you can trust; their ratio is what calibrates
-        # the ESC's current scale. Only meaningful with control, because
-        # nothing else powers the INA228 sampler.
-        if self.control:
-            self.shunt_lbl, self.shunt_delta = self._big_panel(
-                big, "CURRENT  (shunt)", "A", side="left")
-        else:
-            self.shunt_lbl = self.shunt_delta = None
+        # No shunt on this bench: the battery feeds the ESC directly, so there
+        # is no INA228 reading to show next to the ESC's own current.
+        self.shunt_lbl = self.shunt_delta = None
 
         # --- secondary readouts --------------------------------------------
         grid = tk.Frame(root, bg=BG)
@@ -222,15 +217,34 @@ class EscGui:
         self.stop_btn.config(state="disabled")
 
     def _channel(self):
-        """Which ESC the telemetry wire is on. Tolerates a partial namespace."""
-        return getattr(self.args, "channel", "top")
+        """Which channel the slider drives. Starts from -c, toggled on screen."""
+        if not hasattr(self, "_chan"):
+            self._chan = getattr(self.args, "channel", "top")
+        return self._chan
+
+    def _chan_text(self):
+        pin = esc_arm.CHANNELS[self._channel()]
+        return f"GPIO{pin} ({self._channel().upper()})"
+
+    def toggle_channel(self):
+        """Switch the slider between GPIO7 (top) and GPIO5 (bot)."""
+        old = self._channel()
+        self._chan = "bot" if old == "top" else "top"
+        min_us = esc_arm.limits()[0]
+        if esc_arm.is_armed():
+            try:
+                esc_arm.set_us(old, min_us)     # park the old one at idle
+            except esc_arm.ArmError as e:
+                print(f"[ESC GUI] park {old}: {e}")
+        self._reset_throttle()
+        self.chan_btn.config(text=self._chan_text())
 
     def _build_control(self, root):
         """
-        Power / arm / throttle, driven entirely through esc_arm -> the test
-        box's own subcodes. No pulse width is computed here and no ceiling is
-        enforced here: the slider's range comes from Manual_PWM_Test's own
-        limits, and set_channel() clamps on top of that.
+        PWM enable / arm / throttle, driven entirely through esc_arm (software
+        PWM on GPIO7/GPIO5). No pulse width is computed here and no ceiling is
+        enforced here: the slider's range comes from esc_arm.limits(), and
+        esc_arm.set_us() clamps on top of that.
         """
         min_us, max_us, arm_us, zero_us = esc_arm.limits()
 
@@ -240,11 +254,11 @@ class EscGui:
         row = tk.Frame(strip, bg=PANEL)
         row.pack(fill="x")
 
-        self.power_btn = self._button(row, "POWER ON", self.power_on, "#0d6efd")
+        self.power_btn = self._button(row, "PWM ON", self.power_on, "#0d6efd")
         self.arm_btn = self._button(row, "ARM", self.arm_click, "#0d6efd")
         self.disarm_btn = self._button(row, "DISARM", self.disarm_click,
                                        "#495057")
-        self.poweroff_btn = self._button(row, "POWER OFF", self.power_off_click,
+        self.poweroff_btn = self._button(row, "PWM OFF", self.power_off_click,
                                          "#495057")
         # Loudest thing on the page, same reasoning as the Prop TEST V2 page's
         # emergency stop: it is the one you hit without looking.
@@ -258,8 +272,14 @@ class EscGui:
         srow = tk.Frame(strip, bg=PANEL)
         srow.pack(fill="x", pady=(8, 0))
 
-        tk.Label(srow, text=f"THROTTLE  {self._channel().upper()}", bg=PANEL,
+        tk.Label(srow, text="THROTTLE", bg=PANEL,
                  fg=DIM, font=(None, 11, "bold")).pack(side="left")
+        # Which GPIO the slider drives. Both are armed together, so switching
+        # just parks the old one at idle and moves the slider back to rest.
+        self.chan_btn = self._button(srow, self._chan_text(),
+                                     self.toggle_channel, "#6f42c1")
+        self.chan_btn.config(font=(None, 11, "bold"), pady=2, padx=10)
+        self.chan_btn.pack_configure(padx=(10, 0))
         self.throttle_lbl = tk.Label(srow, text=f"{min_us} us", bg=PANEL,
                                      fg=ACCENT, font=(None, 15, "bold"))
         self.throttle_lbl.pack(side="right")
@@ -275,7 +295,7 @@ class EscGui:
         tk.Label(strip, bg=PANEL, fg=DIM, font=(None, 9),
                  text=f"arm holds {arm_us} us; the ESC's 0% point is "
                       f"{zero_us} us, so {min_us} us does not turn the motor. "
-                      f"Ceiling {max_us} us, from Manual_PWM_Test.",
+                      f"Ceiling {max_us} us. GPIO7 = pin 26, GPIO5 = pin 29.",
                  anchor="w").pack(fill="x", pady=(2, 0))
 
         self._refresh_control()
@@ -423,7 +443,7 @@ class EscGui:
         except Exception as e:          # noqa: BLE001
             print(f"[ESC GUI] e-stop: {e}")
         self._reset_throttle()
-        self._fault("EMERGENCY STOP - arm powered down")
+        self._fault("EMERGENCY STOP - PWM off. Unplug the battery to cut ESC power")
         self._refresh_control()
 
     def _reset_throttle(self):
@@ -671,9 +691,9 @@ def main():
     p.add_argument("-c", "--channel", default="top",
                    help="which ESC the telemetry wire is on (default top)")
     p.add_argument("--control", action="store_true",
-                   help="also drive the arm: power, arm and throttle, through "
-                        "the test box's own subcodes. Needs the Pi, and the "
-                        "test box must not have the arm powered")
+                   help="also drive the throttle: software PWM on GPIO7 (top) "
+                        "or GPIO5 (bot), slider + arm. Battery wired straight "
+                        "to the ESC; no FET, no I2C. Needs the Pi")
     p.add_argument("--windowed", action="store_true",
                    help="do not go fullscreen")
     p.add_argument("--autostart", action="store_true",

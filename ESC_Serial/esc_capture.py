@@ -2,9 +2,13 @@
 """
 esc_capture.py - run a telemetry capture end to end, no second pair of hands.
 
-Powers the arm, arms the ESC, walks a list of commanded pulse widths, logs the
-ESC's telemetry next to the INA228's independent reading, saves the raw bytes,
-and powers down - including on Ctrl-C, on a guard trip, and on an exception.
+Bench: battery wired straight to the ESC, ESC throttle on GPIO7 (top) or
+GPIO5 (bot) as software PWM, ESC telemetry on the Pi 5 UART debug port. No FET,
+no I2C, no shunt.
+
+Enables the PWM lines, arms the ESC, walks a list of commanded pulse widths,
+logs the ESC's telemetry, saves the raw bytes, and switches the PWM off -
+including on Ctrl-C and on an exception.
 
 NOTHING SPINS BY DEFAULT
 ------------------------
@@ -27,17 +31,11 @@ reason to fit a prop.
     # custom steps and holds
     python3 ESC_Serial/esc_capture.py --steps 1080,1150,1200 --hold 8
 
-ONE OWNER OF THE ARM
---------------------
-This drives the FET and the throttle lines, so the test box must not have the
-arm powered at the same time. esc_arm.power_up() checks and refuses with a
-clear message; press POWER OFF on the test box's Prop TEST V2 / Cv2_A06 page
-first if you see it.
-
-The over-current and under-voltage guards that protect the scripted prop test
-are armed here too, because power-up goes through the same
-Hobbywing_Prop_Test.session_power_up(). A trip aborts the capture and powers
-down, and the log is kept.
+ONE OWNER OF THE THROTTLE LINES
+-------------------------------
+esc_arm.power_up() claims GPIO5/GPIO7 and refuses if another process (the test
+box GUI) holds them. There are NO over-current / under-voltage guards on this
+bench: the battery feeds the ESC directly. Stay by the battery connector.
 """
 
 from __future__ import annotations
@@ -126,7 +124,8 @@ def _say_line(reader, d, shunt, remaining):
     sys.stdout.write(
         f"\r    {remaining:4.1f}s left  "
         f"eRPM {_i(d.get('erpm')):>6}  rpm {_f(d.get('rpm'), 0):>6}  "
-        f"ESC {_f(esc_a, 2):>7} A  shunt {_f(sh_a, 2):>7} A  "
+        f"ESC {_f(esc_a, 2):>7} A  "
+        + (f"shunt {_f(sh_a, 2):>7} A  " if sh_a is not None else "") +
         f"{_f(d.get('volts'), 2):>6} V   "
     )
     sys.stdout.flush()
@@ -170,21 +169,19 @@ def run(args):
 
     completed = False
     try:
-        # Telemetry first: the ESC is unpowered, so this proves the port opens
-        # and shows nothing arriving, which is the baseline for "did the stream
-        # start when the ESC came up".
-        reader.annotations = {"phase": "pre-power"}
+        # Telemetry first: the ESC is on the battery already, so this is the
+        # baseline with no throttle pulses at all.
+        reader.annotations = {"phase": "no-pwm"}
         reader.start()
         time.sleep(1.0)
         if reader.last_error:
             _say(f"serial: {reader.last_error}")
 
-        _say("powering the arm (bus must come up, guards armed)")
+        _say(f"claiming PWM lines (GPIO{esc_arm.CHANNELS[args.channel]} = {args.channel})")
         esc_arm.power_up(quiet=True)
 
-        # Powered, no frames: the ESC should beep once a second. Telemetry
-        # usually starts here, which is itself worth recording.
-        if not _hold(reader, args.hold, "powered-no-frames"):
+        # Lines claimed, no pulses: the ESC should beep once a second.
+        if not _hold(reader, args.hold, "no-frames"):
             return
 
         # arm() blocks for its own hold at 1000 us, so the annotation is set
@@ -193,11 +190,7 @@ def run(args):
         # afterwards, which is what this did first, puts the label on the wrong
         # frames - and those frames are the ones that show what the ESC reports
         # at a known 1000 us.
-        shunt = esc_arm.shunt_state()
-        reader.annotations = {
-            "phase": "arming", "cmd_us": 1000,
-            "shunt_volts": shunt.get("volts"), "shunt_amps": shunt.get("amps"),
-        }
+        reader.annotations = {"phase": "arming", "cmd_us": esc_arm.US_ARM}
         _say("arming: holding 1000 us, then settling at 1080 us - nothing turns")
         if not esc_arm.arm():
             _say("arming was interrupted")
@@ -221,7 +214,7 @@ def run(args):
         _abort.set()
         reader.join(timeout=2.0)
 
-        _say("disarming and powering down")
+        _say("disarming, PWM off")
         try:
             esc_arm.disarm()
         finally:
@@ -252,13 +245,15 @@ def run(args):
 
 def main():
     p = argparse.ArgumentParser(
-        description="Scripted ESC telemetry capture: powers the arm, arms the "
-                    "ESC, walks a throttle list, logs, powers down.")
+        description="Scripted ESC telemetry capture: software PWM on GPIO7/"
+                    "GPIO5, arms the ESC, walks a throttle list, logs, PWM off. "
+                    "Battery wired straight to the ESC.")
     p.add_argument("-p", "--port", default=proto.DEFAULT_PORT)
     p.add_argument("-b", "--baud", type=int, default=proto.DEFAULT_BAUD)
     p.add_argument("--poles", type=int, default=proto.DEFAULT_POLES)
     p.add_argument("-c", "--channel", default="top",
-                   help="which ESC the telemetry wire is on (default top)")
+                   help="throttle line: top = GPIO7 (pin 26), bot = GPIO5 "
+                        "(pin 29). Default top")
     p.add_argument("--hold", type=float, default=10.0,
                    help="seconds per phase (default 10)")
     p.add_argument("--steps", help="comma-separated pulse widths in us")
@@ -273,8 +268,8 @@ def main():
         sys.exit("pyserial is not installed. `pip3 install pyserial "
                  "--break-system-packages`")
     if not esc_arm.available():
-        sys.exit("This needs the test box libraries (lgpio, Subcodes). Run it "
-                 "on the Pi, or use esc_monitor.py read-only.")
+        sys.exit("This needs lgpio for the throttle PWM. Run it on the Pi, "
+                 "or use esc_monitor.py read-only.")
 
     # Ctrl-C must reach the hold loops AND leave the teardown in finally to do
     # its job - so it sets the flag rather than raising through the sequence.

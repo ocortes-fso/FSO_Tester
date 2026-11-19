@@ -1,67 +1,53 @@
 #!/usr/bin/env python3
 """
-esc_arm.py - OPTIONAL power / arm / throttle control for an ESC telemetry run.
+esc_arm.py - OPTIONAL arm / throttle control for an ESC telemetry run.
 
-WHAT THIS IS, AND WHY IT IS OPTIONAL
-------------------------------------
-The rest of ESC_Serial is a pure listener. This module is the one piece that
-can touch the hardware, and it exists so a telemetry capture can be run
-end-to-end by one person: power the arm, arm the ESC, hold a throttle, log, and
-power down - instead of needing someone else to drive the throttle while you
-watch the numbers.
+BENCH WIRING THIS ASSUMES
+-------------------------
+    Battery ------------> ESC ------------> 3-phase motor
+    ESC white (PWM in) -> GPIO7 (pin 26, "top")  or  GPIO5 (pin 29, "bot")
+    ESC black (GND) ----> Pi GND (pin 25 / 30)
+    ESC green (UART) ---> Pi 5 UART debug connector RX  (read by esc_monitor)
 
-It does NOT reimplement any of that. Every call goes to the test box's own
-subcodes, which already have the ordering, the clamps and the guards right:
+There is NO precharge FET, NO INA228 / I2C and NO bus-voltage check here: the
+battery feeds the ESC directly, so the ESC is live as soon as it is plugged in.
+The only thing this module touches is one gpiochip handle and the two throttle
+lines, driven with lgpio software servo pulses (GPIO5/7 are not hardware-PWM
+pins on the Pi 5).
 
-    Precharge.INITIALIZE_SYSTEM()          claim the gpiochip, FET + precharge off
-    Precharge.CLOSE_FET()                  (named "close" = de-energised)
-    Hobbywing_Prop_Test.session_power_up() close the FETs, verify the bus came
-                                           up, arm the over-current /
-                                           under-voltage guards, start the
-                                           INA228 sampler and its CSV
-    Manual_PWM_Test.arm()                  hold 1000 us so the ESC will arm,
-                                           then settle at SLIDER_MIN_US
-    Manual_PWM_Test.set_channel(ch, us)    clamped to [1080, 1400] us
-    Manual_PWM_Test.disarm()               frames off, ESC beeps 1/s
-    Hobbywing_Prop_Test.session_power_off()
-    Precharge.CLOSE_SYSTEM()               release the gpiochip
+The pulse widths, the arming hold and the slider band are the same numbers
+Subcodes/Manual_PWM_Test.py uses, copied here rather than imported so this
+module does not pull in Precharge. Keep them in step if those change.
 
-So the throttle ceiling, the arming sequence and the guards are whatever
-Manual_PWM_Test and Hobbywing_Prop_Test say they are. Nothing here can exceed
-them, and nothing here needs updating when they change.
+ONE OWNER OF THE LINES AT A TIME
+--------------------------------
+power_up() claims GPIO5/GPIO7 and refuses if another process (e.g. MasterUI)
+already holds them.
 
-ONLY ONE OWNER OF THE ARM AT A TIME
------------------------------------
-This is the hazard, and it is checked rather than documented-and-hoped. The
-FET and the two throttle lines can only be owned by one process: if MasterUI
-has the arm powered on its Prop TEST V2 or Cv2_A06 page, this must not also be
-driving it, or two processes are commanding one FET with neither aware of the
-other.
-
-Precharge only holds the gpiochip BETWEEN power-on and power-off, so a test box
-sitting on its menu is not holding anything and this can take ownership
-cleanly. power_up() verifies that by claiming the FET line explicitly and
-refusing if it cannot - see the comment there for why the claim has to be
-re-done rather than trusted to INITIALIZE_SYSTEM.
-
-IMPORTS ARE LAZY, ON PURPOSE
-----------------------------
-Subcodes is imported inside the functions, not at module scope, so that:
-  * the read-only tools (esc_monitor, esc_sniff, esc_gui without --control)
-    keep their zero-coupling guarantee and do not need lgpio at all;
-  * the whole package still runs on a laptop against a USB-TTL adapter, where
-    lgpio and smbus2 do not exist.
+IMPORTS ARE LAZY
+----------------
+lgpio is imported on first use so the read-only tools still run on a laptop.
 """
 
 from __future__ import annotations
 
-import os
-import sys
 import threading
+import time
 
-# The repo root, so `from Subcodes import ...` resolves the same way it does
-# for GUI/MasterUI.py.
-_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# --- same values as Subcodes/Manual_PWM_Test.py ---------------------------
+GPIOCHIP = 4            # Pi 5 RP1 header chip, same as Precharge.CHIP
+PWM_TOP = 7             # GPIO7, physical pin 26
+PWM_BOT = 5             # GPIO5, physical pin 29
+CHANNELS = {"top": PWM_TOP, "bot": PWM_BOT}
+PWM_FREQ_HZ = 400
+
+US_ARM = 1000           # held while the ESC arms
+ARM_HOLD_S = 2.0
+SLIDER_MIN_US = 1080    # armed resting value, below the 1100 us 0% point
+SLIDER_MAX_US = 1400    # ~40% throttle - the ceiling
+US_MAX_ALLOWED = SLIDER_MAX_US
+ZERO_PCT_US = 1100
+US_OFF = 0              # tx_servo width 0 = waveform off
 
 
 class ArmError(RuntimeError):
@@ -69,237 +55,206 @@ class ArmError(RuntimeError):
 
 
 _lock = threading.Lock()
-_owned = False          # True once we have taken the gpiochip and powered up
+_stop = threading.Event()
+_h = None               # gpiochip handle while we own the lines
+_armed = False
+_us = {name: None for name in CHANNELS}
 
 
-def _subcodes():
-    """Import the test box modules on first use. Raises ArmError if impossible."""
-    if _REPO not in sys.path:
-        sys.path.insert(0, _REPO)
+def _lgpio():
     try:
         import lgpio
-        from Subcodes import Hobbywing_Prop_Test, Manual_PWM_Test, Precharge
     except ImportError as e:
         raise ArmError(
-            f"arm control needs the test box libraries ({e}). Run this on the "
-            f"Pi, or use the monitor read-only without --control."
-        ) from e
-    return lgpio, Precharge, Hobbywing_Prop_Test, Manual_PWM_Test
+            f"PWM control needs lgpio ({e}). Run this on the Pi, or use the "
+            f"monitor read-only without --control.") from e
+    return lgpio
 
 
 def available():
-    """True if arm control could be used here. Does not claim anything."""
+    """True if PWM control could be used here. Claims nothing."""
     try:
-        _subcodes()
+        _lgpio()
         return True
     except ArmError:
         return False
 
 
 def owned():
-    return _owned
+    return _h is not None
 
 
 # ---------------------------------------------------------------------------
-# Power
+# Claim / release the throttle lines
 # ---------------------------------------------------------------------------
 
 def power_up(quiet=True):
     """
-    Take ownership of the arm and bring the bus up. Blocking, seconds.
+    Open the gpiochip and claim GPIO5/GPIO7 as outputs, driven low.
 
-    Raises ArmError with an operator-facing message if the arm is already owned
-    (the test box has it powered) or if the bus does not come up.
-
-    No frames are transmitted here - same as the test box's own power-on, the
-    ESC should be sitting there beeping once a second when this returns. Arming
-    is a separate, deliberate step.
+    No pulses yet - the ESC keeps beeping until arm(). Raises ArmError if the
+    lines are already held by another process.
     """
-    global _owned
+    global _h, _armed
     with _lock:
-        if _owned:
-            raise ArmError("already powered by this process")
-
-        lgpio, Precharge, Prop, _Manual = _subcodes()
-
-        Precharge.INITIALIZE_SYSTEM()
-
-        # Verify we actually OWN the FET line, and do not trust
-        # INITIALIZE_SYSTEM to have told us: it wraps its claims in bare
-        # `except: pass` (so that re-initialising is harmless), which also
-        # swallows the "another process has this line" error we care about.
-        # Claiming it again here is the only way to see that error.
+        if _h is not None:
+            raise ArmError("PWM lines already claimed by this process")
+        lgpio = _lgpio()
         try:
-            lgpio.gpio_claim_output(Precharge.h, Precharge.FET_CTL, level=0)
+            h = lgpio.gpiochip_open(GPIOCHIP)
         except lgpio.error as e:
-            Precharge.CLOSE_SYSTEM()
-            raise ArmError(
-                "the arm is already owned by another process - almost "
-                "certainly the test box has it powered. Press POWER OFF on its "
-                f"Prop TEST V2 / Cv2_A06 page first. ({e})"
-            ) from e
-
-        Precharge.CLOSE_FET()
-
+            raise ArmError(f"cannot open gpiochip{GPIOCHIP}: {e}") from e
         try:
-            # Does the bus check and arms the over-current / under-voltage
-            # guards, and starts the INA228 sampler plus its own CSV in Logs/.
-            # That trace is worth having next to the ESC's own numbers: two
-            # independent measurements of the same current.
-            Prop.session_power_up(guards_enabled=True, quiet=quiet)
-        except Exception as e:
-            # session_power_up leaves the FET open on failure; still release
-            # the chip so the test box can have it back.
-            Precharge.CLOSE_SYSTEM()
-            raise ArmError(str(e)) from e
+            for pin in CHANNELS.values():
+                lgpio.gpio_claim_output(h, pin, 0)
+        except lgpio.error as e:
+            lgpio.gpiochip_close(h)
+            raise ArmError(
+                "GPIO5/GPIO7 are held by another process - close the test box "
+                f"page that is driving them first. ({e})") from e
+        _h = h
+        _armed = False
+        for name in _us:
+            _us[name] = None
+        if not quiet:
+            print(f"[ESC ARM] claimed GPIO{PWM_TOP}/GPIO{PWM_BOT}, no pulses")
 
-        _owned = True
+
+def _off_all(lgpio):
+    """Pulses off, lines low. Caller holds _lock and _h is valid."""
+    global _armed
+    for name, pin in CHANNELS.items():
+        try:
+            lgpio.tx_servo(_h, pin, US_OFF, PWM_FREQ_HZ)
+            lgpio.gpio_write(_h, pin, 0)
+        except lgpio.error as e:
+            print(f"[ESC ARM] off GPIO{pin}: {e}")
+        _us[name] = None
+    _armed = False
 
 
 def power_off():
-    """
-    Frames off, FET off, guards and sampler stopped, gpiochip released.
-
-    Safe to call when nothing is powered, and safe to call twice - which is why
-    every teardown path can just call it.
-    """
-    global _owned
+    """Pulses off, lines released, chip closed. Safe to call any time, twice."""
+    global _h
+    _stop.set()
     with _lock:
-        if not _owned:
+        if _h is None:
             return
+        lgpio = _lgpio()
         try:
-            _lgpio, Precharge, Prop, Manual = _subcodes()
-        except ArmError:
-            _owned = False
-            return
-        try:
-            Manual.release()                # abort, frames off, both channels
-            Prop.session_power_off()
-            Prop.session_stop_monitor()     # closes the INA228 CSV too
+            _off_all(lgpio)
+            for pin in CHANNELS.values():
+                try:
+                    lgpio.gpio_free(_h, pin)
+                except lgpio.error:
+                    pass
         finally:
-            Precharge.CLOSE_SYSTEM()
-            _owned = False
+            try:
+                lgpio.gpiochip_close(_h)
+            except lgpio.error:
+                pass
+            _h = None
 
 
 def emergency_stop(reason="operator pressed STOP"):
-    """
-    The hard stop: hand straight to the test box's own emergency path.
-
-    Not a tidier power_off(): session_emergency_stop() is the sequence the rig
-    already trusts for this, including killing the LED and keeping the fault
-    log. Reusing it means there is one emergency stop on this hardware, not
-    two with slightly different orderings.
-    """
-    global _owned
-    with _lock:
-        if not _owned:
-            return
-        try:
-            _lgpio, Precharge, Prop, Manual = _subcodes()
-        except ArmError:
-            _owned = False
-            return
-        try:
-            Manual.abort()
-            Manual.all_off()
-            Prop.session_emergency_stop()
-        finally:
-            Precharge.CLOSE_SYSTEM()
-            _owned = False
-        print(f"[ESC ARM] EMERGENCY STOP: {reason}")
+    """Cut the throttle pulses immediately and release the lines."""
+    power_off()
+    print(f"[ESC ARM] EMERGENCY STOP: {reason} - PWM off. "
+          f"Unplug the battery to remove power from the ESC.")
 
 
 # ---------------------------------------------------------------------------
 # Throttle
 # ---------------------------------------------------------------------------
 
+def _emit(lgpio, name, us):
+    lgpio.tx_servo(_h, CHANNELS[name], int(us), PWM_FREQ_HZ)
+    _us[name] = int(us)
+
+
 def arm():
     """
-    Run the ESC arming hold. BLOCKING for ~2 s - call from a worker thread.
+    Hold US_ARM on both channels for ARM_HOLD_S, then settle at SLIDER_MIN_US.
+    BLOCKING ~2 s - call from a worker thread. Nothing spins.
 
-    Returns True if it completed. Both channels are armed together, which is
-    Manual_PWM_Test's behaviour and the right one here too: the ESC you are not
-    reading keeps live frames at its zero point instead of losing signal.
-
-    NOTHING SPINS. The hold is at US_ARM (1000 us) and it settles at
-    SLIDER_MIN_US (1080 us), both below the ESC's 0% point of 1100 us. That is
-    what makes a telemetry capture possible before you are ready to turn a
-    motor.
+    Returns True if the hold completed, False if aborted.
     """
-    if not _owned:
-        raise ArmError("not powered - power_up() first")
-    _lgpio, _Precharge, _Prop, Manual = _subcodes()
-    return Manual.arm()
+    global _armed
+    lgpio = _lgpio()
+    _stop.clear()
+    with _lock:
+        if _h is None:
+            raise ArmError("PWM not enabled - power_up() first")
+        for name in CHANNELS:
+            _emit(lgpio, name, US_ARM)
+    print(f"[ESC ARM] arming at {US_ARM} us for {ARM_HOLD_S:.1f}s")
+
+    end = time.monotonic() + ARM_HOLD_S
+    while time.monotonic() < end:
+        if _stop.wait(0.02):
+            with _lock:
+                if _h is not None:
+                    _off_all(lgpio)
+            return False
+
+    with _lock:
+        if _h is None:
+            return False
+        for name in CHANNELS:
+            _emit(lgpio, name, SLIDER_MIN_US)
+        _armed = True
+    print(f"[ESC ARM] armed - idling at {SLIDER_MIN_US} us")
+    return True
 
 
 def disarm():
-    """Frames off on both channels. The ESC goes back to beeping once a second."""
-    if not _owned:
-        return
-    _lgpio, _Precharge, _Prop, Manual = _subcodes()
-    Manual.disarm()
+    """Pulses off on both channels. The ESC goes back to beeping."""
+    _stop.set()
+    with _lock:
+        if _h is None:
+            return
+        _off_all(_lgpio())
 
 
 def is_armed():
-    if not _owned:
-        return False
-    try:
-        _lgpio, _Precharge, _Prop, Manual = _subcodes()
-    except ArmError:
-        return False
-    return Manual.is_armed()
+    return _h is not None and _armed
 
 
 def set_us(channel, us):
     """
-    Command one channel. Returns what was actually transmitted.
-
-    Clamped by Manual_PWM_Test to [SLIDER_MIN_US, US_MAX_ALLOWED] - 1080 to
-    1400 us, about 40% throttle at the top. This module deliberately has no
-    clamp of its own: one ceiling, defined in one place.
+    Command one channel, clamped to [SLIDER_MIN_US, US_MAX_ALLOWED].
+    Returns the value actually transmitted.
     """
-    if not _owned:
-        raise ArmError("not powered - power_up() first")
-    _lgpio, _Precharge, _Prop, Manual = _subcodes()
-    return Manual.set_channel(channel, us)
+    if channel not in CHANNELS:
+        raise ValueError(f"unknown channel {channel!r}")
+    lgpio = _lgpio()
+    with _lock:
+        if _h is None or not _armed:
+            raise ArmError("not armed - arm() first")
+        us = SLIDER_MIN_US if us is None else int(round(us))
+        us = max(SLIDER_MIN_US, min(US_MAX_ALLOWED, us))
+        if _us[channel] != us:
+            _emit(lgpio, channel, us)
+        return us
 
 
 def limits():
-    """(min_us, max_us, arm_us, zero_pct_us) from Manual_PWM_Test."""
-    _lgpio, _Precharge, _Prop, Manual = _subcodes()
-    return (Manual.SLIDER_MIN_US, Manual.US_MAX_ALLOWED, Manual.US_ARM, 1100)
+    """(min_us, max_us, arm_us, zero_pct_us)."""
+    return (SLIDER_MIN_US, US_MAX_ALLOWED, US_ARM, ZERO_PCT_US)
 
 
 def channels():
-    _lgpio, _Precharge, _Prop, Manual = _subcodes()
-    return sorted(Manual.CHANNELS)
+    return sorted(CHANNELS)
 
 
 # ---------------------------------------------------------------------------
-# The independent measurement
+# No shunt on this bench - kept so callers need no special case.
 # ---------------------------------------------------------------------------
 
 def shunt_state():
-    """
-    The INA228 reading: {'volts', 'amps', 'temp_c', 'abort_reason', ...}.
-
-    This is the cross-check that makes the whole exercise verifiable. The ESC
-    reports its own current over the telemetry wire; the shunt measures the
-    same current independently. Two numbers that agree are two numbers you can
-    trust, and their ratio is exactly what calibrates the ESC's current scale.
-
-    Returns {} when nothing is powered. Never does I2C itself - the sampler
-    thread owns the bus, this just copies its state dict.
-    """
-    if not _owned:
-        return {}
-    try:
-        _lgpio, _Precharge, Prop, _Manual = _subcodes()
-    except ArmError:
-        return {}
-    return Prop.get_state()
+    """Always {}: battery is wired straight to the ESC, there is no INA228."""
+    return {}
 
 
 def guard_tripped():
-    """The abort reason if a guard fired, else None."""
-    return (shunt_state() or {}).get("abort_reason")
+    return None

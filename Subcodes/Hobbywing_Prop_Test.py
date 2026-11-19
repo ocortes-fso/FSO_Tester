@@ -397,6 +397,15 @@ class SoftServoPWM:
         # unwinding would push more tx_servo() calls at an already-closed
         # gpiochip handle. Commands after a stop are never wanted.
         self.disabled = False
+
+        # What is ACTUALLY being transmitted, per channel. Every tx_servo()
+        # call replaces the running software waveform, so commanding a value
+        # that is already going out cannot improve anything and can only
+        # interrupt the pulse in flight. Harmless at 50%; down at 1%-25%, where
+        # the ESC commutates open-loop on the weakest back-EMF it will ever
+        # see, a truncated frame can cost it sync - audible on a bare motor,
+        # masked by a prop's inertia.
+        self.on_wire = {}
         #####*****END CHANGES*****#####
 
     def claim(self):
@@ -421,6 +430,7 @@ class SoftServoPWM:
         self.live = True
         for name, pin in self.pins.items():
             lgpio.tx_servo(self.h, pin, self.commanded[name], self.freq)
+            self.on_wire[name] = self.commanded[name]   #####*****CHANGES*****#####
         self._publish()
 
     def set(self, us, channels=BOTH):
@@ -436,12 +446,24 @@ class SoftServoPWM:
             self.commanded[name] = us
             if self.live:
                 #####*****CHANGES*****#####
+                # Skip a duplicate - but ONLY above US_0, the 1% point. At or
+                # below it the command is a de-escalation into the band where
+                # the motor does not turn, and those ALWAYS reach the hardware
+                # whether or not we believe they are already there. That covers
+                # all_safe(), every abort and every emergency stop. A redundant
+                # frame down there is inaudible; a skipped one could be a motor
+                # that keeps spinning.
+                if us > US_0 and self.on_wire.get(name) == us:
+                    continue
+                #
                 # Tolerate a handle that was closed under us by an emergency
                 # stop on another thread. The frames are already gone at that
                 # point, so there is nothing left to fail at.
                 try:
                     lgpio.tx_servo(self.h, self.pins[name], us, self.freq)
+                    self.on_wire[name] = us     # only now is it true
                 except lgpio.error as e:
+                    self.on_wire.pop(name, None)
                     print(f"[PWM] tx_servo pin={self.pins[name]}: {e}")
                 #####*****END CHANGES*****#####
         _set_state(target_us=us)
@@ -463,6 +485,7 @@ class SoftServoPWM:
                 lgpio.gpio_write(self.h, pin, 0)
             except lgpio.error:
                 pass
+        self.on_wire.clear()        #####*****CHANGES*****##### nothing out there now
         self.live = False
         self.disabled = True          #####*****CHANGES*****##### latch, see __init__
         self.commanded = {"top": None, "bot": None}
