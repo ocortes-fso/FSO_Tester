@@ -106,7 +106,7 @@ SCALES = {
 #
 # Set --poles 0 to turn the conversion off, in which case the rpm column is
 # left empty rather than filled with a number nobody checked.
-DEFAULT_POLES = 40       # X8 / 8120, 36N40P
+DEFAULT_POLES = 4       # X8 / 8120, 36N40P
 
 
 def mech_rpm(erpm, poles=DEFAULT_POLES):
