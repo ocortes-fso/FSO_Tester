@@ -37,8 +37,8 @@ back. Two wires:
 | telemetry / TLM (signal out) | **RX** on the UART debug connector |
 | GND | GND on the same connector |
 
-For `--control` / `esc_capture.py` (battery wired straight to the ESC — no FET,
-no precharge, no INA228/I²C), add the throttle signal:
+For `--control` / `esc_capture.py` (battery → FETs → INA228 → ESC; precharge is
+disabled, see `Subcodes/Precharge.py`), add the throttle signal:
 
 | ESC | Raspberry Pi 5 |
 |---|---|
@@ -46,9 +46,20 @@ no precharge, no INA228/I²C), add the throttle signal:
 | black (signal GND) | GND, pin 25 or 30 |
 
 `esc_arm.py` drives these lines itself with `lgpio.tx_servo` (same 1000 µs arm hold
-and 1080–1400 µs band as `Manual_PWM_Test`); it no longer calls `Precharge` or
-`Hobbywing_Prop_Test`. There are no current/voltage guards, so E-STOP only cuts the
-PWM — unplug the battery to remove power.
+and 1080–1400 µs slider band as `Manual_PWM_Test`). The SWEEP button ramps
+1000 µs → `SWEEP_END_US` (1690 µs, ~1500 rpm) over 5 s, then **cuts the signal**
+to simulate the motors switching off and times the spin-down: from the cut to the
+first telemetry frame at 0 eRPM. The result is shown on screen, printed, and
+written to `spindown_s` on that CSV row; `cmd_us` reads 0 through the coast-down.
+The ESC is left disarmed — press ARM before the next sweep.
+
+**Pre-arm check**, in the order `Subcodes/Precharge.py` lays out, calling its own
+functions: `INITIALIZE_SYSTEM()` → claim GPIO5/7 low → `START_PRECHARGE()` (no-op
+while disabled) → `OPEN_FET()` → `TURN_OFF_PRECHARGE()` → wait `BUS_SETTLE_S` →
+median INA228 bus voltage → `classify_bus_voltage()`. If the bus does not reach
+`BUS_MIN_VOLTAGE` the FETs are switched off again and power-up is refused. E-STOP /
+PWM OFF cut the pulses and the FETs (`CLOSE_FET()` → `CLOSE_SYSTEM()`). There are no
+running current/voltage guards.
 
 Do **not** connect the Pi's TX to the ESC. One UART reads one ESC; to read the other
 one, move the single wire across.
@@ -274,18 +285,16 @@ So the throttle ceiling, the arming sequence and the guards are whatever those m
 say they are — nothing here duplicates or can exceed them, and nothing here needs
 changing when they change.
 
-Each row carries `phase`, `cmd_us`, `shunt_volts` and `shunt_amps` alongside the ESC's
-own figures, so the analysis can slice by phase and compare the two current
-measurements directly.
+Each row carries `cmd_us` alongside the ESC's own figures.
 
 ## 7. The log
 
 One row per decoded frame, in `logs/esc_YYYYmmdd_HHMMSS.csv`, flushed every row so a
 run that ends badly still has its last second. Columns:
 
-`iso, t_s, esc, phase, cmd_us, shunt_volts, shunt_amps,` then the ESC's own scaled
-figures — `throttle_req_pct, throttle_pct, erpm, rpm, volts, amps, phase_amps, watts,
-mos_temp_c, cap_temp_c` — then every raw field, then `crc_ok` and `raw_hex`.
+`iso, t_s, cmd_us, spindown_s,` then the ESC's own scaled figures — `throttle_req_pct,
+throttle_pct, erpm, rpm, volts, amps, phase_amps, watts, mos_temp_c, cap_temp_c` —
+then every raw field except `version_raw`, then `crc_ok` and `raw_hex`.
 
 **Raw counts and the whole frame hex are always logged.** That is deliberate: if a
 scale factor or a field offset turns out to be wrong, every past log can be decoded

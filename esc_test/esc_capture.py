@@ -2,11 +2,11 @@
 """
 esc_capture.py - run a telemetry capture end to end, no second pair of hands.
 
-Bench: battery wired straight to the ESC, ESC throttle on GPIO7 (top) or
-GPIO5 (bot) as software PWM, ESC telemetry on the Pi 5 UART debug port. No FET,
-no I2C, no shunt.
+Bench: battery -> FETs -> INA228 -> ESC, ESC throttle on GPIO7 (top) or
+GPIO5 (bot) as software PWM, ESC telemetry on the Pi 5 UART debug port.
 
-Enables the PWM lines, arms the ESC, walks a list of commanded pulse widths,
+Runs the pre-arm check (Subcodes/Precharge.py order, see esc_arm.py), arms
+the ESC, walks a list of commanded pulse widths,
 logs the ESC's telemetry, saves the raw bytes, and switches the PWM off -
 including on Ctrl-C and on an exception.
 
@@ -33,9 +33,10 @@ reason to fit a prop.
 
 ONE OWNER OF THE THROTTLE LINES
 -------------------------------
-esc_arm.power_up() claims GPIO5/GPIO7 and refuses if another process (the test
-box GUI) holds them. There are NO over-current / under-voltage guards on this
-bench: the battery feeds the ESC directly. Stay by the battery connector.
+esc_arm.power_up() claims the FET line and GPIO5/GPIO7 and refuses if another
+process (the test box GUI) holds them. The bus is checked once at power-up;
+there are NO running over-current / under-voltage guards. Stay by the battery
+connector.
 """
 
 from __future__ import annotations
@@ -78,11 +79,7 @@ def _say(msg):
 
 def _hold(reader, seconds, phase, cmd_us=None):
     """
-    Sit in one phase for `seconds`, annotating every logged frame.
-
-    The INA228 reading is refreshed into the annotations about 10x a second, so
-    each ESC frame is stamped with a shunt measurement taken at nearly the same
-    moment. That pairing is what the calibration depends on.
+    Sit in one phase for `seconds`, stamping cmd_us onto every logged frame.
 
     Returns False if the hold was cut short by an abort or a guard trip.
     """
@@ -99,12 +96,7 @@ def _hold(reader, seconds, phase, cmd_us=None):
             _say(f"GUARD TRIPPED: {shunt['abort_reason']}")
             return False
 
-        reader.annotations = {
-            "phase": phase,
-            "cmd_us": cmd_us,
-            "shunt_volts": shunt.get("volts"),
-            "shunt_amps": shunt.get("amps"),
-        }
+        reader.annotations = {"cmd_us": cmd_us}
 
         d = reader.snapshot()
         if d:
@@ -169,16 +161,20 @@ def run(args):
 
     completed = False
     try:
-        # Telemetry first: the ESC is on the battery already, so this is the
-        # baseline with no throttle pulses at all.
-        reader.annotations = {"phase": "no-pwm"}
+        # Telemetry first, so the frames that arrive as the ESC boots are
+        # recorded rather than missed.
+        reader.annotations = {}
         reader.start()
         time.sleep(1.0)
         if reader.last_error:
             _say(f"serial: {reader.last_error}")
 
-        _say(f"claiming PWM lines (GPIO{esc_arm.CHANNELS[args.channel]} = {args.channel})")
-        esc_arm.power_up(quiet=True)
+        # Pre-arm check in Subcodes/Precharge.py's order: FET on, settle,
+        # confirm the bus came up, FET off again if it did not.
+        _say(f"pre-arm check, PWM lines GPIO{esc_arm.CHANNELS[args.channel]} "
+             f"= {args.channel}")
+        volts = esc_arm.power_up(quiet=False)
+        _say(f"bus {volts:.2f} V - powered, no pulses")
 
         # Lines claimed, no pulses: the ESC should beep once a second.
         if not _hold(reader, args.hold, "no-frames"):
@@ -190,7 +186,7 @@ def run(args):
         # afterwards, which is what this did first, puts the label on the wrong
         # frames - and those frames are the ones that show what the ESC reports
         # at a known 1000 us.
-        reader.annotations = {"phase": "arming", "cmd_us": esc_arm.US_ARM}
+        reader.annotations = {"cmd_us": esc_arm.US_ARM}
         _say("arming: holding 1000 us, then settling at 1080 us - nothing turns")
         if not esc_arm.arm():
             _say("arming was interrupted")

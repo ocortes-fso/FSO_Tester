@@ -15,9 +15,10 @@ unchanged:
   * if this page throws, or wedges on a port that never answers, MasterUI is
     not in the traceback and the test box keeps running;
   * if MasterUI is restarted, this keeps logging;
-  * it never transmits on the UART and touches no I2C. Without --control it
-    touches no GPIO either; with --control it drives only the throttle PWM on
-    GPIO7 (top) or GPIO5 (bot), via esc_arm.py.
+  * it never transmits on the UART. Without --control it touches no GPIO or
+    I2C either; with --control it drives the FET (pre-arm check in
+    Subcodes/Precharge.py's order), reads the INA228 once for the bus check,
+    and drives the throttle PWM on GPIO7 (top) or GPIO5 (bot), via esc_arm.py.
 
 A page inside MasterUI would have given up all of that: one process, one
 crash, one stuck read() blocking the Tk thread that is also responsible for
@@ -73,6 +74,12 @@ BAD = "#dc3545"
 REFRESH_MS = 100        # label repaint rate; logging runs at full frame rate
 THROTTLE_FLUSH_MS = 40  # 25 Hz of hardware writes while a slider is dragged
 
+# Spin-down: the motor counts as stopped at the first frame at or below this
+# eRPM after the sweep cuts the signal. Raise it if the ESC reports a small
+# non-zero eRPM at standstill. Give up after SPINDOWN_TIMEOUT_S.
+SPINDOWN_STOP_ERPM = 0
+SPINDOWN_TIMEOUT_S = 120.0
+
 
 class EscGui:
     """
@@ -122,6 +129,17 @@ class EscGui:
         # write.
         self.throttle_pending = None
         self.throttle_flush_id = None
+
+        # Pulse width the sweep last transmitted, or None when not sweeping.
+        self.sweep_us = None
+
+        # Spin-down timer, armed by a completed sweep. t_cut is the
+        # time.monotonic() the signal was cut (same clock as the frames'
+        # t_mono); result is seconds until eRPM first read 0, set by the
+        # reader thread in _spindown_frame.
+        self.spin_t_cut = None
+        self.spin_result = None
+        self.spin_cut_rpm = None
 
         root.title("ESC Telemetry")
         root.configure(bg=BG)
@@ -260,6 +278,11 @@ class EscGui:
                                        "#495057")
         self.poweroff_btn = self._button(row, "PWM OFF", self.power_off_click,
                                          "#495057")
+        sw_start, sw_end, sw_s = esc_arm.sweep_limits()
+        # Linear ramp 0 rpm -> ~1500 rpm on the selected channel, then the
+        # signal is cut and the spin-down timed. Runs as a worker, so E-STOP
+        # stays live and aborts it.
+        self.sweep_btn = self._button(row, "SWEEP", self.sweep_click, WARN)
         # Loudest thing on the page, same reasoning as the Prop TEST V2 page's
         # emergency stop: it is the one you hit without looking.
         self.estop_btn = tk.Button(
@@ -283,6 +306,11 @@ class EscGui:
         self.throttle_lbl = tk.Label(srow, text=f"{min_us} us", bg=PANEL,
                                      fg=ACCENT, font=(None, 15, "bold"))
         self.throttle_lbl.pack(side="right")
+        # Sweep / spin-down status: "SIGNAL OFF - spinning down 2.4 s",
+        # then "STOPPED in 4.31 s from 1497 rpm".
+        self.spin_lbl = tk.Label(srow, text="", bg=PANEL, fg=DIM,
+                                 font=(None, 13, "bold"))
+        self.spin_lbl.pack(side="right", padx=(0, 16))
 
         self.throttle = tk.Scale(
             strip, from_=min_us, to=max_us, orient="horizontal",
@@ -293,9 +321,11 @@ class EscGui:
         self.throttle.pack(fill="x")
 
         tk.Label(strip, bg=PANEL, fg=DIM, font=(None, 9),
-                 text=f"arm holds {arm_us} us; the ESC's 0% point is "
-                      f"{zero_us} us, so {min_us} us does not turn the motor. "
-                      f"Ceiling {max_us} us. GPIO7 = pin 26, GPIO5 = pin 29.",
+                 text=f"arm holds {arm_us} us; 0% point {zero_us} us, so "
+                      f"{min_us} us does not turn the motor. Slider ceiling "
+                      f"{max_us} us. SWEEP: {sw_start}->{sw_end} us over "
+                      f"{sw_s:.0f} s, then signal OFF and the spin-down is "
+                      f"timed (re-ARM after). GPIO7 = pin 26, GPIO5 = pin 29.",
                  anchor="w").pack(fill="x", pady=(2, 0))
 
         self._refresh_control()
@@ -363,8 +393,16 @@ class EscGui:
                 self.log = None
                 self._fault(f"log file could not be opened: {e}")
 
+        log_sink = sink
+
+        def frame_sink(d):
+            # Every frame passes the spin-down timer before it is logged, so
+            # the row where the motor is first seen stopped carries spindown_s.
+            self._spindown_frame(d)
+            log_sink(d)
+
         self.reader = esc_monitor.EscReader(
-            "esc", self.args.port, self.args.baud, self.args.poles, sink,
+            "esc", self.args.port, self.args.baud, self.args.poles, frame_sink,
             stop_event=self.stop_event)
         self.reader.start()
 
@@ -422,6 +460,8 @@ class EscGui:
         # recorded rather than missed.
         if not (self.reader and self.reader.is_alive()):
             self.start()
+        # Pre-arm check in Subcodes/Precharge.py's order (see esc_arm.py):
+        # FET on, settle, bus must reach BUS_MIN_VOLTAGE or FET off again.
         self._worker("power on", lambda: esc_arm.power_up(quiet=True))
 
     def power_off_click(self):
@@ -433,6 +473,63 @@ class EscGui:
     def disarm_click(self):
         self._worker("disarm", esc_arm.disarm, done=self._reset_throttle)
 
+    def sweep_click(self):
+        """
+        Ramp the selected channel up to esc_arm.SWEEP_END_US, then cut the
+        signal (simulated motor-off) and time the spin-down from telemetry.
+        The ESC is left disarmed; press ARM again for the next run.
+        """
+        if not esc_arm.is_armed():
+            return
+        if not (self.reader and self.reader.is_alive()):
+            self._fault("start telemetry first - the spin-down is timed "
+                        "from the ESC's eRPM")
+            return
+        chan = self._channel()
+        self.spin_t_cut = self.spin_result = self.spin_cut_rpm = None
+        self.spin_lbl.config(text="sweeping...", fg=ACCENT)
+
+        def on_step(us):
+            # Worker thread: stamp the exact value onto the log immediately
+            # (the 10 Hz repaint would lag the ramp), and leave the label
+            # to _paint_control. 0 = signal cut.
+            self.sweep_us = us
+            if self.reader is not None:
+                self.reader.annotations = {"cmd_us": us}
+
+        def run():
+            try:
+                t_cut = esc_arm.sweep(chan, on_step=on_step)
+                if t_cut is not None:
+                    snap = self.reader.snapshot() if self.reader else None
+                    self.spin_cut_rpm = (snap or {}).get("rpm")
+                    self.spin_t_cut = t_cut     # arms _spindown_frame
+            finally:
+                self.sweep_us = None
+
+        self._reset_throttle()
+        self._worker("sweep", run, done=self._reset_throttle)
+
+    def _spindown_frame(self, d):
+        """
+        Reader thread, every frame. Once the signal has been cut, the first
+        frame reporting eRPM <= SPINDOWN_STOP_ERPM ends the timer; that row
+        gets spindown_s so the result is in the CSV, not just on screen.
+        """
+        t_cut = self.spin_t_cut
+        if t_cut is None or self.spin_result is not None:
+            return
+        if d["t_mono"] <= t_cut:
+            return
+        erpm = d.get("erpm")
+        if erpm is not None and erpm <= SPINDOWN_STOP_ERPM:
+            self.spin_result = d["t_mono"] - t_cut
+            d["spindown_s"] = self.spin_result
+            print(f"[ESC GUI] spin-down: {self.spin_result:.3f} s from "
+                  f"signal off to 0 eRPM"
+                  + (f" (from {self.spin_cut_rpm:.0f} rpm)"
+                     if self.spin_cut_rpm is not None else ""))
+
     def estop(self):
         """
         Hard stop. Runs inline, not on a worker - it must not queue behind
@@ -443,7 +540,7 @@ class EscGui:
         except Exception as e:          # noqa: BLE001
             print(f"[ESC GUI] e-stop: {e}")
         self._reset_throttle()
-        self._fault("EMERGENCY STOP - PWM off. Unplug the battery to cut ESC power")
+        self._fault("EMERGENCY STOP - PWM off, FETs off")
         self._refresh_control()
 
     def _reset_throttle(self):
@@ -501,6 +598,7 @@ class EscGui:
         self.arm_btn.config(state=st(powered and not armed))
         self.disarm_btn.config(state=st(powered and armed))
         self.poweroff_btn.config(state=st(powered))
+        self.sweep_btn.config(state=st(powered and armed))
         # Throttle is reachable only once the ESC is actually armed: commanding
         # it before then is what gets the fast error beep instead of a motor.
         self.throttle.config(state="normal" if (armed and not busy)
@@ -628,16 +726,40 @@ class EscGui:
         """
         shunt = esc_arm.shunt_state()
 
-        if self.reader is not None:
-            # Stamped onto every logged frame, so each row carries the ESC's
-            # current and the shunt's current measured at the same moment.
-            self.reader.annotations = {
-                "phase": "manual",
-                "cmd_us": (int(self.throttle.get())
-                           if esc_arm.is_armed() else None),
-                "shunt_volts": shunt.get("volts"),
-                "shunt_amps": shunt.get("amps"),
-            }
+        sweep_us = self.sweep_us
+        spinning_down = (self.spin_t_cut is not None
+                         and self.spin_result is None)
+        if spinning_down and (time.monotonic() - self.spin_t_cut
+                              > SPINDOWN_TIMEOUT_S):
+            self.spin_t_cut = None
+            self.spin_lbl.config(
+                text=f"spin-down: no 0 eRPM within {SPINDOWN_TIMEOUT_S:.0f} s",
+                fg=WARN)
+            spinning_down = False
+        if sweep_us is not None:
+            # The sweep worker stamps cmd_us itself; just show where it is.
+            self.throttle_lbl.config(text=f"{sweep_us} us (sweep)")
+        elif spinning_down:
+            # Keep cmd_us = 0 on every row until the motor is stopped, so the
+            # coast-down is unambiguous in the CSV.
+            if self.reader is not None:
+                self.reader.annotations = {"cmd_us": 0}
+            self.spin_lbl.config(
+                text=f"SIGNAL OFF - spinning down "
+                     f"{time.monotonic() - self.spin_t_cut:.1f} s", fg=WARN)
+        else:
+            if self.spin_result is not None:
+                rpm0 = self.spin_cut_rpm
+                self.spin_lbl.config(
+                    text=f"STOPPED in {self.spin_result:.2f} s"
+                         + (f" from {rpm0:.0f} rpm" if rpm0 is not None
+                            else ""), fg=GOOD)
+            if self.reader is not None:
+                # Stamped onto every logged frame.
+                self.reader.annotations = {
+                    "cmd_us": (int(self.throttle.get())
+                               if esc_arm.is_armed() else None),
+                }
 
         if self.shunt_lbl is not None:
             sh_a = shunt.get("amps")
@@ -691,9 +813,9 @@ def main():
     p.add_argument("-c", "--channel", default="top",
                    help="which ESC the telemetry wire is on (default top)")
     p.add_argument("--control", action="store_true",
-                   help="also drive the throttle: software PWM on GPIO7 (top) "
-                        "or GPIO5 (bot), slider + arm. Battery wired straight "
-                        "to the ESC; no FET, no I2C. Needs the Pi")
+                   help="also drive the arm: FET pre-arm check (Precharge.py "
+                        "order), software PWM on GPIO7 (top) or GPIO5 (bot), "
+                        "slider, sweep + arm. Needs the Pi")
     p.add_argument("--windowed", action="store_true",
                    help="do not go fullscreen")
     p.add_argument("--autostart", action="store_true",

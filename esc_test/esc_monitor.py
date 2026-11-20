@@ -97,10 +97,7 @@ class EscReader(threading.Thread):
         self.raw_sink = raw_sink
 
         # Extra columns stamped onto every frame by whatever is driving the
-        # capture: the phase name, the commanded pulse width, and the INA228
-        # reading taken at the same moment. The last one is the point - it puts
-        # an independent measurement of the same current in the same row as the
-        # ESC's own figure, which is what makes the ESC's figure checkable.
+        # capture - currently just cmd_us, the commanded pulse width.
         #
         # A plain dict, replaced wholesale by the driver rather than mutated,
         # so a frame can never pick up half of an update. A stale annotation on
@@ -279,16 +276,17 @@ def _i(v):
 # CSV
 # ---------------------------------------------------------------------------
 
+# Decoded but deliberately not logged. version_raw is constant (0x01) on
+# every frame; raw_hex still carries it if it is ever needed.
+CSV_EXCLUDED = ("version_raw",)
+
 CSV_COLUMNS = (
     ("iso", "wall-clock time"),
     ("t_s", "seconds since the monitor started"),
-    ("esc", "which ESC"),
-    ("phase", "capture phase, when a script is driving one"),
     ("cmd_us", "commanded pulse width, when a script is driving one"),
-    ("shunt_volts", "INA228 bus voltage, the independent measurement"),
-    ("shunt_amps", "INA228 current, to calibrate the ESC's own figure"),
+    ("spindown_s", "signal-off to 0 eRPM, on the row where the stop is seen"),
 ) + tuple((k, "") for k in proto.SCALED_KEYS) \
-  + tuple((k, "") for k in proto.RAW_KEYS) \
+  + tuple((k, "") for k in proto.RAW_KEYS if k not in CSV_EXCLUDED) \
   + (("crc_ok", ""), ("raw_hex", "the frame, for re-decoding later"))
 
 
