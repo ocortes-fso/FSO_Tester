@@ -755,8 +755,8 @@ def body_stop_test():
     BODY_STOP.config(state="disabled")
     body_result_note = "Stopped by operator - results below may be incomplete."
     lbody_lock.config(
-        text="Stopping - waiting for the current section to finish "
-             "(a reboot cannot be cut short)...",
+        text="Stopping - finishing the current section, then restoring "
+             "default parameters...",
         bootstyle=WARNING,
     )
 #####*****END CHANGES*****#####
@@ -788,9 +788,14 @@ def body_nav_watch(t):
         above would ever fire. The operator needs to get out and go fix it, so
         the lock gives up rather than trapping them in the page.
     """
-    if body_pwm_done.is_set() or not t.is_alive():
+    #####*****CHANGES*****#####
+    # After Stop, ignore body_pwm_done: the lock must hold until the worker
+    # has finished restoring the reset.py params, i.e. until the thread dies.
+    pwm_done = body_pwm_done.is_set() and not body_stop.is_set()
+    if pwm_done or not t.is_alive():
         body_lock_nav(False)
         return
+    #####*****END CHANGES*****#####
 
     if time.time() - body_lock_start > BODY_LOCK_MAX_S:
         print(f"[BODY] nav lock released after {BODY_LOCK_MAX_S}s - "
@@ -3069,7 +3074,41 @@ def _analog_board(values):
 #####*****END CHANGES*****#####
 
 
-def body_test(): 
+#####*****CHANGES*****#####
+def body_test():
+    """
+    Worker entry point. Runs the sections, and if the run was stopped early
+    restores the reset.py parameters BEFORE the thread ends.
+
+    body_nav_watch() keeps every button locked until this thread has died when
+    a stop was requested, so nothing else on the page can be pressed until the
+    restore below has finished (or failed).
+    """
+    global body_result_note
+    try:
+        _body_test_sections()
+    finally:
+        if body_stop.is_set():
+            print("[BODY] stopped - restoring reset.py params before unlocking")
+            lbody_lock.after(0, lambda: lbody_lock.config(
+                text="Stopped - restoring default parameters...",
+                bootstyle=WARNING,
+            ))
+            try:
+                ok = reset.run_reset()
+            except Exception as e:
+                print(f"[BODY] reset after stop failed: {e}")
+                ok = False
+            if ok:
+                body_result_note = ("Stopped by operator - parameters restored. "
+                                    "Results below may be incomplete.")
+            else:
+                body_result_note = ("Stopped by operator - COULD NOT restore "
+                                    "parameters (check the link).")
+
+
+def _body_test_sections():
+#####*****END CHANGES*****#####
     if body_stop.is_set():
         return
     #####*****CHANGES*****#####
