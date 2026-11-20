@@ -1,28 +1,29 @@
-# ESC_Serial — Hobbywing ESC serial telemetry
+# esc_test — Hobbywing ESC serial telemetry and throttle test
 
 Standalone live logger for current, RPM and everything else a Hobbywing X-series
-ESC puts on its telemetry wire. Reads a UART, prints a live readout, writes a CSV.
+ESC puts on its telemetry wire, plus an optional control layer to power the arm,
+arm the ESC, command throttle and run a timed sweep / spin-down test.
 
 **Read-only by default.** `esc_protocol`, `esc_sniff`, `esc_monitor` and `esc_gui`
 without `--control` import nothing from `Subcodes/` or `GUI/`, touch no GPIO and no
 I²C, and never transmit a byte to the ESC. You can leave any of them recording while
 something else drives the motor.
 
-**`esc_arm.py` is the one exception, and it is opt-in.** It can power the arm, arm the
-ESC and command throttle — so that one person can run a capture end to end — and it
-does all of it by calling the test box's own subcodes rather than reimplementing any
-of it. `esc_capture.py` and `esc_gui.py --control` are the two things that use it.
-Only one process may own the arm at a time; see §6.
+**`esc_arm.py` is the one exception, and it is opt-in.** It powers the arm through the
+FETs, arms the ESC and commands throttle, calling `Subcodes/Precharge.py` and
+`Subcodes/Batt_monitor.py` rather than reimplementing them. `esc_capture.py` and
+`esc_gui.py --control` are the two things that use it. Only one process may own the
+FET and throttle lines at a time; see §5.
 
 ```
-ESC_Serial/
-├── esc_protocol.py   frame spec, scale factors, checksum candidates, decoder
+esc_test/
+├── esc_protocol.py   frame spec, scale factors, checksum, decoder
 ├── esc_sniff.py      bench tool: confirm the frame format and the scale factors
 ├── esc_monitor.py    live readout + CSV logger, for a terminal
-├── esc_gui.py        the same thing as a touchscreen page, for the test box
+├── esc_gui.py        touchscreen page: readout, logging, throttle steps, sweep
 ├── esc_capture.py    scripted capture: powers the arm, arms, holds, logs, powers down
 ├── esc_arm.py        the only file that touches hardware - optional, see below
-└── logs/             timestamped CSVs and raw captures (gitignored)
+└── logs/             timestamped CSVs and raw captures
 ```
 
 ---
@@ -37,32 +38,40 @@ back. Two wires:
 | telemetry / TLM (signal out) | **RX** on the UART debug connector |
 | GND | GND on the same connector |
 
-For `--control` / `esc_capture.py` (battery → FETs → INA228 → ESC; precharge is
-disabled, see `Subcodes/Precharge.py`), add the throttle signal:
+For `--control` / `esc_capture.py` (battery → FETs → INA228 → ESC → motor; precharge
+is disabled, see `Subcodes/Precharge.py`), add the throttle signal:
 
 | ESC | Raspberry Pi 5 |
 |---|---|
 | white (PWM throttle in) | **GPIO7, pin 26** (`top`) or **GPIO5, pin 29** (`bot`) — software PWM, 400 Hz |
 | black (signal GND) | GND, pin 25 or 30 |
 
-`esc_arm.py` drives these lines itself with `lgpio.tx_servo` (same 1000 µs arm hold
-and 1080–1400 µs slider band as `Manual_PWM_Test`). The SWEEP button ramps
-1000 µs → `SWEEP_END_US` (1690 µs, ~1500 rpm) over 5 s, then **cuts the signal**
-to simulate the motors switching off and times the spin-down: from the cut to the
-first telemetry frame at 0 eRPM. The result is shown on screen, printed, and
-written to `spindown_s` on that CSV row; `cmd_us` reads 0 through the coast-down.
-The ESC is left disarmed — press ARM before the next sweep.
-
-**Pre-arm check**, in the order `Subcodes/Precharge.py` lays out, calling its own
-functions: `INITIALIZE_SYSTEM()` → claim GPIO5/7 low → `START_PRECHARGE()` (no-op
-while disabled) → `OPEN_FET()` → `TURN_OFF_PRECHARGE()` → wait `BUS_SETTLE_S` →
-median INA228 bus voltage → `classify_bus_voltage()`. If the bus does not reach
-`BUS_MIN_VOLTAGE` the FETs are switched off again and power-up is refused. E-STOP /
-PWM OFF cut the pulses and the FETs (`CLOSE_FET()` → `CLOSE_SYSTEM()`). There are no
-running current/voltage guards.
-
 Do **not** connect the Pi's TX to the ESC. One UART reads one ESC; to read the other
 one, move the single wire across.
+
+### Pulse widths
+
+All in `esc_arm.py`:
+
+| | µs | |
+|---|---|---|
+| `US_ARM` | 1000 | held for 2 s while the ESC arms |
+| `IDLE_US` (`SLIDER_MIN_US`) | 1080 | armed resting value — below the 0% point, nothing turns |
+| `ZERO_PCT_US` | 1100 | the ESC's 0% point |
+| `THROTTLE_STEPS_US` | 1100, 1200, 1300, 1400, 1500, 1600 | the GUI's throttle buttons |
+| `US_MAX_ALLOWED` | 1690 | hard ceiling — `set_us()` clamps everything to 1000–1690 |
+
+### Pre-arm check
+
+`esc_arm.power_up()` follows the order `Subcodes/Precharge.py` lays out, calling its
+own functions: `INITIALIZE_SYSTEM()` → claim GPIO5/7 low → `START_PRECHARGE()` (no-op
+while disabled) → `OPEN_FET()` → `TURN_OFF_PRECHARGE()` → wait `BUS_SETTLE_S` →
+median INA228 bus voltage → `classify_bus_voltage()`. If the bus does not reach
+`BUS_MIN_VOLTAGE` the FETs are switched off again and power-up is refused.
+
+E-STOP / PWM OFF cut the pulses and the FETs (`CLOSE_FET()` → `CLOSE_SYSTEM()`).
+**There are no running current or voltage guards** — the bus is checked once at
+power-up. Stay by the battery connector.
 
 ## 2. The port: `/dev/ttyAMA10`, and turn the console off first
 
@@ -85,9 +94,8 @@ sudo systemctl disable --now serial-getty@ttyAMA10.service
 ```
 
 and check `/boot/firmware/cmdline.txt` has no `console=ttyAMA10,...` or
-`console=serial0,...` on it (the main README already has you removing the `serial0`
-one). `enable_uart=1` should be in `config.txt` — it already is on this build. Reboot,
-then:
+`console=serial0,...` on it. `enable_uart=1` should be in `config.txt` — it already is
+on this build. Reboot, then:
 
 ```bash
 ls -l /dev/serial* /dev/ttyAMA*          # /dev/ttyAMA10 should be there
@@ -100,78 +108,63 @@ Add yourself to the `dialout` group if you get a permission error:
 > A USB–TTL adapter (`/dev/ttyUSB0`) is an equally valid alternative and leaves the
 > debug connector free for its actual job. Everything here takes `-p`, so either works.
 
-Only dependency is pyserial, which the testbox already uses:
-`pip3 install pyserial --break-system-packages`.
+Only dependency for the read-only tools is pyserial:
+`pip3 install pyserial --break-system-packages`. `--control` and `esc_capture.py` also
+need `lgpio` and `smbus2` (already on the test box).
 
-## 3. Confirm the frame format — do this first
+## 3. The frame format
 
-> **Can't spin a motor yet?** Run `python3 ESC_Serial/esc_capture.py` with no flags.
-> It powers up, arms and holds 1080 µs — all below the ESC's 1100 µs 0% point, so
-> nothing turns — and that single run still pins down the frame length, the header,
-> the checksum, the sequence counter, the voltage and temperature columns, and the
-> throttle columns at three distinct commanded values. Only the RPM and current
-> *scale factors* need rotation.
+Confirmed on the bench (`esc_protocol.py`):
 
+- **19200 baud 8N1**
+- **24-byte frames**: header `0x9B`, length byte `0x16`, 20 bytes of fields, then a
+  **sum16 checksum, little-endian** — the decoder rejects frames that fail it
+- field **offsets and sizes** confirmed by structure (sequence counter, requested and
+  output throttle, eRPM, voltage, current, phase current, two thermistors, status)
 
-**The frame layout in `esc_protocol.py` is a documented candidate, not a verified
-fact.** Hobbywing does not publish the format and it differs between models and
-firmware revisions, so the offsets and scale factors have to be confirmed against
-your actual ESC once. `esc_sniff.py` does that without trusting the candidate: it
-derives the frame length, the field structure and the checksum from the bytes
-themselves.
+Still to calibrate: the **scale factors** in `SCALES` (see "Known-unverified" below).
+`esc_sniff.py` does that without trusting the spec:
 
 ```bash
 # is anything arriving, and at what baud?
-python3 ESC_Serial/esc_sniff.py --sweep
+python3 esc_test/esc_sniff.py --sweep
 
 # capture at a steady throttle and analyse
-python3 ESC_Serial/esc_sniff.py -t 10 --save idle.bin
-python3 ESC_Serial/esc_sniff.py -t 10 --save spin50.bin
+python3 esc_test/esc_sniff.py -t 10 --save idle.bin
+python3 esc_test/esc_sniff.py -t 10 --save spin50.bin
 
 # re-analyse offline, as often as you like, on any machine
-python3 ESC_Serial/esc_sniff.py --analyze spin50.bin
-```
+python3 esc_test/esc_sniff.py --analyze spin50.bin
 
-The report gives you four things:
-
-- **frame length** and the header bytes → `FRAME_LEN`, `HEADER`, `LEN_BYTE`
-- **a byte-column table** — which offsets are constant, which count +1 per frame (the
-  sequence counter), which vary. Compare the idle and spinning captures: the columns
-  that move with throttle are RPM, current and phase current → `SPEC` offsets
-- **the checksum** — whichever candidate closes on every frame → `CRC_NAME`,
-  `CRC_SPAN`, `CRC_ENDIAN`. Setting these makes the decoder reject corrupt frames
-  instead of passing them through
-- **a decode preview** using the candidate spec, to sanity-check against the bench
-
-Then pin the scale factors against a reading you trust (multimeter, or the testbox's
-own INA228 display) and put the results in `SCALES`:
-
-```bash
-python3 ESC_Serial/esc_sniff.py --analyze spin50.bin \
+# pin scale factors against a reading you trust (multimeter / INA228)
+python3 esc_test/esc_sniff.py --analyze spin50.bin \
         --calibrate-volts 25.2 --calibrate-amps 18.4
 ```
 
-## 4. Live logging
+The report gives the frame length and header, a byte-column table (constant /
+counting / varying columns — compare idle and spinning captures), which checksum
+candidate closes on every frame, and a decode preview with the current spec.
+
+## 4. Live logging in a terminal
 
 ```bash
-# the normal case: one ESC on /dev/ttyAMA10, X8 pole count, logging to logs/
-python3 ESC_Serial/esc_monitor.py
+# the normal case: one ESC on /dev/ttyAMA10, logging to esc_test/logs/
+python3 esc_test/esc_monitor.py
 
 # named, and stop after 60 s
-python3 ESC_Serial/esc_monitor.py -p top=/dev/ttyAMA10 -t 60
+python3 esc_test/esc_monitor.py -p top=/dev/ttyAMA10 -t 60
 
 # two at once, if you ever add a second UART or a USB-TTL adapter
-python3 ESC_Serial/esc_monitor.py -p top=/dev/ttyAMA10 -p bot=/dev/ttyUSB0
+python3 esc_test/esc_monitor.py -p top=/dev/ttyAMA10 -p bot=/dev/ttyUSB0
 ```
 
 ```
 top   49.2 Hz  12345 eRPM   2647 rpm   25.14 V   18.42 A    463 W
-      mos 42.1C cap 31.0C  thr 50.2%  phase 21.10A  | frames 1482 resync 0 crc -
+      mos 42.1C cap 31.0C  thr 50.2%  phase 21.10A  | frames 1482 resync 0 crc ok
 ```
 
-`frames` / `resync` / `crc` are link quality. Steady resyncs mean bytes are being
-dropped or the frame spec is still wrong — worth knowing before trusting the numbers.
-`crc -` means no checksum has been confirmed yet (step 3).
+`frames` / `resync` / `crc` are link quality. Steady resyncs or CRC failures mean
+bytes are being dropped — worth knowing before trusting the numbers.
 
 Ctrl-C flushes the log and prints peak current, peak RPM, the voltage range and peak
 temperatures.
@@ -180,68 +173,105 @@ temperatures.
 |---|---|
 | `-p [name=]dev` | serial port, repeatable for several ESCs |
 | `-b, --baud` | default 19200 |
-| `--poles N` | magnet poles, for eRPM → RPM. Default 40 — the X8 8120 is 36N40P, so 20 pole pairs and `rpm = eRPM / 20`. `--poles 0` logs eRPM only |
+| `--poles N` | magnet poles, for eRPM → RPM (`rpm = eRPM / (poles/2)`). Default **4** (`DEFAULT_POLES`, set from bench RPM checks — see "Known-unverified"). `--poles 0` logs eRPM only |
 | `-t, --duration` | seconds, else until Ctrl-C |
 | `--hz` | screen refresh (default 5). **Logging is always at full frame rate** |
 | `--csv FILE` / `--no-csv` | log elsewhere, or not at all |
 | `--plain` | scrolling output, for piping into `tee` |
 
-## 5. On the touchscreen
+## 5. On the touchscreen — `esc_gui.py`
 
-`esc_gui.py` is the same monitor as a finger-driven page for the 800×480 screen:
-current and RPM in 54pt, the rest underneath, START / STOP / RESET PEAKS / CLOSE, and
-the link-quality counters on screen so you can tell "0 A because it's idle" from "0 A
-because nothing is decoding".
+A finger-driven page for the 800×480 screen: current and RPM in 54 pt, voltage /
+power / eRPM / throttle / phase current / temperatures / status underneath,
+START / STOP / RESET PEAKS / CLOSE, and the link-quality counters on screen so you
+can tell "0 A because it's idle" from "0 A because nothing is decoding".
 
 ```bash
-python3 ESC_Serial/esc_gui.py                      # read-only
-python3 ESC_Serial/esc_gui.py --control            # + power, arm and throttle
-python3 ESC_Serial/esc_gui.py --windowed           # for a desktop
+python3 esc_test/esc_gui.py                      # read-only
+python3 esc_test/esc_gui.py --control            # + power, arm, throttle, sweep
+python3 esc_test/esc_gui.py --control -c bot     # throttle starts on GPIO5
+python3 esc_test/esc_gui.py --windowed           # for a desktop
+python3 esc_test/esc_gui.py --autostart          # start reading immediately
 ```
 
-With `--control` it grows a POWER ON / ARM / DISARM / POWER OFF row, a throttle slider
-spanning Manual_PWM_Test's own `SLIDER_MIN_US`–`US_MAX_ALLOWED`, an E-STOP, and a
-third big panel: **the shunt's current next to the ESC's own**, with their ratio. That
-ratio is the calibration figure for `SCALES["current"]`, and two readings that agree
-are two readings you can trust.
+### With `--control`
 
-The page is deliberately conservative about state: the throttle slider is dead until
-the ESC is actually armed, blocking calls (`power_up`, `arm`) run on worker threads so
-the E-STOP never waits on them, slider drags are rate-limited to 25 Hz of hardware
-writes, a guard trip escalates to a full emergency stop and stays on screen, and
-closing the page powers the arm down unconditionally.
+A control strip appears:
+
+- **PWM ON** — starts telemetry (if not already running) then runs the pre-arm check.
+- **ARM** — holds 1000 µs for 2 s on both channels, then idles at 1080 µs.
+- **DISARM** / **PWM OFF** — pulses off / pulses and FETs off.
+- **SWEEP** — the timed sweep below.
+- **E-STOP** — runs inline on the Tk thread (never queued behind a worker): pulses
+  off, FETs off, fault latched on screen.
+- **GPIO7 (TOP) / GPIO5 (BOT)** — which channel the throttle drives. Both are armed
+  together; switching parks the old one at idle.
+- **Throttle step buttons: 1100, 1200, 1300, 1400, 1500, 1600 µs.** One press = one
+  write to the selected channel. The active step is highlighted and the commanded
+  value shown at the right; 1100 µs (the 0% point) is the "no drive" step. The
+  buttons are dead until the ESC is armed, and while a sweep is running.
+
+### SWEEP and spin-down timing
+
+The sweep steps the selected channel through `esc_arm.SWEEP_PROFILE`:
+
+| phase | µs | hold |
+|---|---|---|
+| idle | 1080 | 2 s |
+| | 1200 | 2 s |
+| | 1300 | 2 s |
+| | 1400 | 2 s |
+| | 1500 | 2 s |
+| idle | 1080 | 3 s |
+
+then **cuts the signal** (ESC disarmed — press ARM before the next sweep). The FETs
+stay on, so telemetry keeps streaming and **logging carries on past the end of the
+sweep**.
+
+The **spin-down timer starts the moment the final idle phase begins** (the drop from
+1500 µs) and stops at the first telemetry frame reporting 0 eRPM
+(`SPINDOWN_STOP_ERPM` in `esc_gui.py` — raise it if the ESC reports a small non-zero
+eRPM at standstill). The status reads `IDLE - spinning down …` during the final idle,
+`SIGNAL OFF - spinning down …` if the motor is still turning after the cut, then
+`STOPPED in 4.31 s from 1497 rpm`. The result is also printed to the console and
+written to `spindown_s` on that CSV row. If no 0 eRPM frame arrives within
+`SPINDOWN_TIMEOUT_S` (120 s) the page says so. E-STOP or DISARM during the sweep
+aborts it and discards the timer.
+
+`cmd_us` in the log carries the sweep step being transmitted, then `0` from the cut
+until the motor is seen stopped.
+
+To change the profile, edit `SWEEP_PROFILE` in `esc_arm.py` — the on-screen
+description follows it. The last phase must be idle (asserted at import), and
+nothing may exceed `US_MAX_ALLOWED`.
+
+### Safety behaviour
+
+Blocking calls (`power_up`, `arm`, the sweep) run on worker threads so E-STOP never
+waits on them; throttle and sweep are dead until the ESC is actually armed; a fault
+stays on screen until PWM ON is pressed again; and closing the page (CLOSE, Escape or
+the window manager) powers the arm down unconditionally.
 
 **It runs as its own process.** The test box launches it with `subprocess.Popen` and
 nothing else — no import, no shared globals. If this page throws or wedges on a port
-that never answers, `MasterUI.py` is not in the traceback. A page *inside* MasterUI
-would have given that up: one process, one crash, and a stuck `read()` blocking the
-same Tk thread that owns the emergency stop.
+that never answers, `MasterUI.py` is not in the traceback.
 
 ### Adding it to the test box menu
 
-MasterUI runs fullscreen at boot, so a desktop shortcut is unreachable — it needs a
-button. In `GUI/MasterUI.py`, next to the other page handlers:
+MasterUI runs fullscreen at boot, so it needs a button. In `GUI/MasterUI.py`, next to
+the other page handlers:
 
 ```python
 import subprocess
 
 def esc_telemetry():
-    """
-    Launch the ESC telemetry page as a SEPARATE PROCESS.
-
-    Not a page in this file on purpose: it owns a serial port and, with
-    --control, the arm. Keeping it in its own process means a fault in it
-    cannot reach this GUI, and the arm has exactly one owner at a time.
-
-    Drop --control to launch it read-only, which is safe to run while this
-    GUI has the arm powered.
-    """
-    path = os.path.join(os.path.dirname(__file__), "..", "ESC_Serial", "esc_gui.py")
+    """Launch the ESC telemetry page as a SEPARATE PROCESS (owns a serial
+    port and, with --control, the arm). Drop --control for read-only."""
+    path = os.path.join(os.path.dirname(__file__), "..", "esc_test", "esc_gui.py")
     subprocess.Popen([sys.executable, os.path.abspath(path), "--control"])
 ```
 
-and one button in the BUILD TESTING column (four buttons there now; a fifth fits —
-5 × 51 + 50 = 305 px against the 404 px that column has):
+and one button in the BUILD TESTING column:
 
 ```python
 b10 = ttk.Button(menu_build, text="ESC Telemetry", bootstyle=PRIMARY,
@@ -249,78 +279,72 @@ b10 = ttk.Button(menu_build, text="ESC Telemetry", bootstyle=PRIMARY,
 b10.pack(pady=3)
 ```
 
-> **Power the arm from one place only.** If MasterUI has the arm powered on its
-> Prop TEST V2 or Cv2_A06 page, press POWER OFF there before using `--control` here.
-> `esc_arm.power_up()` checks and refuses with a message saying exactly that, so the
-> failure is a message rather than two processes commanding one FET.
+> **Power the arm from one place only.** If MasterUI has the arm powered on another
+> page, power it off there before using `--control` here. `esc_arm.power_up()` checks
+> the FET and GPIO5/7 claims and refuses with a message saying so.
 
-## 6. Running a capture on your own
+## 6. Scripted capture — `esc_capture.py`
 
-`esc_capture.py` does the whole thing unattended: powers the arm, arms the ESC, walks
-a list of commanded pulse widths, logs the ESC telemetry next to the INA228 reading,
-saves the raw bytes, and powers down — including on Ctrl-C, on a guard trip, and on an
-exception.
+Runs a capture unattended: telemetry first, pre-arm check (§1), a no-pulse hold, arm,
+then a list of commanded pulse widths, logging telemetry plus the raw bytes, and PWM
+off / FETs off at the end — including on Ctrl-C, SIGTERM and exceptions.
 
 ```bash
-# structural capture - NOTHING TURNS (stops at 1080 us, below the 1100 us 0% point)
-python3 ESC_Serial/esc_capture.py
+# structural capture - NOTHING TURNS (1080 us, below the 1100 us 0% point)
+python3 esc_test/esc_capture.py
 
-# with rotation, once a motor can be turned
-python3 ESC_Serial/esc_capture.py --spin
+# with rotation: 1080, 1150, 1200, 1310, 1080
+python3 esc_test/esc_capture.py --spin
 
-python3 ESC_Serial/esc_capture.py --steps 1080,1150,1200 --hold 8 -c bot
+python3 esc_test/esc_capture.py --steps 1080,1150,1200 --hold 8 -c bot
 ```
 
-Every call goes through `esc_arm.py` to the test box's own subcodes, in their order:
-
-| | |
+| flag | |
 |---|---|
-| `Precharge.INITIALIZE_SYSTEM()` / `CLOSE_FET()` | claim the gpiochip, FET de-energised |
-| `Hobbywing_Prop_Test.session_power_up()` | close the FETs, **verify the bus came up**, arm the over-current / under-voltage guards, start the INA228 sampler and its own CSV in `Logs/` |
-| `Manual_PWM_Test.arm()` | hold 1000 µs so the ESC will arm, settle at 1080 µs |
-| `Manual_PWM_Test.set_channel()` | clamped to 1080–1400 µs |
-| `Manual_PWM_Test.disarm()` → `session_power_off()` → `session_stop_monitor()` → `Precharge.CLOSE_SYSTEM()` | teardown, in `finally` |
+| `-c top\|bot` | throttle line, GPIO7 or GPIO5 (default top) |
+| `--hold S` | seconds per phase (default 10) |
+| `--steps a,b,c` | custom pulse widths (clamped to 1000–1690 µs) |
+| `--spin` | use the spinning step list |
+| `--out DIR` | output directory (default `esc_test/logs/`) |
+| `-p`, `-b`, `--poles` | as for `esc_monitor.py` |
 
-So the throttle ceiling, the arming sequence and the guards are whatever those modules
-say they are — nothing here duplicates or can exceed them, and nothing here needs
-changing when they change.
-
-Each row carries `cmd_us` alongside the ESC's own figures.
+Writes `capture_YYYYmmdd_HHMMSS.csv` and `.bin`; feed the `.bin` to
+`esc_sniff.py --analyze`. Each row carries `cmd_us`.
 
 ## 7. The log
 
-One row per decoded frame, in `logs/esc_YYYYmmdd_HHMMSS.csv`, flushed every row so a
-run that ends badly still has its last second. Columns:
+One row per decoded frame, in `esc_test/logs/esc_YYYYmmdd_HHMMSS.csv` (GUI and
+monitor), flushed every row so a run that ends badly still has its last second.
+Columns:
 
 `iso, t_s, cmd_us, spindown_s,` then the ESC's own scaled figures — `throttle_req_pct,
 throttle_pct, erpm, rpm, volts, amps, phase_amps, watts, mos_temp_c, cap_temp_c` —
 then every raw field except `version_raw`, then `crc_ok` and `raw_hex`.
 
-**Raw counts and the whole frame hex are always logged.** That is deliberate: if a
-scale factor or a field offset turns out to be wrong, every past log can be decoded
-again rather than re-run on the bench.
+**Raw counts and the whole frame hex are always logged**, so if a scale factor turns
+out to be wrong, every past log can be decoded again rather than re-run on the bench.
 
 ## Known-unverified, in priority order
 
-1. **Field offsets** — candidate layout, confirm with `esc_sniff.py` (§3).
-2. **Checksum** — `CRC_NAME = None` until the sniffer identifies it. Until then
-   frames are accepted on header + length byte alone.
-3. **Scale factors** — `SCALES` are plausible defaults; calibrate (§3).
-4. **Temperature** — the two temperature bytes are thermistor readings, converted
-   with a generic 3950 K NTC curve. The series resistor and ADC reference on this ESC
-   are unverified, so treat `mos_temp_c` / `cap_temp_c` as indicative and trust the
-   raw columns. Confirm with a heat gun and a contact probe.
-5. **eRPM units** — the pole count (40, from 36N40P) is known, but whether the field
-   is plain eRPM or eRPM in units of 10 is not. An 8120 on 6S tops out around
-   2,000–3,000 rpm, i.e. 40,000–60,000 eRPM, which only just fits a 16-bit field — so
-   if the RPM column reads about 10× low at full throttle, that field is scaled and
-   the fix is one entry in `SCALES`. §3's spinning capture settles it.
+1. **Scale factors** — `SCALES` (voltage, current, phase current 0.1 per count;
+   throttle 100/1024 % per count) are plausible defaults; calibrate (§3).
+2. **Pole count / eRPM units** — the X8 8120 is 36N40P (40 poles), but
+   `DEFAULT_POLES` is set to **4**, adjusted to match measured RPM on the bench. That
+   implies the eRPM field is scaled (≈ units of 10 eRPM). Confirm against a
+   tachometer; the fix is one value in `esc_protocol.py`.
+3. **Temperature** — the two temperature bytes are thermistor readings converted
+   with a generic 3950 K NTC curve. Treat `mos_temp_c` / `cap_temp_c` as indicative
+   and trust the raw columns.
+4. **Field meanings past the counter** — offsets are confirmed by structure; which
+   column is which is from the HW-FOC protocol order and should be sanity-checked
+   against a spinning capture.
 
 ## If nothing arrives
 
 - **Is the serial console still holding `/dev/ttyAMA10`?** This is the usual answer on
   a Pi 5 — see §2. `sudo fuser -v /dev/ttyAMA10` tells you.
 - Telemetry wire on the debug connector's **RX**, and a common ground?
-- Is the ESC powered? The telemetry stream only exists when the ESC is up.
+- Is the ESC powered? The telemetry stream only exists when the ESC is up
+  (with `--control`, after PWM ON).
 - Is something else holding the port? The monitor opens exclusively and will say so.
   Two readers on one tty split the bytes and both see garbage.

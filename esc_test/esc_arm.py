@@ -69,22 +69,37 @@ PWM_FREQ_HZ = 400
 
 US_ARM = 1000           # held while the ESC arms
 ARM_HOLD_S = 2.0
-SLIDER_MIN_US = 1080    # armed resting value, below the 1100 us 0% point
-SLIDER_MAX_US = 1400    # ~40% throttle - the manual slider's ceiling
+SLIDER_MIN_US = 1080    # armed resting value ("idle"), below the 0% point
+IDLE_US = SLIDER_MIN_US
 ZERO_PCT_US = 1100
 US_OFF = 0              # tx_servo width 0 = waveform off
 
+# 1690 us is Hobbywing_Prop_Test.US_70, that module's hard clamp, and is the
+# absolute ceiling here too: nothing in this module may command more.
+US_MAX_ALLOWED = 1690
+
+# --- manual throttle ------------------------------------------------------
+# The fixed pulse widths offered as buttons on the GUI. 1100 us is the ESC's
+# 0% point, so it doubles as "back to no drive".
+THROTTLE_STEPS_US = (1100, 1200, 1300, 1400, 1500, 1600)
+
 # --- sweep ----------------------------------------------------------------
-# 1000 us (0 rpm) -> SWEEP_END_US (~1500 rpm at 1690) over ~5 s, then the
-# signal is cut so the spin-down can be timed. SWEEP_END_US is the value to
-# change to sweep to a different target. 1690 us is
-# Hobbywing_Prop_Test.US_70, that module's hard clamp, and is the absolute
-# ceiling here too: nothing in this module may command more.
-SWEEP_START_US = US_ARM
-SWEEP_END_US = 1690
-SWEEP_DURATION_S = 5.0
-SWEEP_STEP_S = 0.02     # 50 Hz of updates, well inside the 400 Hz frame rate
-US_MAX_ALLOWED = SWEEP_END_US
+# Stepped profile: (pulse width us, hold seconds). The LAST phase must be
+# idle - the spin-down timer starts the moment it begins. After it the
+# signal is cut (ESC disarmed) and telemetry keeps logging until the motor
+# reads 0 eRPM.
+SWEEP_PROFILE = (
+    (IDLE_US, 2.0),
+    (1200, 2.0),
+    (1300, 2.0),
+    (1400, 2.0),
+    (1500, 2.0),
+    (IDLE_US, 3.0),
+)
+
+assert max(THROTTLE_STEPS_US) <= US_MAX_ALLOWED
+assert max(us for us, _s in SWEEP_PROFILE) <= US_MAX_ALLOWED
+assert SWEEP_PROFILE[-1][0] == IDLE_US
 
 # --- bus check (threshold and settle time live in Precharge.py) -----------
 BUS_CHECK_SAMPLES = 5   # same as Hobbywing_Prop_Test
@@ -370,70 +385,73 @@ def set_us(channel, us):
         return us
 
 
-def sweep(channel, start_us=SWEEP_START_US, end_us=SWEEP_END_US,
-          duration_s=SWEEP_DURATION_S, on_step=None):
+def sweep(channel, profile=SWEEP_PROFILE, on_step=None, on_drawdown=None):
     """
-    Linear ramp start_us -> end_us over duration_s on one channel, then CUT
-    THE SIGNAL (pulses off on both channels) to simulate the motors being
-    switched off, so the coast-down can be timed from the telemetry.
-    BLOCKING - call from a worker thread.
+    Step through `profile` ((us, hold_s), ...) on one channel, then CUT THE
+    SIGNAL (pulses off on both channels). BLOCKING - call from a worker
+    thread.
+
+    The final phase is idle: on_drawdown(t) is called with the
+    time.monotonic() at which it begins (the same clock as EscReader's
+    t_mono), which is where the spin-down timer starts.
 
     The ESC is disarmed afterwards (no pulses) and must be re-armed before
     the next run. The FETs stay on, so telemetry keeps streaming through the
-    spin-down.
+    rest of the spin-down.
 
     on_step(us) is called with each value actually transmitted, and with 0 at
     the cut. Aborted by disarm(), power_off() or emergency_stop() (they set
     _stop).
 
-    Returns the time.monotonic() of the signal cut - the same clock as
-    EscReader's t_mono - or None if the sweep was aborted.
+    Returns the drawdown start time, or None if the sweep was aborted.
     """
     if not is_armed():
         raise ArmError("not armed - arm() first")
     lgpio = _mods()[0]
     _stop.clear()
-    print(f"[ESC ARM] sweep {channel}: {start_us} -> {end_us} us "
-          f"over {duration_s:.1f}s, then signal off")
-    t0 = time.monotonic()
-    t_cut = None
+    print(f"[ESC ARM] sweep {channel}: "
+          + " -> ".join(f"{us}us/{s:g}s" for us, s in profile)
+          + ", then signal off")
+    t_drawdown = None
+    cut = False
     try:
-        while True:
-            frac = min(1.0, (time.monotonic() - t0) / duration_s)
+        last = len(profile) - 1
+        for i, (us, hold_s) in enumerate(profile):
             try:
-                sent = set_us(channel, start_us + (end_us - start_us) * frac)
+                sent = set_us(channel, us)
             except ArmError:
                 if _stop.is_set():      # E-STOP / disarm got there first
                     return None
                 raise
+            if i == last:
+                t_drawdown = time.monotonic()
+                if on_drawdown:
+                    on_drawdown(t_drawdown)
             if on_step:
                 on_step(sent)
-            if frac >= 1.0:
-                break
-            if _stop.wait(SWEEP_STEP_S):
+            if _stop.wait(hold_s):
                 return None
     finally:
         # Completed or not, finish with no signal at all - never leave the
-        # motor sitting at the top of the ramp.
+        # motor sitting at a sweep step.
         with _lock:
             if _owned:
                 _off_pulses(lgpio)
-                t_cut = time.monotonic()
-    if on_step and t_cut is not None:
+                cut = True
+    if on_step and cut:
         on_step(0)
-    print(f"[ESC ARM] sweep complete - signal OFF at {end_us} us, "
-          f"timing spin-down")
-    return t_cut
+    print("[ESC ARM] sweep complete - signal OFF, timing spin-down")
+    return t_drawdown
 
 
 def limits():
-    """(min_us, max_us, arm_us, zero_pct_us) for the manual slider."""
-    return (SLIDER_MIN_US, SLIDER_MAX_US, US_ARM, ZERO_PCT_US)
+    """(idle_us, max_us, arm_us, zero_pct_us)."""
+    return (SLIDER_MIN_US, US_MAX_ALLOWED, US_ARM, ZERO_PCT_US)
 
 
-def sweep_limits():
-    """(start_us, end_us, duration_s)."""
-    return (SWEEP_START_US, SWEEP_END_US, SWEEP_DURATION_S)
+def sweep_profile():
+    """((us, hold_s), ...) - the SWEEP button's step list."""
+    return SWEEP_PROFILE
 
 
 def channels():

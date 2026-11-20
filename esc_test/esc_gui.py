@@ -72,11 +72,14 @@ WARN = "#fd7e14"
 BAD = "#dc3545"
 
 REFRESH_MS = 100        # label repaint rate; logging runs at full frame rate
-THROTTLE_FLUSH_MS = 40  # 25 Hz of hardware writes while a slider is dragged
+
+STEP_BTN = "#343a40"    # throttle step button, not selected
+STEP_ON = "#0d6efd"     # throttle step button, currently commanded
 
 # Spin-down: the motor counts as stopped at the first frame at or below this
-# eRPM after the sweep cuts the signal. Raise it if the ESC reports a small
-# non-zero eRPM at standstill. Give up after SPINDOWN_TIMEOUT_S.
+# eRPM after the sweep drops to its final idle phase. Raise it if the ESC
+# reports a small non-zero eRPM at standstill. Give up after
+# SPINDOWN_TIMEOUT_S.
 SPINDOWN_STOP_ERPM = 0
 SPINDOWN_TIMEOUT_S = 120.0
 
@@ -122,21 +125,19 @@ class EscGui:
         # and arm() both block for seconds.
         self.ui_queue = queue.Queue()
 
-        # Slider rate limiting, for exactly the reason MasterUI documents on
-        # its Cv2_A06 page: set_channel() goes through to lgpio, and calling it
-        # on every motion event makes the slider crawl. A drag records where
-        # the finger is; one flush every THROTTLE_FLUSH_MS does the hardware
-        # write.
-        self.throttle_pending = None
-        self.throttle_flush_id = None
+        # Pulse width last commanded by a throttle step button, or None when
+        # the channel is at its armed idle (1080 us) or not armed.
+        self.cmd_us = None
+        self.step_btns = {}
 
         # Pulse width the sweep last transmitted, or None when not sweeping.
         self.sweep_us = None
 
-        # Spin-down timer, armed by a completed sweep. t_cut is the
-        # time.monotonic() the signal was cut (same clock as the frames'
-        # t_mono); result is seconds until eRPM first read 0, set by the
-        # reader thread in _spindown_frame.
+        # Spin-down timer, armed when the sweep enters its final idle phase.
+        # t_cut is that time.monotonic() (same clock as the frames' t_mono);
+        # result is seconds until eRPM first read 0, set by the reader thread
+        # in _spindown_frame. Logging carries on past the end of the sweep
+        # until then.
         self.spin_t_cut = None
         self.spin_result = None
         self.spin_cut_rpm = None
@@ -235,7 +236,7 @@ class EscGui:
         self.stop_btn.config(state="disabled")
 
     def _channel(self):
-        """Which channel the slider drives. Starts from -c, toggled on screen."""
+        """Which channel the throttle drives. Starts from -c, toggled on screen."""
         if not hasattr(self, "_chan"):
             self._chan = getattr(self.args, "channel", "top")
         return self._chan
@@ -245,7 +246,7 @@ class EscGui:
         return f"GPIO{pin} ({self._channel().upper()})"
 
     def toggle_channel(self):
-        """Switch the slider between GPIO7 (top) and GPIO5 (bot)."""
+        """Switch the throttle between GPIO7 (top) and GPIO5 (bot)."""
         old = self._channel()
         self._chan = "bot" if old == "top" else "top"
         min_us = esc_arm.limits()[0]
@@ -261,10 +262,11 @@ class EscGui:
         """
         PWM enable / arm / throttle, driven entirely through esc_arm (software
         PWM on GPIO7/GPIO5). No pulse width is computed here and no ceiling is
-        enforced here: the slider's range comes from esc_arm.limits(), and
-        esc_arm.set_us() clamps on top of that.
+        enforced here: the step buttons come from esc_arm.THROTTLE_STEPS_US,
+        and esc_arm.set_us() clamps on top of that.
         """
         min_us, max_us, arm_us, zero_us = esc_arm.limits()
+        profile = esc_arm.sweep_profile()
 
         strip = tk.Frame(root, bg=PANEL, padx=12, pady=8)
         strip.pack(fill="x", padx=16, pady=(6, 0))
@@ -278,10 +280,9 @@ class EscGui:
                                        "#495057")
         self.poweroff_btn = self._button(row, "PWM OFF", self.power_off_click,
                                          "#495057")
-        sw_start, sw_end, sw_s = esc_arm.sweep_limits()
-        # Linear ramp 0 rpm -> ~1500 rpm on the selected channel, then the
-        # signal is cut and the spin-down timed. Runs as a worker, so E-STOP
-        # stays live and aborts it.
+        # Stepped profile (esc_arm.SWEEP_PROFILE) on the selected channel; the
+        # spin-down is timed from the start of the final idle phase, then the
+        # signal is cut. Runs as a worker, so E-STOP stays live and aborts it.
         self.sweep_btn = self._button(row, "SWEEP", self.sweep_click, WARN)
         # Loudest thing on the page, same reasoning as the Prop TEST V2 page's
         # emergency stop: it is the one you hit without looking.
@@ -297,8 +298,8 @@ class EscGui:
 
         tk.Label(srow, text="THROTTLE", bg=PANEL,
                  fg=DIM, font=(None, 11, "bold")).pack(side="left")
-        # Which GPIO the slider drives. Both are armed together, so switching
-        # just parks the old one at idle and moves the slider back to rest.
+        # Which GPIO the step buttons drive. Both are armed together, so
+        # switching just parks the old one at idle.
         self.chan_btn = self._button(srow, self._chan_text(),
                                      self.toggle_channel, "#6f42c1")
         self.chan_btn.config(font=(None, 11, "bold"), pady=2, padx=10)
@@ -306,27 +307,38 @@ class EscGui:
         self.throttle_lbl = tk.Label(srow, text=f"{min_us} us", bg=PANEL,
                                      fg=ACCENT, font=(None, 15, "bold"))
         self.throttle_lbl.pack(side="right")
-        # Sweep / spin-down status: "SIGNAL OFF - spinning down 2.4 s",
-        # then "STOPPED in 4.31 s from 1497 rpm".
+        # Sweep / spin-down status: "IDLE - spinning down 1.2 s" during the
+        # final idle, "SIGNAL OFF - spinning down 3.4 s" once the sweep has
+        # cut the signal, then "STOPPED in 4.31 s from 1497 rpm".
         self.spin_lbl = tk.Label(srow, text="", bg=PANEL, fg=DIM,
                                  font=(None, 13, "bold"))
         self.spin_lbl.pack(side="right", padx=(0, 16))
 
-        self.throttle = tk.Scale(
-            strip, from_=min_us, to=max_us, orient="horizontal",
-            resolution=1, showvalue=False, command=self.throttle_moved,
-            bg=PANEL, fg=FG, troughcolor="#2a2a2a", highlightthickness=0,
-            sliderlength=56, width=26, bd=0)
-        self.throttle.set(min_us)
-        self.throttle.pack(fill="x")
+        # Fixed throttle steps instead of a slider: one hardware write per
+        # press, repeatable values, and nothing to drag on a touchscreen.
+        brow = tk.Frame(strip, bg=PANEL)
+        brow.pack(fill="x", pady=(6, 0))
+        for i, us in enumerate(esc_arm.THROTTLE_STEPS_US):
+            b = tk.Button(
+                brow, text=f"{us}", command=lambda u=us: self.set_throttle(u),
+                bg=STEP_BTN, fg="white", activebackground=STEP_ON,
+                activeforeground="white", disabledforeground="#6c757d",
+                font=(None, 15, "bold"), relief="flat", pady=10,
+                highlightthickness=0, bd=0)
+            b.grid(row=0, column=i, sticky="ew", padx=(0 if i == 0 else 6, 0))
+            brow.columnconfigure(i, weight=1, uniform="step")
+            self.step_btns[us] = b
 
+        sweep_txt = " > ".join(
+            ("idle" if us == esc_arm.IDLE_US else f"{us}") + f" {s:g}s"
+            for us, s in profile)
         tk.Label(strip, bg=PANEL, fg=DIM, font=(None, 9),
-                 text=f"arm holds {arm_us} us; 0% point {zero_us} us, so "
-                      f"{min_us} us does not turn the motor. Slider ceiling "
-                      f"{max_us} us. SWEEP: {sw_start}->{sw_end} us over "
-                      f"{sw_s:.0f} s, then signal OFF and the spin-down is "
-                      f"timed (re-ARM after). GPIO7 = pin 26, GPIO5 = pin 29.",
-                 anchor="w").pack(fill="x", pady=(2, 0))
+                 text=f"arm holds {arm_us} us, idles at {min_us} us; 0% point "
+                      f"{zero_us} us. SWEEP: {sweep_txt}, then signal OFF; "
+                      f"spin-down timed from the last idle (re-ARM after). "
+                      f"GPIO7 = pin 26, GPIO5 = pin 29.",
+                 anchor="w", justify="left", wraplength=760
+                 ).pack(fill="x", pady=(2, 0))
 
         self._refresh_control()
 
@@ -475,8 +487,10 @@ class EscGui:
 
     def sweep_click(self):
         """
-        Ramp the selected channel up to esc_arm.SWEEP_END_US, then cut the
-        signal (simulated motor-off) and time the spin-down from telemetry.
+        Step the selected channel through esc_arm.SWEEP_PROFILE (idle 2 s,
+        1200/1300/1400/1500 us 2 s each, idle 3 s), then cut the signal. The
+        spin-down is timed from the start of the final idle phase to the
+        first 0 eRPM frame, logging on past the end of the sweep if needed.
         The ESC is left disarmed; press ARM again for the next run.
         """
         if not esc_arm.is_armed():
@@ -497,13 +511,22 @@ class EscGui:
             if self.reader is not None:
                 self.reader.annotations = {"cmd_us": us}
 
+        def on_drawdown(t):
+            # Worker thread, at the instant the final idle is commanded: note
+            # the speed it is coasting down from, then arm _spindown_frame.
+            snap = self.reader.snapshot() if self.reader else None
+            self.spin_cut_rpm = (snap or {}).get("rpm")
+            self.spin_t_cut = t
+
         def run():
             try:
-                t_cut = esc_arm.sweep(chan, on_step=on_step)
-                if t_cut is not None:
-                    snap = self.reader.snapshot() if self.reader else None
-                    self.spin_cut_rpm = (snap or {}).get("rpm")
-                    self.spin_t_cut = t_cut     # arms _spindown_frame
+                t = esc_arm.sweep(chan, on_step=on_step,
+                                  on_drawdown=on_drawdown)
+                if t is None and self.spin_result is None:
+                    # Aborted (E-STOP / disarm): no coast-down to time.
+                    self.spin_t_cut = None
+                    self.ui_queue.put(lambda: self.spin_lbl.config(
+                        text="sweep aborted", fg=WARN))
             finally:
                 self.sweep_us = None
 
@@ -512,9 +535,10 @@ class EscGui:
 
     def _spindown_frame(self, d):
         """
-        Reader thread, every frame. Once the signal has been cut, the first
-        frame reporting eRPM <= SPINDOWN_STOP_ERPM ends the timer; that row
-        gets spindown_s so the result is in the CSV, not just on screen.
+        Reader thread, every frame. Once the sweep has dropped to its final
+        idle, the first frame reporting eRPM <= SPINDOWN_STOP_ERPM ends the
+        timer; that row gets spindown_s so the result is in the CSV, not just
+        on screen.
         """
         t_cut = self.spin_t_cut
         if t_cut is None or self.spin_result is not None:
@@ -526,7 +550,7 @@ class EscGui:
             self.spin_result = d["t_mono"] - t_cut
             d["spindown_s"] = self.spin_result
             print(f"[ESC GUI] spin-down: {self.spin_result:.3f} s from "
-                  f"signal off to 0 eRPM"
+                  f"idle to 0 eRPM"
                   + (f" (from {self.spin_cut_rpm:.0f} rpm)"
                      if self.spin_cut_rpm is not None else ""))
 
@@ -544,44 +568,32 @@ class EscGui:
         self._refresh_control()
 
     def _reset_throttle(self):
-        """Put the slider back at its resting value without commanding anything."""
+        """Forget the commanded step (back to idle) without commanding anything."""
         if not self.control:
             return
-        min_us = esc_arm.limits()[0]
-        self.throttle_pending = None
-        # Scale.set() fires the command callback exactly as a drag does, so the
-        # pending value is cleared after as well as before - otherwise "reset"
-        # schedules a write of the value we just reset away from.
-        self.throttle.set(min_us)
-        self.throttle_pending = None
-        self.throttle_lbl.config(text=f"{min_us} us")
+        self.cmd_us = None
+        self.throttle_lbl.config(text=f"{esc_arm.limits()[0]} us")
+        self._highlight_step()
 
-    def throttle_moved(self, raw):
-        """Record the finger position; the flush does the hardware write."""
-        if not self.control:
-            return
-        us = int(float(raw))
-        self.throttle_lbl.config(text=f"{us} us")
-        if not esc_arm.is_armed():
-            return
-        self.throttle_pending = us
-        if self.throttle_flush_id is None:
-            self.throttle_flush_id = self.root.after(
-                THROTTLE_FLUSH_MS, self._flush_throttle)
+    def _highlight_step(self):
+        for us, b in self.step_btns.items():
+            colour = STEP_ON if us == self.cmd_us else STEP_BTN
+            b.config(bg=colour, activebackground=STEP_ON)
 
-    def _flush_throttle(self):
-        self.throttle_flush_id = None
-        us = self.throttle_pending
-        self.throttle_pending = None
-        if us is None or not esc_arm.is_armed():
+    def set_throttle(self, us):
+        """A step button: one hardware write, on the Tk thread (non-blocking)."""
+        if not self.control or self.busy or not esc_arm.is_armed():
             return
         try:
             sent = esc_arm.set_us(self._channel(), us)
-            if sent is not None and sent != us:
-                # The clamp bit: show what actually went out, not what was asked.
-                self.throttle_lbl.config(text=f"{sent} us (clamped)")
         except esc_arm.ArmError as e:
             self._fault(str(e))
+            return
+        self.cmd_us = sent
+        # The clamp bit: show what actually went out, not what was asked.
+        self.throttle_lbl.config(
+            text=f"{sent} us" + (" (clamped)" if sent != us else ""))
+        self._highlight_step()
 
     def _refresh_control(self):
         """Enable only what makes sense in the current state."""
@@ -601,8 +613,12 @@ class EscGui:
         self.sweep_btn.config(state=st(powered and armed))
         # Throttle is reachable only once the ESC is actually armed: commanding
         # it before then is what gets the fast error beep instead of a motor.
-        self.throttle.config(state="normal" if (armed and not busy)
-                             else "disabled")
+        step_state = st(powered and armed)
+        for b in self.step_btns.values():
+            b.config(state=step_state)
+        if not armed and self.cmd_us is not None:
+            # Disarmed behind our back (E-STOP, sweep end, power off).
+            self._reset_throttle()
 
     def reset_peaks(self):
         """Clear the peak holds without interrupting the log."""
@@ -736,30 +752,32 @@ class EscGui:
                 text=f"spin-down: no 0 eRPM within {SPINDOWN_TIMEOUT_S:.0f} s",
                 fg=WARN)
             spinning_down = False
+        if spinning_down:
+            self.spin_lbl.config(
+                text=("IDLE" if sweep_us else "SIGNAL OFF")
+                     + f" - spinning down "
+                       f"{time.monotonic() - self.spin_t_cut:.1f} s", fg=WARN)
+        elif self.spin_result is not None:
+            rpm0 = self.spin_cut_rpm
+            self.spin_lbl.config(
+                text=f"STOPPED in {self.spin_result:.2f} s"
+                     + (f" from {rpm0:.0f} rpm" if rpm0 is not None
+                        else ""), fg=GOOD)
+
         if sweep_us is not None:
             # The sweep worker stamps cmd_us itself; just show where it is.
             self.throttle_lbl.config(text=f"{sweep_us} us (sweep)")
         elif spinning_down:
-            # Keep cmd_us = 0 on every row until the motor is stopped, so the
-            # coast-down is unambiguous in the CSV.
+            # Past the end of the sweep: keep cmd_us = 0 on every row until
+            # the motor is stopped, so the coast-down is unambiguous in the CSV.
             if self.reader is not None:
                 self.reader.annotations = {"cmd_us": 0}
-            self.spin_lbl.config(
-                text=f"SIGNAL OFF - spinning down "
-                     f"{time.monotonic() - self.spin_t_cut:.1f} s", fg=WARN)
-        else:
-            if self.spin_result is not None:
-                rpm0 = self.spin_cut_rpm
-                self.spin_lbl.config(
-                    text=f"STOPPED in {self.spin_result:.2f} s"
-                         + (f" from {rpm0:.0f} rpm" if rpm0 is not None
-                            else ""), fg=GOOD)
-            if self.reader is not None:
-                # Stamped onto every logged frame.
-                self.reader.annotations = {
-                    "cmd_us": (int(self.throttle.get())
-                               if esc_arm.is_armed() else None),
-                }
+        elif self.reader is not None:
+            # Stamped onto every logged frame.
+            self.reader.annotations = {
+                "cmd_us": ((self.cmd_us or esc_arm.limits()[0])
+                           if esc_arm.is_armed() else None),
+            }
 
         if self.shunt_lbl is not None:
             sh_a = shunt.get("amps")
@@ -815,7 +833,7 @@ def main():
     p.add_argument("--control", action="store_true",
                    help="also drive the arm: FET pre-arm check (Precharge.py "
                         "order), software PWM on GPIO7 (top) or GPIO5 (bot), "
-                        "slider, sweep + arm. Needs the Pi")
+                        "throttle step buttons, sweep + arm. Needs the Pi")
     p.add_argument("--windowed", action="store_true",
                    help="do not go fullscreen")
     p.add_argument("--autostart", action="store_true",
