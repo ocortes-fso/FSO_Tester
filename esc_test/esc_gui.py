@@ -274,11 +274,11 @@ class EscGui:
         row = tk.Frame(strip, bg=PANEL)
         row.pack(fill="x")
 
-        self.power_btn = self._button(row, "PWM ON", self.power_on, "#0d6efd")
+        self.power_btn = self._button(row, "POWER ON", self.power_on, "#0d6efd")
         self.arm_btn = self._button(row, "ARM", self.arm_click, "#0d6efd")
         self.disarm_btn = self._button(row, "DISARM", self.disarm_click,
                                        "#495057")
-        self.poweroff_btn = self._button(row, "PWM OFF", self.power_off_click,
+        self.poweroff_btn = self._button(row, "POWER OFF", self.power_off_click,
                                          "#495057")
         # Stepped profile (esc_arm.SWEEP_PROFILE) on the selected channel; the
         # spin-down is timed from the start of the final idle phase, then the

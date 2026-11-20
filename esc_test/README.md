@@ -69,7 +69,7 @@ while disabled) → `OPEN_FET()` → `TURN_OFF_PRECHARGE()` → wait `BUS_SETTLE
 median INA228 bus voltage → `classify_bus_voltage()`. If the bus does not reach
 `BUS_MIN_VOLTAGE` the FETs are switched off again and power-up is refused.
 
-E-STOP / PWM OFF cut the pulses and the FETs (`CLOSE_FET()` → `CLOSE_SYSTEM()`).
+E-STOP / POWER OFF cut the pulses and the FETs (`CLOSE_FET()` → `CLOSE_SYSTEM()`).
 **There are no running current or voltage guards** — the bus is checked once at
 power-up. Stay by the battery connector.
 
@@ -198,9 +198,9 @@ python3 esc_test/esc_gui.py --autostart          # start reading immediately
 
 A control strip appears:
 
-- **PWM ON** — starts telemetry (if not already running) then runs the pre-arm check.
+- **POWER ON** — starts telemetry (if not already running) then runs the pre-arm check.
 - **ARM** — holds 1000 µs for 2 s on both channels, then idles at 1080 µs.
-- **DISARM** / **PWM OFF** — pulses off / pulses and FETs off.
+- **DISARM** / **POWER OFF** — pulses off / pulses and FETs off.
 - **SWEEP** — the timed sweep below.
 - **E-STOP** — runs inline on the Tk thread (never queued behind a worker): pulses
   off, FETs off, fault latched on screen.
@@ -249,7 +249,7 @@ nothing may exceed `US_MAX_ALLOWED`.
 
 Blocking calls (`power_up`, `arm`, the sweep) run on worker threads so E-STOP never
 waits on them; throttle and sweep are dead until the ESC is actually armed; a fault
-stays on screen until PWM ON is pressed again; and closing the page (CLOSE, Escape or
+stays on screen until POWER ON is pressed again; and closing the page (CLOSE, Escape or
 the window manager) powers the arm down unconditionally.
 
 **It runs as its own process.** The test box launches it with `subprocess.Popen` and
@@ -345,6 +345,6 @@ out to be wrong, every past log can be decoded again rather than re-run on the b
   a Pi 5 — see §2. `sudo fuser -v /dev/ttyAMA10` tells you.
 - Telemetry wire on the debug connector's **RX**, and a common ground?
 - Is the ESC powered? The telemetry stream only exists when the ESC is up
-  (with `--control`, after PWM ON).
+  (with `--control`, after POWER ON).
 - Is something else holding the port? The monitor opens exclusively and will say so.
   Two readers on one tty split the bytes and both see garbage.
