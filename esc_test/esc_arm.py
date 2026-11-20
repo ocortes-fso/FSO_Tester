@@ -97,9 +97,26 @@ SWEEP_PROFILE = (
     (IDLE_US, 3.0),
 )
 
+# --- fine ramp ------------------------------------------------------------
+# Same shape as SWEEP_PROFILE but in 10 us increments: idle, then
+# 1090, 1100, ... 1290 us for RAMP_STEP_S each, then 1300 us held for
+# RAMP_TOP_HOLD_S. It does NOT finish on idle: the signal is cut straight
+# from 1300 us and the spin-down is timed from that cut.
+RAMP_START_HOLD_S = 2.0
+RAMP_INCREMENT_US = 10
+RAMP_STEP_S = 3.0
+RAMP_TOP_US = 1300
+RAMP_TOP_HOLD_S = 3.0
+RAMP_PROFILE = (
+    ((IDLE_US, RAMP_START_HOLD_S),)
+    + tuple((us, RAMP_STEP_S) for us in range(
+        IDLE_US + RAMP_INCREMENT_US, RAMP_TOP_US, RAMP_INCREMENT_US))
+    + ((RAMP_TOP_US, RAMP_TOP_HOLD_S),)
+)
+
 assert max(THROTTLE_STEPS_US) <= US_MAX_ALLOWED
-assert max(us for us, _s in SWEEP_PROFILE) <= US_MAX_ALLOWED
-assert SWEEP_PROFILE[-1][0] == IDLE_US
+for _p in (SWEEP_PROFILE, RAMP_PROFILE):
+    assert max(us for us, _s in _p) <= US_MAX_ALLOWED
 
 # --- bus check (threshold and settle time live in Precharge.py) -----------
 BUS_CHECK_SAMPLES = 5   # same as Hobbywing_Prop_Test
@@ -391,9 +408,10 @@ def sweep(channel, profile=SWEEP_PROFILE, on_step=None, on_drawdown=None):
     SIGNAL (pulses off on both channels). BLOCKING - call from a worker
     thread.
 
-    The final phase is idle: on_drawdown(t) is called with the
-    time.monotonic() at which it begins (the same clock as EscReader's
-    t_mono), which is where the spin-down timer starts.
+    on_drawdown(t) is called with the time.monotonic() (the same clock as
+    EscReader's t_mono) where the spin-down timer starts: the start of the
+    final phase if that phase is idle (SWEEP_PROFILE), otherwise the signal
+    cut at the end (RAMP_PROFILE).
 
     The ESC is disarmed afterwards (no pulses) and must be re-armed before
     the next run. The FETs stay on, so telemetry keeps streaming through the
@@ -413,7 +431,8 @@ def sweep(channel, profile=SWEEP_PROFILE, on_step=None, on_drawdown=None):
           + " -> ".join(f"{us}us/{s:g}s" for us, s in profile)
           + ", then signal off")
     t_drawdown = None
-    cut = False
+    t_cut = None
+    ends_idle = profile[-1][0] <= IDLE_US
     try:
         last = len(profile) - 1
         for i, (us, hold_s) in enumerate(profile):
@@ -423,7 +442,7 @@ def sweep(channel, profile=SWEEP_PROFILE, on_step=None, on_drawdown=None):
                 if _stop.is_set():      # E-STOP / disarm got there first
                     return None
                 raise
-            if i == last:
+            if i == last and ends_idle:
                 t_drawdown = time.monotonic()
                 if on_drawdown:
                     on_drawdown(t_drawdown)
@@ -437,9 +456,16 @@ def sweep(channel, profile=SWEEP_PROFILE, on_step=None, on_drawdown=None):
         with _lock:
             if _owned:
                 _off_pulses(lgpio)
-                cut = True
-    if on_step and cut:
+                t_cut = time.monotonic()
+    if t_cut is None:
+        return None
+    if on_step:
         on_step(0)
+    if not ends_idle:
+        # Cut straight from a driven step: the coast-down starts here.
+        t_drawdown = t_cut
+        if on_drawdown:
+            on_drawdown(t_drawdown)
     print("[ESC ARM] sweep complete - signal OFF, timing spin-down")
     return t_drawdown
 
@@ -452,6 +478,11 @@ def limits():
 def sweep_profile():
     """((us, hold_s), ...) - the SWEEP button's step list."""
     return SWEEP_PROFILE
+
+
+def ramp_profile():
+    """((us, hold_s), ...) - the RAMP button's 10 us step list."""
+    return RAMP_PROFILE
 
 
 def channels():

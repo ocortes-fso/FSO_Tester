@@ -283,7 +283,19 @@ class EscGui:
         # Stepped profile (esc_arm.SWEEP_PROFILE) on the selected channel; the
         # spin-down is timed from the start of the final idle phase, then the
         # signal is cut. Runs as a worker, so E-STOP stays live and aborts it.
-        self.sweep_btn = self._button(row, "SWEEP", self.sweep_click, WARN)
+        self.sweep_btn = self._button(
+            row, "SWEEP", lambda: self.sweep_click(esc_arm.sweep_profile()),
+            WARN)
+        # Fine ramp (esc_arm.RAMP_PROFILE): 10 us steps up to 1300 us, held,
+        # then the signal is cut and the spin-down timed from the cut.
+        self.ramp_btn = self._button(
+            row, "RAMP", lambda: self.sweep_click(esc_arm.ramp_profile()),
+            WARN)
+        # Seven buttons on one 800 px row: tighten them up a little.
+        for b in (self.power_btn, self.arm_btn, self.disarm_btn,
+                  self.poweroff_btn, self.sweep_btn, self.ramp_btn):
+            b.config(font=(None, 13, "bold"), padx=10)
+            b.pack_configure(padx=(0, 6))
         # Loudest thing on the page, same reasoning as the Prop TEST V2 page's
         # emergency stop: it is the one you hit without looking.
         self.estop_btn = tk.Button(
@@ -332,11 +344,16 @@ class EscGui:
         sweep_txt = " > ".join(
             ("idle" if us == esc_arm.IDLE_US else f"{us}") + f" {s:g}s"
             for us, s in profile)
+        ramp_txt = (f"idle {esc_arm.RAMP_START_HOLD_S:g}s > "
+                    f"+{esc_arm.RAMP_INCREMENT_US} us every "
+                    f"{esc_arm.RAMP_STEP_S:g}s > {esc_arm.RAMP_TOP_US} "
+                    f"{esc_arm.RAMP_TOP_HOLD_S:g}s")
         tk.Label(strip, bg=PANEL, fg=DIM, font=(None, 9),
                  text=f"arm holds {arm_us} us, idles at {min_us} us; 0% point "
                       f"{zero_us} us. SWEEP: {sweep_txt}, then signal OFF; "
-                      f"spin-down timed from the last idle (re-ARM after). "
-                      f"GPIO7 = pin 26, GPIO5 = pin 29.",
+                      f"spin-down timed from the last idle. RAMP: {ramp_txt}, "
+                      f"then signal OFF; spin-down timed from the cut. "
+                      f"Re-ARM after either. GPIO7 = pin 26, GPIO5 = pin 29.",
                  anchor="w", justify="left", wraplength=760
                  ).pack(fill="x", pady=(2, 0))
 
@@ -485,13 +502,16 @@ class EscGui:
     def disarm_click(self):
         self._worker("disarm", esc_arm.disarm, done=self._reset_throttle)
 
-    def sweep_click(self):
+    def sweep_click(self, profile):
         """
-        Step the selected channel through esc_arm.SWEEP_PROFILE (idle 2 s,
-        1200/1300/1400/1500 us 2 s each, idle 3 s), then cut the signal. The
-        spin-down is timed from the start of the final idle phase to the
-        first 0 eRPM frame, logging on past the end of the sweep if needed.
-        The ESC is left disarmed; press ARM again for the next run.
+        Step the selected channel through `profile`, then cut the signal.
+
+        SWEEP (esc_arm.SWEEP_PROFILE: idle 2 s, 1200/1300/1400/1500 us 2 s
+        each, idle 3 s) times the spin-down from the start of the final idle.
+        RAMP (esc_arm.RAMP_PROFILE: 10 us steps to 1300 us, held 3 s) has no
+        final idle, so the spin-down is timed from the signal cut. Either way
+        it runs to the first 0 eRPM frame, logging on past the end of the
+        profile. The ESC is left disarmed; press ARM again for the next run.
         """
         if not esc_arm.is_armed():
             return
@@ -520,7 +540,7 @@ class EscGui:
 
         def run():
             try:
-                t = esc_arm.sweep(chan, on_step=on_step,
+                t = esc_arm.sweep(chan, profile, on_step=on_step,
                                   on_drawdown=on_drawdown)
                 if t is None and self.spin_result is None:
                     # Aborted (E-STOP / disarm): no coast-down to time.
@@ -611,6 +631,7 @@ class EscGui:
         self.disarm_btn.config(state=st(powered and armed))
         self.poweroff_btn.config(state=st(powered))
         self.sweep_btn.config(state=st(powered and armed))
+        self.ramp_btn.config(state=st(powered and armed))
         # Throttle is reachable only once the ESC is actually armed: commanding
         # it before then is what gets the fast error beep instead of a motor.
         step_state = st(powered and armed)

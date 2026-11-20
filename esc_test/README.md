@@ -201,7 +201,7 @@ A control strip appears:
 - **POWER ON** — starts telemetry (if not already running) then runs the pre-arm check.
 - **ARM** — holds 1000 µs for 2 s on both channels, then idles at 1080 µs.
 - **DISARM** / **POWER OFF** — pulses off / pulses and FETs off.
-- **SWEEP** — the timed sweep below.
+- **SWEEP** / **RAMP** — the two timed sweeps below.
 - **E-STOP** — runs inline on the Tk thread (never queued behind a worker): pulses
   off, FETs off, fault latched on screen.
 - **GPIO7 (TOP) / GPIO5 (BOT)** — which channel the throttle drives. Both are armed
@@ -241,9 +241,28 @@ aborts it and discards the timer.
 `cmd_us` in the log carries the sweep step being transmitted, then `0` from the cut
 until the motor is seen stopped.
 
-To change the profile, edit `SWEEP_PROFILE` in `esc_arm.py` — the on-screen
-description follows it. The last phase must be idle (asserted at import), and
-nothing may exceed `US_MAX_ALLOWED`.
+### RAMP — fine 10 µs ramp to 1300 µs
+
+RAMP runs `esc_arm.RAMP_PROFILE`, built from the `RAMP_*` constants:
+
+| phase | µs | hold |
+|---|---|---|
+| idle | 1080 | 2 s (`RAMP_START_HOLD_S`) |
+| ramp | 1090, 1100, … 1290 (+`RAMP_INCREMENT_US` = 10) | 1 s each (`RAMP_STEP_S`) |
+| top | 1300 (`RAMP_TOP_US`) | 3 s (`RAMP_TOP_HOLD_S`) |
+
+about 26 s in all, then the **signal is cut straight from 1300 µs** to show the motor
+winding down. There is no final idle, so the **spin-down timer starts at the cut**.
+Everything else is the same as SWEEP: telemetry logs continuously from start to
+the first 0 eRPM frame, the status label shows `SIGNAL OFF - spinning down …` then
+`STOPPED in …`, the result goes to `spindown_s`, and the ESC is left disarmed.
+
+### Changing the profiles
+
+Edit `SWEEP_PROFILE` or the `RAMP_*` constants in `esc_arm.py` — the on-screen
+description follows them. Nothing may exceed `US_MAX_ALLOWED` (asserted at import).
+`esc_arm.sweep()` decides where the spin-down timer starts from the profile itself:
+at the start of the last phase if that phase is idle, otherwise at the signal cut.
 
 ### Safety behaviour
 
