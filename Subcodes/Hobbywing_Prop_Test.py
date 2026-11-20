@@ -104,7 +104,7 @@ TELEM_HZ = 5.0          # voltage/current sample + print rate
 # ---------------------------------------------------------------------------
 # Precharge thresholds
 # ---------------------------------------------------------------------------
-# Matches GUI/MasterUI.py. 21 V is the "bus cap is charged" point for the
+# Matches GUI/MasterUI_old.py. 21 V is the "bus cap is charged" point for the
 # nominal 6S pack on this rig - change it if you move to a different pack.
 PRECHARGE_MIN_VOLTAGE = 21.0
 PRECHARGE_TIMEOUT_S = 3.0
@@ -922,7 +922,7 @@ def _summary(telem, completed):
 
 #####*****CHANGES*****#####
 # ---------------------------------------------------------------------------
-# Session API - used by the "Prop TEST V2" page in GUI/MasterUI.py
+# Session API - used by the "Prop TEST V2" page in GUI/MasterUI_old.py
 # ---------------------------------------------------------------------------
 # run_full_test() above is a one-shot: it powers up, runs everything and powers
 # down again. The GUI page needs the opposite shape, because there the operator
