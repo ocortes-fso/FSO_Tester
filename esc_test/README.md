@@ -57,7 +57,7 @@ All in `esc_arm.py`:
 | | µs | |
 |---|---|---|
 | `US_ARM` | 1000 | held for 2 s while the ESC arms |
-| `IDLE_US` (`SLIDER_MIN_US`) | 1080 | armed resting value — below the 0% point, nothing turns |
+| `IDLE_US` (`SLIDER_MIN_US`) | 1120 | armed resting value — below the 0% point, nothing turns |
 | `ZERO_PCT_US` | 1100 | the ESC's 0% point |
 | `THROTTLE_STEPS_US` | 1100, 1200, 1300, 1400, 1500, 1600 | the GUI's throttle buttons |
 | `US_MAX_ALLOWED` | 1690 | hard ceiling — `set_us()` clamps everything to 1000–1690 |
@@ -190,40 +190,43 @@ can tell "0 A because it's idle" from "0 A because nothing is decoding".
 ```bash
 python3 esc_test/esc_gui.py                      # read-only
 python3 esc_test/esc_gui.py --control            # + power, arm, throttle, sweep
-python3 esc_test/esc_gui.py --control -c bot     # throttle starts on GPIO5
 python3 esc_test/esc_gui.py --windowed           # for a desktop
 python3 esc_test/esc_gui.py --autostart          # start reading immediately
 ```
 
 ### With `--control`
 
-A control strip appears:
+The throttle always drives **GPIO7 (pin 26, top motor)** — there is no channel
+switch on the page (`THROTTLE_CHANNEL` in `esc_gui.py`). A control strip of three
+rows appears; the on-screen explanatory text was removed to give the buttons room,
+so the details live here:
 
-- **POWER ON** — starts telemetry (if not already running) then runs the pre-arm check.
-- **ARM** — holds 1000 µs for 2 s on both channels, then idles at 1080 µs.
-- **DISARM** / **POWER OFF** — pulses off / pulses and FETs off.
-- **SWEEP** / **RAMP** — the two timed sweeps below.
-- **E-STOP** — runs inline on the Tk thread (never queued behind a worker): pulses
-  off, FETs off, fault latched on screen.
-- **GPIO7 (TOP) / GPIO5 (BOT)** — which channel the throttle drives. Both are armed
-  together; switching parks the old one at idle.
-- **Throttle step buttons: 1100, 1200, 1300, 1400, 1500, 1600 µs.** One press = one
-  write to the selected channel. The active step is highlighted and the commanded
-  value shown at the right; 1100 µs (the 0% point) is the "no drive" step. The
-  buttons are dead until the ESC is armed, and while a sweep is running.
+- Row 1:
+  - **POWER ON** — starts telemetry (if not already running) then runs the pre-arm
+    check.
+  - **ARM** — holds 1000 µs for 2 s on both lines, then idles at `IDLE_US`.
+  - **DISARM** / **POWER OFF** — pulses off / pulses and FETs off.
+  - **E-STOP** — runs inline on the Tk thread (never queued behind a worker):
+    pulses off, FETs off, fault latched on screen.
+- Row 2: **SWEEP** / **RAMP** (the two timed runs below), the run / spin-down status,
+  and the pulse width currently commanded.
+- Row 3: **throttle step buttons 1100, 1200, 1300, 1400, 1500, 1600 µs.** One press
+  = one write to GPIO7. The active step is highlighted; 1100 µs (the 0% point) is
+  the "no drive" step. The buttons are dead until the ESC is armed, and while a
+  sweep is running.
 
 ### SWEEP and spin-down timing
 
-The sweep steps the selected channel through `esc_arm.SWEEP_PROFILE`:
+The sweep steps GPIO7 through `esc_arm.SWEEP_PROFILE`:
 
 | phase | µs | hold |
 |---|---|---|
-| idle | 1080 | 2 s |
+| idle | 1120 (`IDLE_US`) | 2 s |
 | | 1200 | 2 s |
 | | 1300 | 2 s |
 | | 1400 | 2 s |
 | | 1500 | 2 s |
-| idle | 1080 | 3 s |
+| idle | 1120 (`IDLE_US`) | 3 s |
 
 then **cuts the signal** (ESC disarmed — press ARM before the next sweep). The FETs
 stay on, so telemetry keeps streaming and **logging carries on past the end of the
@@ -232,8 +235,8 @@ sweep**.
 The **spin-down timer starts the moment the final idle phase begins** (the drop from
 1500 µs). How it stops is described under "How spin-down is measured" below. The
 status reads `IDLE - spinning down …` during the final idle, `SIGNAL OFF - spinning
-down …` if the motor is still turning after the cut, then `STOPPED in 4.31 s from
-1497 rpm`. E-STOP or DISARM during the sweep aborts it and discards the timer.
+down …` if the motor is still turning after the cut, then `STOPPED 0.29 s from
+1110 rpm`. E-STOP or DISARM during the sweep aborts it and discards the timer.
 
 `cmd_us` in the log carries the sweep step being transmitted, then `0` from the cut
 until the motor is seen stopped.
@@ -244,7 +247,7 @@ RAMP runs `esc_arm.RAMP_PROFILE`, built from the `RAMP_*` constants:
 
 | phase | µs | hold |
 |---|---|---|
-| idle | 1080 | 2 s (`RAMP_START_HOLD_S`) |
+| idle | 1120 (`IDLE_US`) | 2 s (`RAMP_START_HOLD_S`) |
 | ramp | 1140 (`RAMP_START_US`), 1150, … 1290 (+`RAMP_INCREMENT_US` = 10) | 3 s each (`RAMP_STEP_S`) |
 | top | 1300 (`RAMP_TOP_US`) | 3 s (`RAMP_TOP_HOLD_S`) |
 
@@ -252,16 +255,35 @@ about 53 s in all, then the **signal is cut straight from 1300 µs** to show the
 winding down. There is no final idle, so the **spin-down timer starts at the instant
 the 1300 µs pulses are cut**. Everything else is the same as SWEEP: telemetry logs
 continuously throughout and on past the cut until the motor is seen stopped, the
-status label shows `SIGNAL OFF - spinning down …` then `STOPPED in …`, the result
+status label shows `SIGNAL OFF - ESC driving …`, `SIGNAL OFF - spinning down …`, then `STOPPED …`, the result
 goes to `spindown_s`, and the ESC is left disarmed.
 
 ### How spin-down is measured
 
 There is no separate tachometer: the stop is read from the **ESC's own eRPM
-telemetry**. The timer stops at the first frame of a run of
-`SPINDOWN_CONFIRM_FRAMES` (5) consecutive frames at or below `SPINDOWN_STOP_ERPM`
-(0), all in `esc_gui.py`. Requiring a run means one glitched 0 frame mid-coast can't
-end the timer early; the time recorded is still that of the *first* zero frame.
+telemetry**. Two ESC behaviours seen on the bench (log `esc_20261122_182920.csv`)
+shape how it is measured:
+
+- **The ESC drops to one telemetry frame every ~2 s once the motor stops**, from
+  ~14 frames/s while it turns. So the first 0 eRPM frame arrives up to 2 s *after*
+  the real stop — taking that frame as the stop made the timer read ~2 s long.
+  Instead, the stop time is where eRPM reaches 0, **extrapolated from the last two
+  non-zero frames** (never later than the first 0 frame). The stop is confirmed by
+  `SPINDOWN_CONFIRM_FRAMES` (2) consecutive 0 frames, or by one 0 frame arriving
+  after a gap longer than `SPINDOWN_SLOW_GAP_S` (0.5 s, the ESC's slow standstill
+  rate), so a single glitched 0 frame mid-coast can't end the timer.
+- **On signal loss the ESC keeps driving at the last throttle for ~1.6 s** (its
+  failsafe) before letting go and braking. RAMP cuts the signal, so the first
+  ~1.6 s of its spin-down time is the ESC still driving at 1300 µs. The page
+  detects when the ESC's throttle input reads 0 and shows that as
+  `(held 1.62 s)` next to the result; while it is holding, the status reads
+  `SIGNAL OFF - ESC driving …`. SWEEP drops to idle rather than cutting, and
+  the ESC lets go within one frame.
+
+On that log, RAMP measures **1.85 s** from the cut (1.6 s of which is the hold, then
+~0.25 s of braking from 595 rpm), where the old method gave 3.9 s; SWEEP measures
+0.29 s from the idle command, where the old method gave 6.3 s.
+
 The result is printed to the console and written to `spindown_s` on the confirming
 CSV row. If no stop is seen within `SPINDOWN_TIMEOUT_S` (120 s) the page says so.
 
@@ -272,7 +294,7 @@ roughly one frame period (~10–20 ms).
 **Limitation:** the result is only as good as the ESC's eRPM while it is not
 driving. If eRPM reads 0 on the very first frame after the cut while the motor was
 turning, the ESC has stopped reporting speed rather than the motor stopping. The
-page then shows the time in orange with `ESC not reporting coast` instead of a green
+page then shows the time in orange with `no coast eRPM` instead of a green
 `STOPPED`, and the console prints a warning. Likewise, a sensorless ESC may report 0
 slightly before the prop actually stops, because it can't sense back-EMF at very low
 speed. The full eRPM trace is in the CSV for checking either case.

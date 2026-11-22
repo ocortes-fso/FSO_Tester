@@ -73,19 +73,36 @@ BAD = "#dc3545"
 
 REFRESH_MS = 100        # label repaint rate; logging runs at full frame rate
 
+# Throttle output: GPIO7 (pin 26), the top motor. Fixed - there is no on-screen
+# channel switch. (esc_arm still arms both lines; GPIO5 just idles.)
+THROTTLE_CHANNEL = "top"
+
 STEP_BTN = "#343a40"    # throttle step button, not selected
 STEP_ON = "#0d6efd"     # throttle step button, currently commanded
 
-# Spin-down, measured from the ESC's own eRPM telemetry: the timer starts
-# when the drive ends (RAMP: the instant the 1300 us pulses are cut; SWEEP:
-# the start of its final idle) and stops at the first frame of a run of
-# SPINDOWN_CONFIRM_FRAMES consecutive frames at or below SPINDOWN_STOP_ERPM.
-# Requiring a run means one glitched 0 frame mid-coast cannot end the timer
-# early; the time recorded is still that of the FIRST zero frame. Raise
-# SPINDOWN_STOP_ERPM if the ESC reports a small non-zero eRPM at standstill.
-# Give up after SPINDOWN_TIMEOUT_S.
+# Spin-down, measured from the ESC's own eRPM telemetry. The timer starts at
+# the end of the drive command (RAMP: the instant the 1300 us pulses are cut;
+# SWEEP: the start of its final idle).
+#
+# THE STOP IS NOT "THE FIRST 0 eRPM FRAME". Bench logs show the ESC streams
+# ~14 frames/s while the motor turns but drops to ONE FRAME EVERY ~2 s once it
+# has stopped - so the first 0 frame arrives up to 2 s after the actual stop.
+# Instead the stop time is where eRPM reaches 0, extrapolated from the last
+# two non-zero frames (capped at the first 0 frame). A stop is confirmed by
+# either SPINDOWN_CONFIRM_FRAMES consecutive 0 frames, or a single 0 frame
+# that follows a gap > SPINDOWN_SLOW_GAP_S (the ESC's slow standstill rate),
+# so one glitched 0 frame mid-coast cannot end the timer.
+#
+# The ESC also does not stop driving the instant the pulses are cut: on
+# signal loss it held the last throttle for ~1.65 s on the bench. That hold
+# is detected (throttle input reading 0 again) and shown separately.
+#
+# Raise SPINDOWN_STOP_ERPM if the ESC reports a small non-zero eRPM at
+# standstill. Give up after SPINDOWN_TIMEOUT_S.
 SPINDOWN_STOP_ERPM = 0
-SPINDOWN_CONFIRM_FRAMES = 5
+SPINDOWN_CONFIRM_FRAMES = 2
+SPINDOWN_SLOW_GAP_S = 0.5
+SPINDOWN_HOLD_SHOW_S = 0.2  # report the ESC's hold only above ~a frame or two
 SPINDOWN_TIMEOUT_S = 120.0
 
 
@@ -239,27 +256,8 @@ class EscGui:
         self.stop_btn.config(state="disabled")
 
     def _channel(self):
-        """Which channel the throttle drives. Starts from -c, toggled on screen."""
-        if not hasattr(self, "_chan"):
-            self._chan = getattr(self.args, "channel", "top")
-        return self._chan
-
-    def _chan_text(self):
-        pin = esc_arm.CHANNELS[self._channel()]
-        return f"GPIO{pin} ({self._channel().upper()})"
-
-    def toggle_channel(self):
-        """Switch the throttle between GPIO7 (top) and GPIO5 (bot)."""
-        old = self._channel()
-        self._chan = "bot" if old == "top" else "top"
-        min_us = esc_arm.limits()[0]
-        if esc_arm.is_armed():
-            try:
-                esc_arm.set_us(old, min_us)     # park the old one at idle
-            except esc_arm.ArmError as e:
-                print(f"[ESC GUI] park {old}: {e}")
-        self._reset_throttle()
-        self.chan_btn.config(text=self._chan_text())
+        """The throttle always drives GPIO7 (pin 26, top motor) on this page."""
+        return THROTTLE_CHANNEL
 
     def _build_control(self, root):
         """
@@ -268,12 +266,13 @@ class EscGui:
         enforced here: the step buttons come from esc_arm.THROTTLE_STEPS_US,
         and esc_arm.set_us() clamps on top of that.
         """
-        min_us, max_us, arm_us, zero_us = esc_arm.limits()
-        profile = esc_arm.sweep_profile()
+        min_us = esc_arm.limits()[0]
 
-        strip = tk.Frame(root, bg=PANEL, padx=12, pady=8)
-        strip.pack(fill="x", padx=16, pady=(6, 0))
+        strip = tk.Frame(root, bg=PANEL, padx=12, pady=10)
+        strip.pack(fill="x", padx=16, pady=(8, 0))
 
+        # Row 1: power / arm, and the E-STOP. Full-size buttons - the sweeps
+        # moved to row 2, so these no longer have to be squeezed.
         row = tk.Frame(strip, bg=PANEL)
         row.pack(fill="x")
 
@@ -283,56 +282,41 @@ class EscGui:
                                        "#495057")
         self.poweroff_btn = self._button(row, "POWER OFF", self.power_off_click,
                                          "#495057")
-        # Stepped profile (esc_arm.SWEEP_PROFILE) on the selected channel; the
-        # spin-down is timed from the start of the final idle phase, then the
-        # signal is cut. Runs as a worker, so E-STOP stays live and aborts it.
-        self.sweep_btn = self._button(
-            row, "SWEEP", lambda: self.sweep_click(esc_arm.sweep_profile()),
-            WARN)
-        # Fine ramp (esc_arm.RAMP_PROFILE): 10 us steps up to 1300 us, held,
-        # then the signal is cut and the spin-down timed from the cut.
-        self.ramp_btn = self._button(
-            row, "RAMP", lambda: self.sweep_click(esc_arm.ramp_profile()),
-            WARN)
-        # Seven buttons on one 800 px row: tighten them up a little.
-        for b in (self.power_btn, self.arm_btn, self.disarm_btn,
-                  self.poweroff_btn, self.sweep_btn, self.ramp_btn):
-            b.config(font=(None, 13, "bold"), padx=10)
-            b.pack_configure(padx=(0, 6))
         # Loudest thing on the page, same reasoning as the Prop TEST V2 page's
         # emergency stop: it is the one you hit without looking.
         self.estop_btn = tk.Button(
             row, text="E-STOP", command=self.estop, bg=BAD, fg="white",
             activebackground=BAD, activeforeground="white",
-            font=(None, 17, "bold"), relief="flat", padx=24, pady=14,
+            font=(None, 17, "bold"), relief="flat", padx=24, pady=12,
             highlightthickness=0, bd=0)
         self.estop_btn.pack(side="right")
 
+        # Row 2: the two timed runs (workers, so E-STOP stays live and aborts
+        # them), the sweep / spin-down status, and the commanded pulse width.
+        # Profiles: esc_arm.SWEEP_PROFILE / RAMP_PROFILE - see README.
         srow = tk.Frame(strip, bg=PANEL)
-        srow.pack(fill="x", pady=(8, 0))
+        srow.pack(fill="x", pady=(10, 0))
 
-        tk.Label(srow, text="THROTTLE", bg=PANEL,
-                 fg=DIM, font=(None, 11, "bold")).pack(side="left")
-        # Which GPIO the step buttons drive. Both are armed together, so
-        # switching just parks the old one at idle.
-        self.chan_btn = self._button(srow, self._chan_text(),
-                                     self.toggle_channel, "#6f42c1")
-        self.chan_btn.config(font=(None, 11, "bold"), pady=2, padx=10)
-        self.chan_btn.pack_configure(padx=(10, 0))
+        self.sweep_btn = self._button(
+            srow, "SWEEP", lambda: self.sweep_click(esc_arm.sweep_profile()),
+            WARN)
+        self.ramp_btn = self._button(
+            srow, "RAMP", lambda: self.sweep_click(esc_arm.ramp_profile()),
+            WARN)
+        for b in (self.sweep_btn, self.ramp_btn):
+            b.config(font=(None, 13, "bold"), pady=8)
         self.throttle_lbl = tk.Label(srow, text=f"{min_us} us", bg=PANEL,
                                      fg=ACCENT, font=(None, 15, "bold"))
         self.throttle_lbl.pack(side="right")
-        # Sweep / spin-down status: "IDLE - spinning down 1.2 s" during the
-        # final idle, "SIGNAL OFF - spinning down 3.4 s" once the sweep has
-        # cut the signal, then "STOPPED in 4.31 s from 1497 rpm".
+        # "SIGNAL OFF - ESC still driving 1.2 s", "... spinning down 1.7 s",
+        # then "STOPPED 1.85 s from 595 rpm (held 1.62 s)".
         self.spin_lbl = tk.Label(srow, text="", bg=PANEL, fg=DIM,
-                                 font=(None, 13, "bold"))
+                                 font=(None, 12, "bold"))
         self.spin_lbl.pack(side="right", padx=(0, 16))
 
-        # Fixed throttle steps instead of a slider: one hardware write per
-        # press, repeatable values, and nothing to drag on a touchscreen.
+        # Row 3: fixed throttle steps on GPIO7 - one hardware write per press.
         brow = tk.Frame(strip, bg=PANEL)
-        brow.pack(fill="x", pady=(6, 0))
+        brow.pack(fill="x", pady=(10, 0))
         for i, us in enumerate(esc_arm.THROTTLE_STEPS_US):
             b = tk.Button(
                 brow, text=f"{us}", command=lambda u=us: self.set_throttle(u),
@@ -340,26 +324,9 @@ class EscGui:
                 activeforeground="white", disabledforeground="#6c757d",
                 font=(None, 15, "bold"), relief="flat", pady=10,
                 highlightthickness=0, bd=0)
-            b.grid(row=0, column=i, sticky="ew", padx=(0 if i == 0 else 6, 0))
+            b.grid(row=0, column=i, sticky="ew", padx=(0 if i == 0 else 10, 0))
             brow.columnconfigure(i, weight=1, uniform="step")
             self.step_btns[us] = b
-
-        sweep_txt = " > ".join(
-            ("idle" if us == esc_arm.IDLE_US else f"{us}") + f" {s:g}s"
-            for us, s in profile)
-        ramp_txt = (f"idle {esc_arm.RAMP_START_HOLD_S:g}s > "
-                    f"{esc_arm.RAMP_START_US} +{esc_arm.RAMP_INCREMENT_US} "
-                    f"us every "
-                    f"{esc_arm.RAMP_STEP_S:g}s > {esc_arm.RAMP_TOP_US} "
-                    f"{esc_arm.RAMP_TOP_HOLD_S:g}s")
-        tk.Label(strip, bg=PANEL, fg=DIM, font=(None, 9),
-                 text=f"arm holds {arm_us} us, idles at {min_us} us; 0% point "
-                      f"{zero_us} us. SWEEP: {sweep_txt}, then signal OFF; "
-                      f"spin-down timed from the last idle. RAMP: {ramp_txt}, "
-                      f"then signal OFF; spin-down timed from the cut. "
-                      f"Re-ARM after either. GPIO7 = pin 26, GPIO5 = pin 29.",
-                 anchor="w", justify="left", wraplength=760
-                 ).pack(fill="x", pady=(2, 0))
 
         self._refresh_control()
 
@@ -559,47 +526,76 @@ class EscGui:
 
     def _spin_reset(self):
         self.spin_t_cut = self.spin_result = self.spin_cut_rpm = None
+        self.spin_hold = None       # s the ESC kept driving after the command
+        self.spin_prev_t = None     # t_mono of the previous frame
+        self.spin_nz = []           # last two non-zero (t, erpm) frames
         self.spin_zero_t = None     # t_mono of the first frame in a 0 run
         self.spin_zero_n = 0        # length of the current 0 run
-        self.spin_frames = 0        # frames seen since the timer started
         self.spin_warn = ""
 
     def _spindown_frame(self, d):
         """
-        Reader thread, every frame. Once the drive has ended (spin_t_cut set),
-        watch the ESC's eRPM for SPINDOWN_CONFIRM_FRAMES consecutive frames
-        at or below SPINDOWN_STOP_ERPM. The spin-down time is from spin_t_cut
-        to the FIRST frame of that run; the confirming row gets spindown_s so
-        the result is in the CSV, not just on screen.
+        Reader thread, every frame, once the drive command has ended
+        (spin_t_cut set). See the SPINDOWN_* notes at the top of the file.
+        The confirming row gets spindown_s so the result is in the CSV, not
+        just on screen.
         """
         t_cut = self.spin_t_cut
         if t_cut is None or self.spin_result is not None:
             return
-        if d["t_mono"] <= t_cut:
+        t = d["t_mono"]
+        if t <= t_cut:
             return
-        self.spin_frames += 1
+        prev_t, self.spin_prev_t = self.spin_prev_t, t
+
+        # When did the ESC actually stop driving? Its throttle INPUT reads 0
+        # once it has dropped the signal (immediately at an idle command,
+        # after its failsafe hold at a cut). Midpoint of the two frames.
+        thr_in = d.get("throttle_req_pct")
+        if self.spin_hold is None and thr_in is not None and thr_in <= 0:
+            t_end = t if prev_t is None else max(t_cut, (prev_t + t) / 2)
+            self.spin_hold = t_end - t_cut
+
         erpm = d.get("erpm")
-        if erpm is None or erpm > SPINDOWN_STOP_ERPM:
-            # Still turning (or an undecodable value): any 0 run so far was
-            # a glitch, not a stop.
+        if erpm is None:
+            return
+        if erpm > SPINDOWN_STOP_ERPM:
+            # Still turning: any 0 run so far was a glitch, not a stop.
+            self.spin_nz = (self.spin_nz + [(t, erpm)])[-2:]
             self.spin_zero_t = None
             self.spin_zero_n = 0
             return
+
         if self.spin_zero_n == 0:
-            self.spin_zero_t = d["t_mono"]
-            # 0 on the very first frame after a cut from real speed means the
-            # ESC stopped reporting speed, not that the motor stopped.
-            if self.spin_frames == 1 and (self.spin_cut_rpm or 0) > 0:
+            self.spin_zero_t = t
+            if not self.spin_nz and (self.spin_cut_rpm or 0) > 0:
+                # 0 straight away from real speed: the ESC stopped reporting
+                # speed, not the motor stopping.
                 self.spin_warn = "eRPM read 0 straight after the cut"
         self.spin_zero_n += 1
-        if self.spin_zero_n < SPINDOWN_CONFIRM_FRAMES:
+        slow = prev_t is not None and t - prev_t > SPINDOWN_SLOW_GAP_S
+        if self.spin_zero_n < SPINDOWN_CONFIRM_FRAMES and not slow:
             return
-        self.spin_result = self.spin_zero_t - t_cut
+
+        # Stop time: extrapolate the last two non-zero frames down to 0,
+        # never later than the first 0 frame. One frame only: use it.
+        t_stop = self.spin_zero_t
+        if len(self.spin_nz) == 2:
+            (t1, e1), (t2, e2) = self.spin_nz
+            if e1 > e2 and t2 > t1:
+                t_stop = min(t_stop, t2 + e2 * (t2 - t1) / (e1 - e2))
+            else:
+                t_stop = min(t_stop, t2)
+        elif self.spin_nz:
+            t_stop = min(t_stop, self.spin_nz[-1][0])
+        self.spin_result = max(0.0, t_stop - t_cut)
         d["spindown_s"] = self.spin_result
         print(f"[ESC GUI] spin-down: {self.spin_result:.3f} s from end of "
-              f"drive to 0 eRPM"
+              f"drive command to 0 eRPM"
               + (f" (from {self.spin_cut_rpm:.0f} rpm)"
                  if self.spin_cut_rpm is not None else "")
+              + (f"; ESC kept driving {self.spin_hold:.2f} s of that"
+                 if (self.spin_hold or 0) > SPINDOWN_HOLD_SHOW_S else "")
               + (f" - WARNING: {self.spin_warn}; the ESC may not report "
                  f"coasting speed, so this is not the true stop time"
                  if self.spin_warn else ""))
@@ -804,26 +800,34 @@ class EscGui:
                 fg=WARN)
             spinning_down = False
         if spinning_down:
-            self.spin_lbl.config(
-                text=("IDLE" if sweep_us else "SIGNAL OFF")
-                     + f" - spinning down "
-                       f"{time.monotonic() - self.spin_t_cut:.1f} s", fg=WARN)
+            elapsed = time.monotonic() - self.spin_t_cut
+            what = "IDLE" if sweep_us else "SIGNAL OFF"
+            if self.spin_hold is None:
+                # The ESC has not let go of the throttle yet (failsafe hold).
+                self.spin_lbl.config(
+                    text=f"{what} - ESC driving {elapsed:.1f} s", fg=WARN)
+            else:
+                self.spin_lbl.config(
+                    text=f"{what} - spinning down {elapsed:.1f} s", fg=WARN)
         elif self.spin_result is not None:
             rpm0 = self.spin_cut_rpm
+            hold = self.spin_hold or 0
             if self.spin_warn:
                 # Not a trustworthy stop time - say so rather than show green.
                 self.spin_lbl.config(
-                    text=f"{self.spin_result:.2f} s? eRPM 0 at cut - "
-                         f"ESC not reporting coast", fg=WARN)
+                    text=f"{self.spin_result:.2f} s? no coast eRPM", fg=WARN)
             else:
                 self.spin_lbl.config(
-                    text=f"STOPPED in {self.spin_result:.2f} s"
+                    text=f"STOPPED {self.spin_result:.2f} s"
                          + (f" from {rpm0:.0f} rpm" if rpm0 is not None
-                            else ""), fg=GOOD)
+                            else "")
+                         + (f" (held {hold:.2f} s)"
+                            if hold > SPINDOWN_HOLD_SHOW_S else ""),
+                    fg=GOOD)
 
         if sweep_us is not None:
             # The sweep worker stamps cmd_us itself; just show where it is.
-            self.throttle_lbl.config(text=f"{sweep_us} us (sweep)")
+            self.throttle_lbl.config(text=f"{sweep_us} us")
         elif spinning_down:
             # Past the end of the sweep: keep cmd_us = 0 on every row until
             # the motor is stopped, so the coast-down is unambiguous in the CSV.
@@ -885,12 +889,10 @@ def main():
     p.add_argument("--poles", type=int, default=proto.DEFAULT_POLES)
     p.add_argument("--csv", metavar="FILE")
     p.add_argument("--no-csv", action="store_true")
-    p.add_argument("-c", "--channel", default="top",
-                   help="which ESC the telemetry wire is on (default top)")
     p.add_argument("--control", action="store_true",
                    help="also drive the arm: FET pre-arm check (Precharge.py "
-                        "order), software PWM on GPIO7 (top) or GPIO5 (bot), "
-                        "throttle step buttons, sweep + arm. Needs the Pi")
+                        "order), software PWM throttle on GPIO7 (top motor), "
+                        "throttle step buttons, sweep + ramp. Needs the Pi")
     p.add_argument("--windowed", action="store_true",
                    help="do not go fullscreen")
     p.add_argument("--autostart", action="store_true",

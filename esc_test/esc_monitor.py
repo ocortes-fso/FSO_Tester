@@ -289,7 +289,8 @@ CSV_COLUMNS = (
     ("iso", "wall-clock time"),
     ("t_s", "seconds since the monitor started"),
     ("cmd_us", "commanded pulse width, when a script is driving one"),
-    ("spindown_s", "signal-off to 0 eRPM, on the row where the stop is seen"),
+    ("spindown_s", "end of drive command to 0 eRPM (extrapolated), on the "
+                   "row where the stop is confirmed"),
 ) + tuple((k, "") for k in proto.SCALED_KEYS) \
   + tuple((k, "") for k in proto.RAW_KEYS if k not in CSV_EXCLUDED) \
   + (("crc_ok", ""), ("raw_hex", "the frame, for re-decoding later"))
