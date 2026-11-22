@@ -76,11 +76,16 @@ REFRESH_MS = 100        # label repaint rate; logging runs at full frame rate
 STEP_BTN = "#343a40"    # throttle step button, not selected
 STEP_ON = "#0d6efd"     # throttle step button, currently commanded
 
-# Spin-down: the motor counts as stopped at the first frame at or below this
-# eRPM after the sweep drops to its final idle phase. Raise it if the ESC
-# reports a small non-zero eRPM at standstill. Give up after
-# SPINDOWN_TIMEOUT_S.
+# Spin-down, measured from the ESC's own eRPM telemetry: the timer starts
+# when the drive ends (RAMP: the instant the 1300 us pulses are cut; SWEEP:
+# the start of its final idle) and stops at the first frame of a run of
+# SPINDOWN_CONFIRM_FRAMES consecutive frames at or below SPINDOWN_STOP_ERPM.
+# Requiring a run means one glitched 0 frame mid-coast cannot end the timer
+# early; the time recorded is still that of the FIRST zero frame. Raise
+# SPINDOWN_STOP_ERPM if the ESC reports a small non-zero eRPM at standstill.
+# Give up after SPINDOWN_TIMEOUT_S.
 SPINDOWN_STOP_ERPM = 0
+SPINDOWN_CONFIRM_FRAMES = 5
 SPINDOWN_TIMEOUT_S = 120.0
 
 
@@ -138,9 +143,7 @@ class EscGui:
         # result is seconds until eRPM first read 0, set by the reader thread
         # in _spindown_frame. Logging carries on past the end of the sweep
         # until then.
-        self.spin_t_cut = None
-        self.spin_result = None
-        self.spin_cut_rpm = None
+        self._spin_reset()
 
         root.title("ESC Telemetry")
         root.configure(bg=BG)
@@ -345,7 +348,8 @@ class EscGui:
             ("idle" if us == esc_arm.IDLE_US else f"{us}") + f" {s:g}s"
             for us, s in profile)
         ramp_txt = (f"idle {esc_arm.RAMP_START_HOLD_S:g}s > "
-                    f"+{esc_arm.RAMP_INCREMENT_US} us every "
+                    f"{esc_arm.RAMP_START_US} +{esc_arm.RAMP_INCREMENT_US} "
+                    f"us every "
                     f"{esc_arm.RAMP_STEP_S:g}s > {esc_arm.RAMP_TOP_US} "
                     f"{esc_arm.RAMP_TOP_HOLD_S:g}s")
         tk.Label(strip, bg=PANEL, fg=DIM, font=(None, 9),
@@ -520,7 +524,7 @@ class EscGui:
                         "from the ESC's eRPM")
             return
         chan = self._channel()
-        self.spin_t_cut = self.spin_result = self.spin_cut_rpm = None
+        self._spin_reset()
         self.spin_lbl.config(text="sweeping...", fg=ACCENT)
 
         def on_step(us):
@@ -553,26 +557,52 @@ class EscGui:
         self._reset_throttle()
         self._worker("sweep", run, done=self._reset_throttle)
 
+    def _spin_reset(self):
+        self.spin_t_cut = self.spin_result = self.spin_cut_rpm = None
+        self.spin_zero_t = None     # t_mono of the first frame in a 0 run
+        self.spin_zero_n = 0        # length of the current 0 run
+        self.spin_frames = 0        # frames seen since the timer started
+        self.spin_warn = ""
+
     def _spindown_frame(self, d):
         """
-        Reader thread, every frame. Once the sweep has dropped to its final
-        idle, the first frame reporting eRPM <= SPINDOWN_STOP_ERPM ends the
-        timer; that row gets spindown_s so the result is in the CSV, not just
-        on screen.
+        Reader thread, every frame. Once the drive has ended (spin_t_cut set),
+        watch the ESC's eRPM for SPINDOWN_CONFIRM_FRAMES consecutive frames
+        at or below SPINDOWN_STOP_ERPM. The spin-down time is from spin_t_cut
+        to the FIRST frame of that run; the confirming row gets spindown_s so
+        the result is in the CSV, not just on screen.
         """
         t_cut = self.spin_t_cut
         if t_cut is None or self.spin_result is not None:
             return
         if d["t_mono"] <= t_cut:
             return
+        self.spin_frames += 1
         erpm = d.get("erpm")
-        if erpm is not None and erpm <= SPINDOWN_STOP_ERPM:
-            self.spin_result = d["t_mono"] - t_cut
-            d["spindown_s"] = self.spin_result
-            print(f"[ESC GUI] spin-down: {self.spin_result:.3f} s from "
-                  f"idle to 0 eRPM"
-                  + (f" (from {self.spin_cut_rpm:.0f} rpm)"
-                     if self.spin_cut_rpm is not None else ""))
+        if erpm is None or erpm > SPINDOWN_STOP_ERPM:
+            # Still turning (or an undecodable value): any 0 run so far was
+            # a glitch, not a stop.
+            self.spin_zero_t = None
+            self.spin_zero_n = 0
+            return
+        if self.spin_zero_n == 0:
+            self.spin_zero_t = d["t_mono"]
+            # 0 on the very first frame after a cut from real speed means the
+            # ESC stopped reporting speed, not that the motor stopped.
+            if self.spin_frames == 1 and (self.spin_cut_rpm or 0) > 0:
+                self.spin_warn = "eRPM read 0 straight after the cut"
+        self.spin_zero_n += 1
+        if self.spin_zero_n < SPINDOWN_CONFIRM_FRAMES:
+            return
+        self.spin_result = self.spin_zero_t - t_cut
+        d["spindown_s"] = self.spin_result
+        print(f"[ESC GUI] spin-down: {self.spin_result:.3f} s from end of "
+              f"drive to 0 eRPM"
+              + (f" (from {self.spin_cut_rpm:.0f} rpm)"
+                 if self.spin_cut_rpm is not None else "")
+              + (f" - WARNING: {self.spin_warn}; the ESC may not report "
+                 f"coasting speed, so this is not the true stop time"
+                 if self.spin_warn else ""))
 
     def estop(self):
         """
@@ -780,10 +810,16 @@ class EscGui:
                        f"{time.monotonic() - self.spin_t_cut:.1f} s", fg=WARN)
         elif self.spin_result is not None:
             rpm0 = self.spin_cut_rpm
-            self.spin_lbl.config(
-                text=f"STOPPED in {self.spin_result:.2f} s"
-                     + (f" from {rpm0:.0f} rpm" if rpm0 is not None
-                        else ""), fg=GOOD)
+            if self.spin_warn:
+                # Not a trustworthy stop time - say so rather than show green.
+                self.spin_lbl.config(
+                    text=f"{self.spin_result:.2f} s? eRPM 0 at cut - "
+                         f"ESC not reporting coast", fg=WARN)
+            else:
+                self.spin_lbl.config(
+                    text=f"STOPPED in {self.spin_result:.2f} s"
+                         + (f" from {rpm0:.0f} rpm" if rpm0 is not None
+                            else ""), fg=GOOD)
 
         if sweep_us is not None:
             # The sweep worker stamps cmd_us itself; just show where it is.

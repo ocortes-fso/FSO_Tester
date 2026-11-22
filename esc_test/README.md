@@ -22,6 +22,7 @@ esc_test/
 ├── esc_monitor.py    live readout + CSV logger, for a terminal
 ├── esc_gui.py        touchscreen page: readout, logging, throttle steps, sweep
 ├── esc_capture.py    scripted capture: powers the arm, arms, holds, logs, powers down
+├── esc_spindown.py   offline: what the ESC reported after each SWEEP / RAMP cut
 ├── esc_arm.py        the only file that touches hardware - optional, see below
 └── logs/             timestamped CSVs and raw captures
 ```
@@ -229,14 +230,10 @@ stay on, so telemetry keeps streaming and **logging carries on past the end of t
 sweep**.
 
 The **spin-down timer starts the moment the final idle phase begins** (the drop from
-1500 µs) and stops at the first telemetry frame reporting 0 eRPM
-(`SPINDOWN_STOP_ERPM` in `esc_gui.py` — raise it if the ESC reports a small non-zero
-eRPM at standstill). The status reads `IDLE - spinning down …` during the final idle,
-`SIGNAL OFF - spinning down …` if the motor is still turning after the cut, then
-`STOPPED in 4.31 s from 1497 rpm`. The result is also printed to the console and
-written to `spindown_s` on that CSV row. If no 0 eRPM frame arrives within
-`SPINDOWN_TIMEOUT_S` (120 s) the page says so. E-STOP or DISARM during the sweep
-aborts it and discards the timer.
+1500 µs). How it stops is described under "How spin-down is measured" below. The
+status reads `IDLE - spinning down …` during the final idle, `SIGNAL OFF - spinning
+down …` if the motor is still turning after the cut, then `STOPPED in 4.31 s from
+1497 rpm`. E-STOP or DISARM during the sweep aborts it and discards the timer.
 
 `cmd_us` in the log carries the sweep step being transmitted, then `0` from the cut
 until the motor is seen stopped.
@@ -248,14 +245,49 @@ RAMP runs `esc_arm.RAMP_PROFILE`, built from the `RAMP_*` constants:
 | phase | µs | hold |
 |---|---|---|
 | idle | 1080 | 2 s (`RAMP_START_HOLD_S`) |
-| ramp | 1090, 1100, … 1290 (+`RAMP_INCREMENT_US` = 10) | 1 s each (`RAMP_STEP_S`) |
+| ramp | 1140 (`RAMP_START_US`), 1150, … 1290 (+`RAMP_INCREMENT_US` = 10) | 3 s each (`RAMP_STEP_S`) |
 | top | 1300 (`RAMP_TOP_US`) | 3 s (`RAMP_TOP_HOLD_S`) |
 
-about 26 s in all, then the **signal is cut straight from 1300 µs** to show the motor
-winding down. There is no final idle, so the **spin-down timer starts at the cut**.
-Everything else is the same as SWEEP: telemetry logs continuously from start to
-the first 0 eRPM frame, the status label shows `SIGNAL OFF - spinning down …` then
-`STOPPED in …`, the result goes to `spindown_s`, and the ESC is left disarmed.
+about 53 s in all, then the **signal is cut straight from 1300 µs** to show the motor
+winding down. There is no final idle, so the **spin-down timer starts at the instant
+the 1300 µs pulses are cut**. Everything else is the same as SWEEP: telemetry logs
+continuously throughout and on past the cut until the motor is seen stopped, the
+status label shows `SIGNAL OFF - spinning down …` then `STOPPED in …`, the result
+goes to `spindown_s`, and the ESC is left disarmed.
+
+### How spin-down is measured
+
+There is no separate tachometer: the stop is read from the **ESC's own eRPM
+telemetry**. The timer stops at the first frame of a run of
+`SPINDOWN_CONFIRM_FRAMES` (5) consecutive frames at or below `SPINDOWN_STOP_ERPM`
+(0), all in `esc_gui.py`. Requiring a run means one glitched 0 frame mid-coast can't
+end the timer early; the time recorded is still that of the *first* zero frame.
+The result is printed to the console and written to `spindown_s` on the confirming
+CSV row. If no stop is seen within `SPINDOWN_TIMEOUT_S` (120 s) the page says so.
+
+Frames are timestamped as they arrive (`esc_monitor.py` reads whatever bytes are
+waiting rather than blocking for a fixed 512), so each frame's time is accurate to
+roughly one frame period (~10–20 ms).
+
+**Limitation:** the result is only as good as the ESC's eRPM while it is not
+driving. If eRPM reads 0 on the very first frame after the cut while the motor was
+turning, the ESC has stopped reporting speed rather than the motor stopping. The
+page then shows the time in orange with `ESC not reporting coast` instead of a green
+`STOPPED`, and the console prints a warning. Likewise, a sensorless ESC may report 0
+slightly before the prop actually stops, because it can't sense back-EMF at very low
+speed. The full eRPM trace is in the CSV for checking either case.
+
+To see exactly what the ESC reported after a cut:
+
+```bash
+python3 esc_test/esc_spindown.py esc_test/logs/esc_YYYYmmdd_HHMMSS.csv
+```
+
+For every cut in the log it prints when the ESC's throttle output and phase current
+reached 0 (a late value means the ESC kept driving on its signal-loss failsafe), when
+rpm fell below 300/200/100/50/20/10 and when eRPM first read exactly 0 (a long tail
+means the 0 eRPM stop criterion is too strict), whether eRPM froze at one value,
+the `spindown_s` the page recorded, and a trace of the coast-down.
 
 ### Changing the profiles
 

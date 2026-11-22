@@ -69,7 +69,7 @@ PWM_FREQ_HZ = 400
 
 US_ARM = 1000           # held while the ESC arms
 ARM_HOLD_S = 2.0
-SLIDER_MIN_US = 1080    # armed resting value ("idle"), below the 0% point
+SLIDER_MIN_US = 1120    # armed resting value ("idle"), below the 0% point
 IDLE_US = SLIDER_MIN_US
 ZERO_PCT_US = 1100
 US_OFF = 0              # tx_servo width 0 = waveform off
@@ -99,10 +99,11 @@ SWEEP_PROFILE = (
 
 # --- fine ramp ------------------------------------------------------------
 # Same shape as SWEEP_PROFILE but in 10 us increments: idle, then
-# 1090, 1100, ... 1290 us for RAMP_STEP_S each, then 1300 us held for
-# RAMP_TOP_HOLD_S. It does NOT finish on idle: the signal is cut straight
-# from 1300 us and the spin-down is timed from that cut.
+# RAMP_START_US (1140), 1150, ... 1290 us for RAMP_STEP_S each, then 1300 us
+# held for RAMP_TOP_HOLD_S. It does NOT finish on idle: the signal is cut
+# straight from 1300 us and the spin-down is timed from that cut.
 RAMP_START_HOLD_S = 2.0
+RAMP_START_US = 1140    # first driven step of the ramp
 RAMP_INCREMENT_US = 10
 RAMP_STEP_S = 3.0
 RAMP_TOP_US = 1300
@@ -110,7 +111,7 @@ RAMP_TOP_HOLD_S = 3.0
 RAMP_PROFILE = (
     ((IDLE_US, RAMP_START_HOLD_S),)
     + tuple((us, RAMP_STEP_S) for us in range(
-        IDLE_US + RAMP_INCREMENT_US, RAMP_TOP_US, RAMP_INCREMENT_US))
+        RAMP_START_US, RAMP_TOP_US, RAMP_INCREMENT_US))
     + ((RAMP_TOP_US, RAMP_TOP_HOLD_S),)
 )
 

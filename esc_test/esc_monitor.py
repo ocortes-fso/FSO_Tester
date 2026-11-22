@@ -154,7 +154,12 @@ class EscReader(threading.Thread):
             self.connected = True
             self.last_error = None
             while not self.stop_event.is_set():
-                chunk = s.read(512)
+                # Take what has arrived, or block for the next byte. NOT a
+                # fixed read(512): at 19200 baud 512 bytes never arrive inside
+                # the 0.1 s timeout, so every read waited the full 0.1 s and
+                # ~8 frames were stamped with one late t_mono - up to 100 ms
+                # of error on anything timed from the frames (spin-down).
+                chunk = s.read(s.in_waiting or 1)
                 if chunk:
                     if self.raw_sink is not None:
                         self.raw_sink(chunk)
