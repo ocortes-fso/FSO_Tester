@@ -46,7 +46,8 @@ def load(path):
     with open(path, newline="") as fh:
         rows = list(csv.DictReader(fh))
     for r in rows:
-        for k in ("t_s", "cmd_us", "spindown_s", "throttle_req_pct",
+        for k in ("t_s", "cmd_us", "spindown_s", "spindown_hold_s",
+                  "spindown_total_s", "throttle_req_pct",
                   "throttle_pct", "erpm", "rpm", "amps", "phase_amps"):
             r[k] = _num(r, k)
     return rows
@@ -99,7 +100,11 @@ def report(rows, i_cut, every, tail_s):
     print(f"  eRPM == 0                : "
           f"{dt(first(seg, 0, lambda r: r['erpm'] == 0))}")
     rec = first(seg, 0, lambda r: r["spindown_s"] is not None)
-    rec_txt = "none" if rec is None else f"{rec['spindown_s']:.3f} s"
+    rec_txt = "none" if rec is None else (
+        f"{rec['spindown_s']:.3f} s wind-down"
+        + (f", hold {rec['spindown_hold_s']:.3f} s, total "
+           f"{rec['spindown_total_s']:.3f} s"
+           if rec.get("spindown_hold_s") is not None else ""))
     print(f"  page recorded spindown_s : {rec_txt}")
 
     # Frozen estimate: a run of identical non-zero eRPM readings.

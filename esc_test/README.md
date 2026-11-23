@@ -252,11 +252,11 @@ RAMP runs `esc_arm.RAMP_PROFILE`, built from the `RAMP_*` constants:
 | top | 1300 (`RAMP_TOP_US`) | 3 s (`RAMP_TOP_HOLD_S`) |
 
 about 53 s in all, then the **signal is cut straight from 1300 µs** to show the motor
-winding down. There is no final idle, so the **spin-down timer starts at the instant
-the 1300 µs pulses are cut**. Everything else is the same as SWEEP: telemetry logs
+winding down. The ESC keeps driving for its ~1.6 s signal-loss hold, then lets go;
+**`spindown_s` is timed from that release to the stop** (see below). Telemetry logs
 continuously throughout and on past the cut until the motor is seen stopped, the
-status label shows `SIGNAL OFF - ESC driving …`, `SIGNAL OFF - spinning down …`, then `STOPPED …`, the result
-goes to `spindown_s`, and the ESC is left disarmed.
+status label shows `SIGNAL OFF - ESC driving …`, `SIGNAL OFF - spinning down …`,
+then `STOPPED …`, and the ESC is left disarmed.
 
 ### How spin-down is measured
 
@@ -273,19 +273,27 @@ shape how it is measured:
   after a gap longer than `SPINDOWN_SLOW_GAP_S` (0.5 s, the ESC's slow standstill
   rate), so a single glitched 0 frame mid-coast can't end the timer.
 - **On signal loss the ESC keeps driving at the last throttle for ~1.6 s** (its
-  failsafe) before letting go and braking. RAMP cuts the signal, so the first
-  ~1.6 s of its spin-down time is the ESC still driving at 1300 µs. The page
-  detects when the ESC's throttle input reads 0 and shows that as
-  `(held 1.62 s)` next to the result; while it is holding, the status reads
-  `SIGNAL OFF - ESC driving …`. SWEEP drops to idle rather than cutting, and
-  the ESC lets go within one frame.
+  failsafe) before letting go. RAMP cuts the signal, so for that ~1.6 s the motor
+  is still being driven at 1300 µs. The page detects the **release** — the first
+  frame where the ESC's own throttle input reads 0, taken as the midpoint between
+  it and the last driving frame — and times the wind-down from there. While the
+  ESC is holding, the status reads `SIGNAL OFF - ESC driving …`. SWEEP drops to
+  idle rather than cutting, and the ESC lets go within one frame, so its hold is
+  ~0.
 
-On that log, RAMP measures **1.85 s** from the cut (1.6 s of which is the hold, then
-~0.25 s of braking from 595 rpm), where the old method gave 3.9 s; SWEEP measures
-0.29 s from the idle command, where the old method gave 6.3 s.
+So the wind-down is: **ESC release → extrapolated 0 eRPM**. Three columns are
+written on the CSV row where the stop is confirmed:
 
-The result is printed to the console and written to `spindown_s` on the confirming
-CSV row. If no stop is seen within `SPINDOWN_TIMEOUT_S` (120 s) the page says so.
+| column | measures | RAMP, prop fitted (`esc_20261122_191235.csv`) |
+|---|---|---|
+| `spindown_s` | **wind-down**: ESC release → stop | **2.48 s** from 573 rpm |
+| `spindown_hold_s` | drive command (cut / idle) → ESC release | 1.63 s |
+| `spindown_total_s` | drive command → stop (hold + wind-down) | 4.11 s |
+
+On screen: `STOPPED 2.48 s from 573 rpm (+1.63 s ESC hold)`; the hold is only shown
+when it is more than `SPINDOWN_HOLD_SHOW_S` (0.2 s). The same figures are printed
+to the console. If no stop is seen within `SPINDOWN_TIMEOUT_S` (120 s) the page says
+so.
 
 Frames are timestamped as they arrive (`esc_monitor.py` reads whatever bytes are
 waiting rather than blocking for a fixed 512), so each frame's time is accurate to
@@ -390,7 +398,7 @@ One row per decoded frame, in `esc_test/logs/esc_YYYYmmdd_HHMMSS.csv` (GUI and
 monitor), flushed every row so a run that ends badly still has its last second.
 Columns:
 
-`iso, t_s, cmd_us, spindown_s,` then the ESC's own scaled figures — `throttle_req_pct,
+`iso, t_s, cmd_us, spindown_s, spindown_hold_s, spindown_total_s,` then the ESC's own scaled figures — `throttle_req_pct,
 throttle_pct, erpm, rpm, volts, amps, phase_amps, watts, mos_temp_c, cap_temp_c` —
 then every raw field except `version_raw`, then `crc_ok` and `raw_hex`.
 

@@ -94,8 +94,11 @@ STEP_ON = "#0d6efd"     # throttle step button, currently commanded
 # so one glitched 0 frame mid-coast cannot end the timer.
 #
 # The ESC also does not stop driving the instant the pulses are cut: on
-# signal loss it held the last throttle for ~1.65 s on the bench. That hold
-# is detected (throttle input reading 0 again) and shown separately.
+# signal loss it holds the last throttle for ~1.6 s. That hold is detected
+# (its throttle input reading 0 again) and the WIND-DOWN - spindown_s - is
+# timed from that release, not from the cut, so it matches the motor
+# actually slowing. The hold (spindown_hold_s) and the total from the
+# command (spindown_total_s) are logged alongside it.
 #
 # Raise SPINDOWN_STOP_ERPM if the ESC reports a small non-zero eRPM at
 # standstill. Give up after SPINDOWN_TIMEOUT_S.
@@ -527,6 +530,8 @@ class EscGui:
     def _spin_reset(self):
         self.spin_t_cut = self.spin_result = self.spin_cut_rpm = None
         self.spin_hold = None       # s the ESC kept driving after the command
+        self.spin_t_release = None  # t_mono the ESC let go of the throttle
+        self.spin_prev_rpm = None   # rpm of the previous frame
         self.spin_prev_t = None     # t_mono of the previous frame
         self.spin_nz = []           # last two non-zero (t, erpm) frames
         self.spin_zero_t = None     # t_mono of the first frame in a 0 run
@@ -547,14 +552,22 @@ class EscGui:
         if t <= t_cut:
             return
         prev_t, self.spin_prev_t = self.spin_prev_t, t
+        prev_rpm, self.spin_prev_rpm = self.spin_prev_rpm, d.get("rpm")
 
         # When did the ESC actually stop driving? Its throttle INPUT reads 0
-        # once it has dropped the signal (immediately at an idle command,
-        # after its failsafe hold at a cut). Midpoint of the two frames.
+        # once it has dropped the signal (within a frame at an idle command,
+        # after its ~1.6 s failsafe hold at a signal cut). Midpoint of the
+        # last driving frame and the first released one; if the very first
+        # frame after the command is already released, the command itself.
+        # The wind-down - spindown_s - is timed from HERE, not from the cut.
         thr_in = d.get("throttle_req_pct")
-        if self.spin_hold is None and thr_in is not None and thr_in <= 0:
-            t_end = t if prev_t is None else max(t_cut, (prev_t + t) / 2)
-            self.spin_hold = t_end - t_cut
+        if self.spin_t_release is None and thr_in is not None and thr_in <= 0:
+            self.spin_t_release = (t_cut if prev_t is None
+                                   else max(t_cut, (prev_t + t) / 2))
+            self.spin_hold = self.spin_t_release - t_cut
+            # Speed it winds down FROM: the last frame still being driven.
+            if prev_rpm is not None:
+                self.spin_cut_rpm = prev_rpm
 
         erpm = d.get("erpm")
         if erpm is None:
@@ -588,14 +601,20 @@ class EscGui:
                 t_stop = min(t_stop, t2)
         elif self.spin_nz:
             t_stop = min(t_stop, self.spin_nz[-1][0])
-        self.spin_result = max(0.0, t_stop - t_cut)
-        d["spindown_s"] = self.spin_result
-        print(f"[ESC GUI] spin-down: {self.spin_result:.3f} s from end of "
-              f"drive command to 0 eRPM"
+        # No release seen (throttle field missing): fall back to the command.
+        if self.spin_t_release is None:
+            self.spin_t_release = t_cut
+            self.spin_hold = 0.0
+        self.spin_result = max(0.0, t_stop - self.spin_t_release)
+        d["spindown_s"] = self.spin_result              # release -> stop
+        d["spindown_hold_s"] = self.spin_hold           # command -> release
+        d["spindown_total_s"] = max(0.0, t_stop - t_cut)  # command -> stop
+        print(f"[ESC GUI] spin-down: {self.spin_result:.3f} s from ESC "
+              f"release to 0 eRPM"
               + (f" (from {self.spin_cut_rpm:.0f} rpm)"
                  if self.spin_cut_rpm is not None else "")
-              + (f"; ESC kept driving {self.spin_hold:.2f} s of that"
-                 if (self.spin_hold or 0) > SPINDOWN_HOLD_SHOW_S else "")
+              + f"; ESC held the throttle {self.spin_hold:.2f} s after the "
+                f"command; {d['spindown_total_s']:.3f} s command to stop"
               + (f" - WARNING: {self.spin_warn}; the ESC may not report "
                  f"coasting speed, so this is not the true stop time"
                  if self.spin_warn else ""))
@@ -800,15 +819,18 @@ class EscGui:
                 fg=WARN)
             spinning_down = False
         if spinning_down:
-            elapsed = time.monotonic() - self.spin_t_cut
             what = "IDLE" if sweep_us else "SIGNAL OFF"
-            if self.spin_hold is None:
+            t_rel = self.spin_t_release
+            if t_rel is None:
                 # The ESC has not let go of the throttle yet (failsafe hold).
+                elapsed = time.monotonic() - self.spin_t_cut
                 self.spin_lbl.config(
                     text=f"{what} - ESC driving {elapsed:.1f} s", fg=WARN)
             else:
+                # Counted from the release, to match spindown_s.
                 self.spin_lbl.config(
-                    text=f"{what} - spinning down {elapsed:.1f} s", fg=WARN)
+                    text=f"{what} - spinning down "
+                         f"{time.monotonic() - t_rel:.1f} s", fg=WARN)
         elif self.spin_result is not None:
             rpm0 = self.spin_cut_rpm
             hold = self.spin_hold or 0
@@ -821,7 +843,7 @@ class EscGui:
                     text=f"STOPPED {self.spin_result:.2f} s"
                          + (f" from {rpm0:.0f} rpm" if rpm0 is not None
                             else "")
-                         + (f" (held {hold:.2f} s)"
+                         + (f" (+{hold:.2f} s ESC hold)"
                             if hold > SPINDOWN_HOLD_SHOW_S else ""),
                     fg=GOOD)
 
